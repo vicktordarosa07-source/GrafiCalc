@@ -3,7 +3,17 @@
   "builds": [
     {
       "src": "server.js",
-      "use": "@vercel/node"
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "index.html",
+          "app.mjs",
+          "styles.css",
+          "catalogo-loja.seed.js",
+          "catalogo-loja.seed.mjs",
+          "assets/**"
+        ]
+      }
     }
   ],
   "routes": [
