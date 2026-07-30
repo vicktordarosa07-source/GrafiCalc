@@ -416,6 +416,15 @@ function getSafeFilePath(requestPath) {
   return resolved;
 }
 
+function serveResolvedFile(filePath, response) {
+  const extension = path.extname(filePath).toLowerCase();
+  response.writeHead(200, {
+    "Content-Type": MIME_TYPES[extension] || "application/octet-stream",
+    "Cache-Control": "no-store",
+  });
+  fs.createReadStream(filePath).pipe(response);
+}
+
 function serveStaticFile(requestPath, response) {
   const filePath = getSafeFilePath(requestPath);
   if (!filePath) {
@@ -433,6 +442,29 @@ function serveStaticFile(requestPath, response) {
       "Cache-Control": "no-store",
     });
     fs.createReadStream(filePath).pipe(response);
+  });
+}
+
+function serveAppFile(requestPath, response) {
+  const filePath = getSafeFilePath(requestPath);
+  if (!filePath) {
+    sendText(response, 403, "Acesso negado.");
+    return;
+  }
+
+  fs.stat(filePath, (error, stats) => {
+    if (error || !stats.isFile()) {
+      const isApiRoute = requestPath.startsWith("/api/");
+      const looksLikeFile = Boolean(path.extname(requestPath));
+      const indexPath = getSafeFilePath("/");
+      if (!isApiRoute && !looksLikeFile && indexPath) {
+        serveResolvedFile(indexPath, response);
+        return;
+      }
+      sendText(response, 404, "Arquivo não encontrado.");
+      return;
+    }
+    serveResolvedFile(filePath, response);
   });
 }
 
@@ -773,7 +805,7 @@ async function handleRequest(request, response) {
     return;
   }
 
-  serveStaticFile(requestUrl.pathname, response);
+  serveAppFile(requestUrl.pathname, response);
 }
 
 const server = http.createServer(handleRequest);
