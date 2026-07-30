@@ -1,0 +1,8 @@
+graficalc.local-env.ps1
+work/server-env.local.json
+work/
+outputs/
+*.local.json
+.env
+.env.*
+!.env.example
