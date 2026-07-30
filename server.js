@@ -541,7 +541,7 @@ async function deliverVerificationEmail(payload) {
   };
 }
 
-const server = http.createServer(async (request, response) => {
+async function handleRequest(request, response) {
   const requestUrl = new URL(request.url, `http://${request.headers.host || `${HOST}:${PORT}`}`);
 
   if (requestUrl.pathname === "/api/health") {
@@ -774,9 +774,16 @@ const server = http.createServer(async (request, response) => {
   }
 
   serveStaticFile(requestUrl.pathname, response);
-});
+}
 
-server.listen(PORT, HOST, () => {
-  ensureDataFile();
-  console.log(`GrafiCalc local integration server on http://localhost:${PORT}`);
-});
+const server = http.createServer(handleRequest);
+
+module.exports = handleRequest;
+module.exports.server = server;
+
+if (require.main === module) {
+  server.listen(PORT, HOST, () => {
+    ensureDataFile();
+    console.log(`GrafiCalc local integration server on http://localhost:${PORT}`);
+  });
+}
