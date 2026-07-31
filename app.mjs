@@ -7042,6 +7042,21 @@ async function initApp() {
 
   const tabButtons = [...document.querySelectorAll(".tab-button")];
   const tabPanels = [...document.querySelectorAll(".tab-panel")];
+  const appMenuShell = document.querySelector(".app-menu-shell");
+  const appMenuToggle = document.getElementById("app-menu-toggle");
+  const appMenuPanel = document.getElementById("main-tab-menu");
+
+  function setAppMenuOpen(open) {
+    if (!appMenuToggle || !appMenuPanel) {
+      return;
+    }
+    appMenuToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    appMenuPanel.hidden = !open;
+  }
+
+  function closeAppMenu() {
+    setAppMenuOpen(false);
+  }
 
   function setStatusMessage(element, message, tone = "neutral") {
     if (!element) {
@@ -10168,7 +10183,28 @@ async function initApp() {
   tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
       selectTab(button.dataset.tabTarget);
+      closeAppMenu();
     });
+  });
+
+  appMenuToggle?.addEventListener("click", () => {
+    const isOpen = appMenuToggle.getAttribute("aria-expanded") === "true";
+    setAppMenuOpen(!isOpen);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!appMenuPanel || appMenuPanel.hidden || !appMenuShell) {
+      return;
+    }
+    if (!appMenuShell.contains(event.target)) {
+      closeAppMenu();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeAppMenu();
+    }
   });
 
   authStageButtons.forEach((button) => {
