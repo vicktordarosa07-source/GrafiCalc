@@ -39,6 +39,7 @@
         </div>
         <button class="tab-button is-active" data-tab-target="login">Login</button>
         <button class="tab-button" data-tab-target="home">Home</button>
+        <button class="tab-button" data-tab-target="conta">Minha conta</button>
         <button class="tab-button" data-tab-target="calculo">Cálculo de apostila</button>
         <button class="tab-button" data-tab-target="impressos">Impressos coloridos</button>
         <button class="tab-button" data-tab-target="credenciais">Credenciais</button>
@@ -247,6 +248,156 @@
             </div>
 
             <div id="home-low-products" class="stack-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="conta">
+        <div class="account-hero panel">
+          <div>
+            <span class="eyebrow">Conta e segurança</span>
+            <h2>Configurações do usuário</h2>
+            <p class="panel-copy">Altere seus dados de acesso, informações da empresa e a proteção da área de configuração em um só lugar.</p>
+          </div>
+          <p class="helper-text status-note" id="account-settings-status">As alterações salvas aqui são sincronizadas com a base compartilhada quando ela estiver disponível.</p>
+        </div>
+
+        <div class="workspace-grid account-settings-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Dados do usuário</h2>
+                <p class="panel-copy">Essas informações identificam quem está usando o GrafiCalc.</p>
+              </div>
+            </div>
+
+            <form class="quote-form-grid" id="account-profile-form">
+              <label class="full-width">
+                <span>Nome do usuário</span>
+                <input id="account-username" type="text" autocomplete="name" required>
+              </label>
+              <label>
+                <span>E-mail</span>
+                <input id="account-email" type="email" autocomplete="email">
+              </label>
+              <label>
+                <span>CPF / CNPJ</span>
+                <input id="account-document" type="text" inputmode="numeric">
+              </label>
+              <label>
+                <span>Data de nascimento</span>
+                <input id="account-birth-date" type="date">
+              </label>
+              <label>
+                <span>Empresa / gráfica</span>
+                <input id="account-user-company" type="text" autocomplete="organization">
+              </label>
+              <div class="toolbar full-width">
+                <button class="button button-primary" type="submit">Salvar dados do usuário</button>
+              </div>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Senha de acesso</h2>
+                <p class="panel-copy">Atualize a senha usada para entrar no sistema.</p>
+              </div>
+            </div>
+
+            <form class="quote-form-grid" id="account-password-form">
+              <label class="full-width">
+                <span>Senha atual</span>
+                <input id="account-current-password" type="password" autocomplete="current-password">
+              </label>
+              <label>
+                <span>Nova senha</span>
+                <input id="account-new-password" type="password" autocomplete="new-password">
+              </label>
+              <label>
+                <span>Repetir nova senha</span>
+                <input id="account-confirm-password" type="password" autocomplete="new-password">
+              </label>
+              <p class="helper-text full-width">Use pelo menos 8 caracteres, com letras e números.</p>
+              <div class="toolbar full-width">
+                <button class="button button-primary" type="submit">Alterar senha</button>
+              </div>
+            </form>
+          </article>
+        </div>
+
+        <div class="workspace-grid account-settings-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Dados da empresa</h2>
+                <p class="panel-copy">Esses dados aparecem na prévia e impressão dos orçamentos.</p>
+              </div>
+            </div>
+
+            <form class="quote-form-grid" id="account-company-form">
+              <label class="full-width">
+                <span>Logo da empresa</span>
+                <input id="account-company-logo-input" type="file" accept="image/*">
+              </label>
+              <div class="company-logo-preview full-width" id="account-company-logo-preview"></div>
+              <label class="full-width">
+                <span>Empresa</span>
+                <input id="account-company-name" type="text">
+              </label>
+              <label>
+                <span>CNPJ</span>
+                <input id="account-company-cnpj" type="text">
+              </label>
+              <label>
+                <span>Contato</span>
+                <input id="account-company-contact" type="text">
+              </label>
+              <label class="full-width">
+                <span>Endereço</span>
+                <textarea id="account-company-address" rows="3"></textarea>
+              </label>
+              <div class="toolbar full-width">
+                <button class="button button-primary" type="submit">Salvar dados da empresa</button>
+              </div>
+            </form>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Proteção das configurações</h2>
+                <p class="panel-copy">Escolha se a aba Configuração fica livre ou protegida por senha.</p>
+              </div>
+            </div>
+
+            <form class="quote-form-grid" id="account-config-access-form">
+              <div class="account-choice-list full-width">
+                <label class="account-choice">
+                  <input id="account-config-protected" name="account-config-mode" type="radio" value="password">
+                  <span>
+                    <strong>Exigir senha para alterar configurações</strong>
+                    <small>Mais seguro para equipes com vários usuários.</small>
+                  </span>
+                </label>
+                <label class="account-choice">
+                  <input id="account-config-open" name="account-config-mode" type="radio" value="open">
+                  <span>
+                    <strong>Deixar configurações livres</strong>
+                    <small>Ideal para uso individual ou ambiente de teste.</small>
+                  </span>
+                </label>
+              </div>
+              <label class="full-width">
+                <span>Senha para liberar alterações</span>
+                <input id="account-config-password" type="password" autocomplete="new-password" placeholder="Digite uma senha para proteger a configuração">
+              </label>
+              <p class="helper-text full-width">Se a senha ficar em branco, o sistema continuará aceitando a senha configurada no servidor.</p>
+              <div class="toolbar full-width">
+                <button class="button button-primary" type="submit">Salvar proteção</button>
+              </div>
+            </form>
           </article>
         </div>
       </section>

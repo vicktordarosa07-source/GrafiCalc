@@ -44,6 +44,7 @@ const EMAIL_VERIFICATION_EXPIRATION_MS = 15 * 60 * 1000;
 
 const APP_TAB_LABELS = [
   { id: "home", label: "Home" },
+  { id: "conta", label: "Minha conta" },
   { id: "calculo", label: "Cálculo de apostila" },
   { id: "impressos", label: "Impressos coloridos" },
   { id: "credenciais", label: "Credenciais" },
@@ -689,6 +690,12 @@ function cleanupHiddenImpressosEntries(config, state = null) {
 
 function createDefaultConfig() {
   return {
+    security: {
+      configAccess: {
+        mode: "password",
+        password: "",
+      },
+    },
     blockCatalog: getDefaultBlockCatalog(),
     printPricing: {
       blackWhite: [
@@ -1374,6 +1381,16 @@ function mergeConfig(candidate) {
   const merged = deepClone(defaults);
   merged.blockCatalog = normalizeBlockCatalog(candidate.blockCatalog);
 
+  if (candidate.security && typeof candidate.security === "object") {
+    const configAccess = candidate.security.configAccess && typeof candidate.security.configAccess === "object"
+      ? candidate.security.configAccess
+      : {};
+    merged.security.configAccess = {
+      mode: configAccess.mode === "open" ? "open" : "password",
+      password: typeof configAccess.password === "string" ? configAccess.password : "",
+    };
+  }
+
   if (candidate.printPricing) {
     merged.printPricing = {
       blackWhite: Array.isArray(candidate.printPricing.blackWhite) ? candidate.printPricing.blackWhite : merged.printPricing.blackWhite,
@@ -1840,7 +1857,7 @@ function normalizeAccessControlCandidate(candidate) {
     ? candidate.groups.map((group, index) => ({
         id: group?.id || `group-${index + 1}`,
         name: group?.name || "Novo grupo",
-        tabs: { ...createTabPermissionMap(false, false), ...(group?.tabs || {}) },
+        tabs: { ...createTabPermissionMap(false, false), conta: true, ...(group?.tabs || {}) },
         dashboards: { ...createDashboardPermissionMap(false), ...(group?.dashboards || {}) },
         protected: Boolean(group?.protected),
       }))
@@ -1934,6 +1951,7 @@ function createDefaultAccessControl() {
         name: "Assinatura básica",
         tabs: {
           ...createTabPermissionMap(false, false),
+          conta: true,
           calculo: true,
           impressos: true,
           m2: true,
@@ -2109,6 +2127,11 @@ function findAuthUserByEmail(users, email) {
     return null;
   }
   return (Array.isArray(users) ? users : []).find((user) => normalizeLookupEmail(user.email) === normalizedEmail) || null;
+}
+
+function isValidEmailFormat(email) {
+  const value = String(email || "").trim();
+  return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 function getGroupForUser(accessControl, user) {
@@ -8522,7 +8545,23 @@ async function initApp() {
     });
   }
 
+  function getConfigAccessSettings() {
+    const settings = config.security?.configAccess || {};
+    return {
+      mode: settings.mode === "open" ? "open" : "password",
+      password: typeof settings.password === "string" ? settings.password : "",
+    };
+  }
+
+  function syncConfigLockWithMode() {
+    if (getConfigAccessSettings().mode === "open" && !isConfigUnlocked) {
+      isConfigUnlocked = true;
+      saveSessionFlag(SESSION_KEYS.configUnlocked, true);
+    }
+  }
+
   function updateConfigAccessUi() {
+    syncConfigLockWithMode();
     const locked = !isConfigUnlocked;
     const configButtons = [
       document.getElementById("save-config-button"),
@@ -8548,6 +8587,13 @@ async function initApp() {
   }
 
   function lockConfiguration(message = "Configuração bloqueada novamente.", tone = "warning") {
+    if (getConfigAccessSettings().mode === "open") {
+      isConfigUnlocked = true;
+      saveSessionFlag(SESSION_KEYS.configUnlocked, true);
+      renderConfig();
+      setConfigStatus("A configuração está em modo livre. Para bloquear, ative a proteção em Minha conta.", "warning");
+      return;
+    }
     isConfigUnlocked = false;
     saveSessionFlag(SESSION_KEYS.configUnlocked, false);
     renderConfig();
@@ -8556,10 +8602,27 @@ async function initApp() {
   }
 
   async function unlockConfiguration(password) {
+    const accessSettings = getConfigAccessSettings();
+    if (accessSettings.mode === "open") {
+      isConfigUnlocked = true;
+      saveSessionFlag(SESSION_KEYS.configUnlocked, true);
+      renderConfig();
+      setConfigStatus("Configuração liberada porque o modo livre está ativo.", "success");
+      return true;
+    }
+
     if (!String(password || "").trim()) {
       setConfigStatus("Digite a senha da configuração para continuar.", "warning");
       focusConfigPasswordField();
       return false;
+    }
+
+    if (accessSettings.password && String(password) === accessSettings.password) {
+      isConfigUnlocked = true;
+      saveSessionFlag(SESSION_KEYS.configUnlocked, true);
+      renderConfig();
+      setConfigStatus("Configuração desbloqueada nesta sessão.", "success");
+      return true;
     }
 
     try {
@@ -8624,6 +8687,54 @@ async function initApp() {
   function persist() {
     persistLocalOnly();
     queueSharedSave(false);
+  }
+
+  function setAccountSettingsStatus(message, tone = "neutral") {
+    setStatusMessage(document.getElementById("account-settings-status"), message, tone);
+  }
+
+  function renderAccountSettings() {
+    const fields = {
+      username: document.getElementById("account-username"),
+      email: document.getElementById("account-email"),
+      document: document.getElementById("account-document"),
+      birthDate: document.getElementById("account-birth-date"),
+      userCompany: document.getElementById("account-user-company"),
+      companyName: document.getElementById("account-company-name"),
+      companyCnpj: document.getElementById("account-company-cnpj"),
+      companyContact: document.getElementById("account-company-contact"),
+      companyAddress: document.getElementById("account-company-address"),
+      logoPreview: document.getElementById("account-company-logo-preview"),
+      protectedMode: document.getElementById("account-config-protected"),
+      openMode: document.getElementById("account-config-open"),
+      configPassword: document.getElementById("account-config-password"),
+    };
+
+    if (fields.username) fields.username.value = currentUser?.username || "";
+    if (fields.email) fields.email.value = currentUser?.email || "";
+    if (fields.document) fields.document.value = currentUser?.document || "";
+    if (fields.birthDate) fields.birthDate.value = currentUser?.birthDate || "";
+    if (fields.userCompany) fields.userCompany.value = currentUser?.company || "";
+    if (fields.companyName) fields.companyName.value = state.company.name || "";
+    if (fields.companyCnpj) fields.companyCnpj.value = state.company.cnpj || "";
+    if (fields.companyContact) fields.companyContact.value = state.company.contact || "";
+    if (fields.companyAddress) fields.companyAddress.value = state.company.address || "";
+
+    if (fields.logoPreview) {
+      fields.logoPreview.innerHTML = state.company.logoDataUrl
+        ? `<img src="${escapeAttribute(state.company.logoDataUrl)}" alt="Logo atual da empresa">`
+        : `<span>Nenhuma logo personalizada cadastrada.</span>`;
+    }
+
+    const accessSettings = getConfigAccessSettings();
+    if (fields.protectedMode) fields.protectedMode.checked = accessSettings.mode !== "open";
+    if (fields.openMode) fields.openMode.checked = accessSettings.mode === "open";
+    if (fields.configPassword) {
+      fields.configPassword.value = "";
+      fields.configPassword.placeholder = accessSettings.password
+        ? "Senha personalizada já cadastrada. Digite uma nova para trocar."
+        : "Digite uma senha para proteger a configuração";
+    }
   }
 
   function renderPresetControls() {
@@ -10112,6 +10223,7 @@ async function initApp() {
     const steps = [
       ["preset-controls", () => renderPresetControls()],
       ["client-fields", () => renderClientFields()],
+      ["account-settings", () => renderAccountSettings()],
       ["config", () => renderConfig()],
       ["clients-tab", () => renderClientsTab()],
       ["home-tab", () => renderHomeTab()],
@@ -10976,6 +11088,164 @@ async function initApp() {
     state.m2CalcMode = OPTIONS.m2CalcModes.includes(event.target.value) ? event.target.value : "Independente";
     persist();
     renderRowsAndSummary();
+  });
+
+  document.getElementById("account-profile-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!currentUser) {
+      setAccountSettingsStatus("Entre no sistema para alterar os dados do usuário.", "warning");
+      return;
+    }
+
+    const username = document.getElementById("account-username")?.value.trim() || "";
+    const email = document.getElementById("account-email")?.value.trim() || "";
+    const documentValue = document.getElementById("account-document")?.value.trim() || "";
+    const birthDate = document.getElementById("account-birth-date")?.value || "";
+    const userCompany = document.getElementById("account-user-company")?.value.trim() || "";
+
+    if (!username) {
+      setAccountSettingsStatus("Informe o nome do usuário.", "warning");
+      return;
+    }
+    if (!isValidEmailFormat(email)) {
+      setAccountSettingsStatus("Informe um e-mail válido ou deixe o campo em branco.", "warning");
+      return;
+    }
+    if (authUsers.some((user) => user.id !== currentUser.id && user.username.trim().toLowerCase() === username.toLowerCase())) {
+      setAccountSettingsStatus("Já existe outro usuário com esse nome.", "error");
+      return;
+    }
+
+    const previousEmail = normalizeLookupEmail(currentUser.email);
+    const nextEmail = normalizeLookupEmail(email);
+    currentUser = normalizeUserRecord({
+      ...currentUser,
+      username,
+      email,
+      document: documentValue,
+      birthDate,
+      company: userCompany,
+      emailVerification: previousEmail === nextEmail
+        ? currentUser.emailVerification
+        : { status: email ? "pending" : "pending", code: "", sentAt: "", verifiedAt: "", expiresAt: "", resendAvailableAt: "", lastDeliveryMode: "manual" },
+      updatedAt: new Date().toISOString(),
+    });
+
+    const authIndex = authUsers.findIndex((user) => user.id === currentUser.id);
+    if (authIndex >= 0) {
+      authUsers[authIndex] = currentUser;
+    }
+    saveAuthSession(currentUser);
+    await saveSecuritySharedNow();
+    renderAll();
+    setAccountSettingsStatus("Dados do usuário salvos com sucesso.", "success");
+  });
+
+  document.getElementById("account-password-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!currentUser) {
+      setAccountSettingsStatus("Entre no sistema para alterar a senha.", "warning");
+      return;
+    }
+    if (currentUser.role === "developer") {
+      setAccountSettingsStatus("A senha do desenvolvedor é controlada pelas variáveis do servidor para manter a segurança do SaaS.", "warning");
+      return;
+    }
+
+    const currentPassword = document.getElementById("account-current-password")?.value || "";
+    const newPassword = document.getElementById("account-new-password")?.value || "";
+    const confirmPassword = document.getElementById("account-confirm-password")?.value || "";
+
+    if (currentPassword !== currentUser.password) {
+      setAccountSettingsStatus("A senha atual não confere.", "error");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setAccountSettingsStatus("A nova senha e a confirmação precisam ser iguais.", "warning");
+      return;
+    }
+    const passwordError = validateSecurePassword(newPassword);
+    if (passwordError) {
+      setAccountSettingsStatus(passwordError, "warning");
+      return;
+    }
+
+    currentUser.password = newPassword;
+    currentUser.passwordMode = "permanent";
+    currentUser.mustChangePassword = false;
+    currentUser.temporaryPasswordIssuedAt = "";
+    currentUser.updatedAt = new Date().toISOString();
+    const authIndex = authUsers.findIndex((user) => user.id === currentUser.id);
+    if (authIndex >= 0) {
+      authUsers[authIndex] = normalizeUserRecord(currentUser, authIndex);
+      currentUser = authUsers[authIndex];
+    }
+    saveAuthSession(currentUser);
+    await saveSecuritySharedNow();
+    event.currentTarget.reset();
+    setAccountSettingsStatus("Senha alterada com sucesso.", "success");
+  });
+
+  document.getElementById("account-company-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    state.company.name = document.getElementById("account-company-name")?.value.trim() || "";
+    state.company.cnpj = document.getElementById("account-company-cnpj")?.value.trim() || "";
+    state.company.contact = document.getElementById("account-company-contact")?.value.trim() || "";
+    state.company.address = document.getElementById("account-company-address")?.value.trim() || "";
+    persistLocalOnly();
+    renderAll();
+    await saveSharedNow(true);
+    setAccountSettingsStatus("Dados da empresa salvos e aplicados ao orçamento.", "success");
+  });
+
+  document.getElementById("account-company-logo-input")?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      state.company.logoDataUrl = typeof reader.result === "string" ? reader.result : "";
+      persistLocalOnly();
+      renderAll();
+      await saveSharedNow(true);
+      setAccountSettingsStatus("Logo da empresa atualizada.", "success");
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  });
+
+  document.getElementById("account-config-access-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const mode = document.getElementById("account-config-open")?.checked ? "open" : "password";
+    const passwordInput = document.getElementById("account-config-password");
+    const currentSettings = getConfigAccessSettings();
+    const nextPassword = passwordInput?.value || "";
+
+    if (mode === "password" && !currentSettings.password && !nextPassword.trim()) {
+      setAccountSettingsStatus("Digite uma senha para proteger a configuração ou deixe a configuração em modo livre.", "warning");
+      return;
+    }
+
+    config.security = config.security || {};
+    config.security.configAccess = {
+      mode,
+      password: nextPassword.trim() ? nextPassword : currentSettings.password,
+    };
+    if (mode === "open") {
+      isConfigUnlocked = true;
+      saveSessionFlag(SESSION_KEYS.configUnlocked, true);
+    } else {
+      isConfigUnlocked = false;
+      saveSessionFlag(SESSION_KEYS.configUnlocked, false);
+    }
+
+    saveToStorage(STORAGE_KEYS.config, config);
+    renderAll();
+    await saveSharedNow(true);
+    setAccountSettingsStatus(mode === "open"
+      ? "Configuração liberada sem senha."
+      : "Configuração protegida por senha.", "success");
   });
 
   [
