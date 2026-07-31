@@ -94,6 +94,41 @@
   line-height: 1.35;
 }
 
+.password-input-wrap {
+  position: relative;
+  display: block;
+}
+
+.password-input-wrap input {
+  width: 100%;
+  padding-right: 48px;
+}
+
+.password-eye-button {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(15, 40, 48, 0.12);
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(244, 250, 247, 0.82));
+  color: var(--muted-strong);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.password-eye-button:hover,
+.password-eye-button[aria-pressed="true"] {
+  border-color: rgba(77, 172, 83, 0.52);
+  color: var(--success);
+  box-shadow: 0 8px 18px rgba(77, 172, 83, 0.14);
+}
+
 @media (max-width: 760px) {
   .account-hero {
     display: grid;

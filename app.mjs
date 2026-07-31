@@ -7010,7 +7010,6 @@ async function initApp() {
   const passwordChangeForm = document.getElementById("password-change-form");
   const passwordChangeInput = document.getElementById("password-change-input");
   const passwordChangeConfirmInput = document.getElementById("password-change-confirm-input");
-  const passwordChangeToggle = document.getElementById("password-change-toggle");
   const passwordChangeStatus = document.getElementById("password-change-status");
   const appShell = document.getElementById("app-shell");
   const authStatus = document.getElementById("auth-status");
@@ -7235,9 +7234,6 @@ async function initApp() {
     if (passwordChangeConfirmInput) {
       passwordChangeConfirmInput.value = "";
     }
-    if (passwordChangeToggle) {
-      passwordChangeToggle.textContent = "Mostrar senha";
-    }
     if (passwordChangeInput) {
       passwordChangeInput.type = "password";
       passwordChangeInput.focus();
@@ -7245,6 +7241,11 @@ async function initApp() {
     if (passwordChangeConfirmInput) {
       passwordChangeConfirmInput.type = "password";
     }
+    passwordChangeModal.querySelectorAll("[data-password-toggle]").forEach((button) => {
+      button.textContent = "◐";
+      button.setAttribute("aria-label", "Mostrar senha");
+      button.setAttribute("aria-pressed", "false");
+    });
     setPasswordChangeStatus(`Crie uma nova senha definitiva para ${user.username}.`, "warning");
   }
 
@@ -10804,15 +10805,20 @@ async function initApp() {
     setMainFeedback("Nova senha salva com sucesso. Acesso liberado.", "success");
   });
 
-  passwordChangeToggle?.addEventListener("click", () => {
-    const reveal = passwordChangeInput?.type === "password";
-    if (passwordChangeInput) {
-      passwordChangeInput.type = reveal ? "text" : "password";
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-password-toggle]");
+    if (!button) {
+      return;
     }
-    if (passwordChangeConfirmInput) {
-      passwordChangeConfirmInput.type = reveal ? "text" : "password";
+    const input = document.getElementById(button.dataset.passwordToggle || "");
+    if (!input) {
+      return;
     }
-    passwordChangeToggle.textContent = reveal ? "Ocultar senha" : "Mostrar senha";
+    const reveal = input.type === "password";
+    input.type = reveal ? "text" : "password";
+    button.textContent = reveal ? "◉" : "◐";
+    button.setAttribute("aria-label", reveal ? "Ocultar senha" : "Mostrar senha");
+    button.setAttribute("aria-pressed", reveal ? "true" : "false");
   });
 
   document.getElementById("developer-add-group-form")?.addEventListener("submit", (event) => {

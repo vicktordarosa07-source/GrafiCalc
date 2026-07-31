@@ -110,7 +110,10 @@
                 </label>
                 <label>
                   <span>Senha</span>
-                  <input id="login-password" type="password" autocomplete="current-password" required>
+                  <span class="password-input-wrap">
+                    <input id="login-password" type="password" autocomplete="current-password" required>
+                    <button class="password-eye-button" type="button" data-password-toggle="login-password" aria-label="Mostrar senha" aria-pressed="false">◐</button>
+                  </span>
                 </label>
                 <button class="button button-primary auth-submit" type="submit">Entrar</button>
               </form>
@@ -143,7 +146,10 @@
                 </label>
                 <label>
                   <span>Senha</span>
-                  <input id="register-password" type="password" autocomplete="new-password" required>
+                  <span class="password-input-wrap">
+                    <input id="register-password" type="password" autocomplete="new-password" required>
+                    <button class="password-eye-button" type="button" data-password-toggle="register-password" aria-label="Mostrar senha" aria-pressed="false">◐</button>
+                  </span>
                 </label>
                 <p class="helper-text">Use pelo menos 8 caracteres, com letras e números.</p>
                 <button class="button" type="submit">Cadastrar</button>
@@ -309,15 +315,24 @@
             <form class="quote-form-grid" id="account-password-form">
               <label class="full-width">
                 <span>Senha atual</span>
-                <input id="account-current-password" type="password" autocomplete="current-password">
+                <span class="password-input-wrap">
+                  <input id="account-current-password" type="password" autocomplete="current-password">
+                  <button class="password-eye-button" type="button" data-password-toggle="account-current-password" aria-label="Mostrar senha" aria-pressed="false">◐</button>
+                </span>
               </label>
               <label>
                 <span>Nova senha</span>
-                <input id="account-new-password" type="password" autocomplete="new-password">
+                <span class="password-input-wrap">
+                  <input id="account-new-password" type="password" autocomplete="new-password">
+                  <button class="password-eye-button" type="button" data-password-toggle="account-new-password" aria-label="Mostrar senha" aria-pressed="false">◐</button>
+                </span>
               </label>
               <label>
                 <span>Repetir nova senha</span>
-                <input id="account-confirm-password" type="password" autocomplete="new-password">
+                <span class="password-input-wrap">
+                  <input id="account-confirm-password" type="password" autocomplete="new-password">
+                  <button class="password-eye-button" type="button" data-password-toggle="account-confirm-password" aria-label="Mostrar senha" aria-pressed="false">◐</button>
+                </span>
               </label>
               <p class="helper-text full-width">Use pelo menos 8 caracteres, com letras e números.</p>
               <div class="toolbar full-width">
@@ -391,7 +406,10 @@
               </div>
               <label class="full-width">
                 <span>Senha para liberar alterações</span>
-                <input id="account-config-password" type="password" autocomplete="new-password" placeholder="Digite uma senha para proteger a configuração">
+                <span class="password-input-wrap">
+                  <input id="account-config-password" type="password" autocomplete="new-password" placeholder="Digite uma senha para proteger a configuração">
+                  <button class="password-eye-button" type="button" data-password-toggle="account-config-password" aria-label="Mostrar senha" aria-pressed="false">◐</button>
+                </span>
               </label>
               <p class="helper-text full-width">Se a senha ficar em branco, o sistema continuará aceitando a senha configurada no servidor.</p>
               <div class="toolbar full-width">
@@ -1643,13 +1661,18 @@
       <form class="password-change-form" id="password-change-form">
         <label>
           <span>Nova senha</span>
-          <input id="password-change-input" type="password" autocomplete="new-password" placeholder="Digite sua nova senha" required>
+          <span class="password-input-wrap">
+            <input id="password-change-input" type="password" autocomplete="new-password" placeholder="Digite sua nova senha" required>
+            <button class="password-eye-button" type="button" data-password-toggle="password-change-input" aria-label="Mostrar senha" aria-pressed="false">◐</button>
+          </span>
         </label>
         <label>
           <span>Confirmar nova senha</span>
-          <input id="password-change-confirm-input" type="password" autocomplete="new-password" placeholder="Repita sua nova senha" required>
+          <span class="password-input-wrap">
+            <input id="password-change-confirm-input" type="password" autocomplete="new-password" placeholder="Repita sua nova senha" required>
+            <button class="password-eye-button" type="button" data-password-toggle="password-change-confirm-input" aria-label="Mostrar senha" aria-pressed="false">◐</button>
+          </span>
         </label>
-        <button class="button" id="password-change-toggle" type="button">Mostrar senha</button>
         <button class="button button-primary" type="submit">Salvar nova senha</button>
       </form>
       <p class="helper-text" id="password-change-status">Use pelo menos 8 caracteres, com letras e números.</p>
