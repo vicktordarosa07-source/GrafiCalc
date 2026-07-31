@@ -80,6 +80,14 @@ if ($health) {
   if ($health.sharedBackendMode -ne $expectedBackendMode) {
     $mustRestartServer = $true
   }
+
+  if ($env:GRAFICALC_DEVELOPER_USERNAME -and -not $health.developer.configured) {
+    $mustRestartServer = $true
+  }
+
+  if ($env:GRAFICALC_DEVELOPER_USERNAME -and $health.developer.username -ne $env:GRAFICALC_DEVELOPER_USERNAME) {
+    $mustRestartServer = $true
+  }
 }
 
 if ($mustRestartServer) {

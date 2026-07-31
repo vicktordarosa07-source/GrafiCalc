@@ -7568,7 +7568,13 @@ async function initApp() {
 
   async function loginUser(username, password) {
     const normalized = String(username || "").trim().toLowerCase();
-    const user = authUsers.find((item) => item.username.trim().toLowerCase() === normalized);
+    let user = authUsers.find((item) => item.username.trim().toLowerCase() === normalized);
+    if (!user) {
+      const synced = await refreshSecurityFromSharedSource();
+      if (synced) {
+        user = authUsers.find((item) => item.username.trim().toLowerCase() === normalized);
+      }
+    }
     if (!user) {
       setAuthStatus("Usuário ou senha inválidos.", "error");
       return;
@@ -7585,8 +7591,13 @@ async function initApp() {
           configUnlocked: Boolean(result?.configUnlocked),
           username: typeof result?.username === "string" ? result.username : user.username,
         };
-      } catch {
-        setAuthStatus("Usuário ou senha inválidos.", "error");
+      } catch (error) {
+        const message = String(error?.message || "");
+        if (message.includes("developer-auth-not-configured")) {
+          setAuthStatus("Login do desenvolvedor ainda não está configurado no servidor. Configure as variáveis da Vercel para liberar este acesso em produção.", "error");
+        } else {
+          setAuthStatus("Usuário ou senha inválidos.", "error");
+        }
         return;
       }
       currentUser = user;
@@ -8256,6 +8267,21 @@ async function initApp() {
     renderAll();
     if (successMessage) {
       setSyncStatus(successMessage, "success");
+    }
+  }
+
+  async function refreshSecurityFromSharedSource() {
+    try {
+      const shared = await requestSharedState("GET");
+      const payload = shared?.payload && typeof shared.payload === "object" ? shared.payload : shared;
+      const sharedSecurity = normalizeSharedSecurity(payload?.security || {});
+      authUsers = mergeAuthUserCollections(authUsers, sharedSecurity.authUsers);
+      accessControl = sharedSecurity.accessControl;
+      persistLocalOnly();
+      sharedUpdatedAt = shared?.updatedAt || sharedUpdatedAt;
+      return true;
+    } catch {
+      return false;
     }
   }
 

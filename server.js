@@ -2,12 +2,17 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const os = require("os");
 const { URL } = require("url");
 
 const PORT = Number(process.env.PORT || 3210);
 const HOST = process.env.HOST || "0.0.0.0";
 const ROOT_DIR = __dirname;
-const DATA_DIR = path.join(ROOT_DIR, "work");
+const DATA_DIR = process.env.GRAFICALC_DATA_DIR
+  ? path.resolve(process.env.GRAFICALC_DATA_DIR)
+  : process.env.VERCEL
+    ? path.join(os.tmpdir(), "graficalc")
+    : path.join(ROOT_DIR, "work");
 const SHARED_STATE_FILE = path.join(DATA_DIR, "shared-state.local.json");
 const EMAIL_OUTBOX_FILE = path.join(DATA_DIR, "email-outbox.local.json");
 const EMAIL_PROVIDER_MODE = String(process.env.GRAFICALC_EMAIL_MODE || "local-outbox").trim().toLowerCase();
