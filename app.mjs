@@ -1,8 +1,8 @@
 ﻿const STORAGE_KEYS = {
-  state: "copyboy-apostilas-state-v1",
-  config: "copyboy-apostilas-config-v1",
-  configView: "copyboy-apostilas-config-view-v1",
-  configSection: "copyboy-apostilas-config-section-v1",
+  state: "graficalc-state-v1",
+  config: "graficalc-config-v1",
+  configView: "graficalc-config-view-v1",
+  configSection: "graficalc-config-section-v1",
   authUsers: "graficalc-auth-users-v1",
   authSession: "graficalc-auth-session-v1",
   authPendingVerification: "graficalc-auth-pending-verification-v1",
@@ -1131,7 +1131,7 @@ function createDefaultState() {
       cnpj: "",
     },
     company: {
-      name: "Copy Boy Copias e Servicos Ltda ME",
+      name: "GrafiCalc",
       cnpj: "04.516.832/0001-16",
       contact: "",
       address: "Rua Coronel Pedro Demoro, 1793 - Galeria Alecio - Estreito - Fpolis",
