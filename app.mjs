@@ -7089,8 +7089,10 @@ async function initApp() {
   const tabButtons = [...document.querySelectorAll(".tab-button")];
   const tabPanels = [...document.querySelectorAll(".tab-panel")];
   const appMenuShell = document.querySelector(".app-menu-shell");
+  const appHomeShortcut = document.getElementById("app-home-shortcut");
   const appMenuToggle = document.getElementById("app-menu-toggle");
   const appMenuPanel = document.getElementById("main-tab-menu");
+  const settingsOnlyTabs = new Set(["conta", "configuracao"]);
 
   function isDesktopSidebarMode() {
     const activeTab = document.querySelector(".tab-panel.is-active")?.dataset.tabPanel || "login";
@@ -7377,7 +7379,7 @@ async function initApp() {
         const permissions = getUserTabPermissions(accessControl, currentUser);
         allowed = Boolean(permissions[tab]);
       }
-      button.hidden = !allowed;
+      button.hidden = !allowed || settingsOnlyTabs.has(tab);
       button.disabled = !allowed;
     });
     tabPanels.forEach((panel) => {
@@ -10504,6 +10506,11 @@ async function initApp() {
       selectTab(button.dataset.menuShortcut);
       closeAppMenu();
     });
+  });
+
+  appHomeShortcut?.addEventListener("click", () => {
+    selectTab("home");
+    closeAppMenu();
   });
 
   appMenuToggle?.addEventListener("click", () => {

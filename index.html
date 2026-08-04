@@ -24,6 +24,10 @@
     </header>
 
     <div class="app-menu-shell">
+      <button class="app-home-shortcut" id="app-home-shortcut" type="button">
+        <span aria-hidden="true">⌂</span>
+        <strong>Home</strong>
+      </button>
       <button class="app-menu-toggle" id="app-menu-toggle" type="button" aria-expanded="false" aria-controls="main-tab-menu">
         <span class="app-menu-icon" aria-hidden="true">
           <span></span>
@@ -34,18 +38,21 @@
       </button>
       <nav class="tab-bar" id="main-tab-menu" aria-label="Abas principais" hidden>
         <div class="tab-menu-head">
-          <button class="menu-settings-card" type="button" data-menu-shortcut="configuracao" aria-label="Abrir configurações do sistema">
+          <div class="menu-settings-card" aria-label="Configurações e conta">
             <span class="menu-settings-icon">
               <img src="./assets/favicon.png" alt="">
               <span aria-hidden="true">⚙</span>
             </span>
-            <strong>Configurações</strong>
-          </button>
-          <button class="menu-account-shortcut" type="button" data-menu-shortcut="conta">Minha conta</button>
+            <div class="menu-settings-actions">
+              <strong>Configurações</strong>
+              <button class="menu-settings-action" type="button" data-menu-shortcut="conta">Minha conta</button>
+              <button class="menu-settings-action" type="button" data-menu-shortcut="configuracao">Sistema</button>
+            </div>
+          </div>
         </div>
         <button class="tab-button is-active" data-tab-target="login">Login</button>
         <button class="tab-button" data-tab-target="home">Home</button>
-        <button class="tab-button" data-tab-target="conta">Minha conta</button>
+        <button class="tab-button" data-tab-target="conta" hidden>Minha conta</button>
         <button class="tab-button" data-tab-target="calculo">Cálculo de apostila</button>
         <button class="tab-button" data-tab-target="impressos">Impressos coloridos</button>
         <button class="tab-button" data-tab-target="credenciais">Credenciais</button>
@@ -56,7 +63,7 @@
         <button class="tab-button" data-tab-target="panfletos">Panfletos e folders</button>
         <button class="tab-button" data-tab-target="blocosSulfite">Blocos sulfite 75g</button>
         <button class="tab-button" data-tab-target="blocosAutocopiativo">Blocos autocopiativo</button>
-        <button class="tab-button" data-tab-target="configuracao">Configuração</button>
+        <button class="tab-button" data-tab-target="configuracao" hidden>Configuração</button>
         <button class="tab-button" data-tab-target="clientes">Clientes</button>
         <button class="tab-button" data-tab-target="os">OS</button>
         <button class="tab-button" data-tab-target="relatorios">Relatórios</button>
