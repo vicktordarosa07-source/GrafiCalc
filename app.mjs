@@ -7068,12 +7068,18 @@ async function initApp() {
   const appMenuToggle = document.getElementById("app-menu-toggle");
   const appMenuPanel = document.getElementById("main-tab-menu");
 
+  function isDesktopSidebarMode() {
+    return Boolean(currentUser) && window.matchMedia("(min-width: 1181px)").matches;
+  }
+
   function setAppMenuOpen(open) {
     if (!appMenuToggle || !appMenuPanel) {
       return;
     }
+    const keepSidebarVisible = isDesktopSidebarMode();
+    appMenuShell?.classList.toggle("is-open", open || keepSidebarVisible);
     appMenuToggle.setAttribute("aria-expanded", open ? "true" : "false");
-    appMenuPanel.hidden = !open;
+    appMenuPanel.hidden = keepSidebarVisible ? false : !open;
   }
 
   function closeAppMenu() {
@@ -10242,6 +10248,8 @@ async function initApp() {
       }
     }
 
+    setAppMenuOpen(false);
+
     if (currentUser && userNeedsPasswordChange(currentUser)) {
       openPasswordChangeModal(currentUser);
     }
@@ -10305,8 +10313,12 @@ async function initApp() {
     setAppMenuOpen(!isOpen);
   });
 
+  window.addEventListener("resize", () => {
+    setAppMenuOpen(appMenuToggle?.getAttribute("aria-expanded") === "true");
+  });
+
   document.addEventListener("click", (event) => {
-    if (!appMenuPanel || appMenuPanel.hidden || !appMenuShell) {
+    if (isDesktopSidebarMode() || !appMenuPanel || appMenuPanel.hidden || !appMenuShell) {
       return;
     }
     if (!appMenuShell.contains(event.target)) {
