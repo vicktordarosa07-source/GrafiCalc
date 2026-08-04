@@ -38,16 +38,16 @@
       </button>
       <nav class="tab-bar" id="main-tab-menu" aria-label="Abas principais" hidden>
         <div class="tab-menu-head">
-          <div class="menu-settings-card" aria-label="Configurações e conta">
+          <button class="menu-settings-card" id="menu-settings-toggle" type="button" aria-expanded="false" aria-controls="menu-settings-popover" aria-label="Abrir configurações e conta">
             <span class="menu-settings-icon">
               <img src="./assets/favicon.png" alt="">
               <span aria-hidden="true">⚙</span>
             </span>
-            <div class="menu-settings-actions">
-              <strong>Configurações</strong>
-              <button class="menu-settings-action" type="button" data-menu-shortcut="conta">Minha conta</button>
-              <button class="menu-settings-action" type="button" data-menu-shortcut="configuracao">Sistema</button>
-            </div>
+            <strong>Configurações</strong>
+          </button>
+          <div class="menu-settings-popover" id="menu-settings-popover" hidden>
+            <button class="menu-settings-action" type="button" data-menu-shortcut="conta">Minha conta</button>
+            <button class="menu-settings-action" type="button" data-menu-shortcut="configuracao">Configuração do sistema</button>
           </div>
         </div>
         <button class="tab-button is-active" data-tab-target="login">Login</button>

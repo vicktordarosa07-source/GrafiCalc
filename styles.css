@@ -1004,39 +1004,68 @@ button {
 
 .tab-menu-head {
   grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 4px 4px 10px;
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 4px 4px 14px;
   border-bottom: 1px solid rgba(31, 42, 47, 0.08);
   color: var(--muted);
 }
 
 .menu-settings-card {
-  display: inline-flex;
+  display: grid;
+  justify-items: center;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 20px;
+  gap: 8px;
+  width: min(132px, 100%);
+  border: 0;
+  padding: 12px 10px;
+  border-radius: 24px;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(232, 255, 246, 0.72)),
     radial-gradient(circle at top left, rgba(16, 185, 129, 0.18), transparent 5rem);
   color: var(--ink);
+  font: inherit;
+  cursor: pointer;
   box-shadow:
     0 14px 28px rgba(15, 118, 110, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  transition: transform 140ms ease, box-shadow 140ms ease;
 }
 
-.menu-settings-actions {
-  display: grid;
-  gap: 7px;
-  min-width: 0;
+.menu-settings-card:hover,
+.menu-settings-card[aria-expanded="true"] {
+  transform: translateY(-1px);
+  box-shadow:
+    0 18px 34px rgba(15, 118, 110, 0.17),
+    0 0 0 5px rgba(16, 185, 129, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
-.menu-settings-actions strong {
+.menu-settings-card strong {
   font-size: 0.9rem;
   font-weight: 950;
+}
+
+.menu-settings-popover {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% - 4px);
+  left: 50%;
+  display: grid;
+  width: min(230px, calc(100vw - 56px));
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  border-radius: 20px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(239, 255, 249, 0.96)),
+    radial-gradient(circle at top right, rgba(16, 185, 129, 0.16), transparent 7rem);
+  box-shadow:
+    0 22px 46px rgba(15, 118, 110, 0.18),
+    0 8px 18px rgba(31, 42, 47, 0.08);
+  transform: translateX(-50%);
 }
 
 .menu-settings-icon {
@@ -1073,8 +1102,8 @@ button {
 
 .menu-settings-action {
   border: 1px solid rgba(15, 118, 110, 0.14);
-  padding: 8px 11px;
-  border-radius: 999px;
+  padding: 11px 13px;
+  border-radius: 15px;
   background: rgba(255, 255, 255, 0.74);
   color: var(--muted-strong);
   font: inherit;
@@ -3451,7 +3480,7 @@ textarea:hover {
   }
 
   .page-shell:not(.is-auth-mode) .tab-menu-head {
-    min-height: 144px;
+    min-height: 150px;
     display: grid;
     justify-items: center;
     align-content: center;
@@ -3461,12 +3490,18 @@ textarea:hover {
   }
 
   .page-shell:not(.is-auth-mode) .menu-settings-card {
-    width: 100%;
+    width: 126px;
     display: grid;
     justify-items: center;
-    gap: 12px;
-    padding: 18px 14px;
+    gap: 10px;
+    padding: 16px 12px;
     text-align: center;
+  }
+
+  .page-shell:not(.is-auth-mode)[data-active-tab="home"] .menu-settings-popover {
+    top: 18px;
+    left: calc(100% + 12px);
+    transform: none;
   }
 
   .page-shell:not(.is-auth-mode) .menu-settings-icon {
@@ -3484,10 +3519,6 @@ textarea:hover {
     width: 34px;
     height: 34px;
     font-size: 1rem;
-  }
-
-  .page-shell:not(.is-auth-mode) .menu-settings-actions {
-    justify-items: center;
   }
 
   .page-shell:not(.is-auth-mode) .tab-bar .tab-button {
@@ -3591,25 +3622,27 @@ textarea:hover {
 
   .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-menu-head {
     min-height: auto;
-    display: flex;
+    display: grid;
     justify-items: stretch;
-    justify-content: space-between;
+    justify-content: stretch;
     text-align: left;
     padding: 4px 4px 10px;
     border-bottom: 1px solid rgba(31, 42, 47, 0.08);
   }
 
   .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .menu-settings-card {
-    width: auto;
-    display: inline-flex;
-    justify-items: stretch;
+    width: 100%;
+    display: flex;
+    justify-content: flex-start;
     gap: 12px;
     padding: 10px 12px;
     text-align: left;
   }
 
-  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .menu-settings-actions {
-    justify-items: start;
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .menu-settings-popover {
+    top: calc(100% + 8px);
+    left: 0;
+    transform: none;
   }
 
   .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .menu-settings-icon {

@@ -7092,6 +7092,8 @@ async function initApp() {
   const appHomeShortcut = document.getElementById("app-home-shortcut");
   const appMenuToggle = document.getElementById("app-menu-toggle");
   const appMenuPanel = document.getElementById("main-tab-menu");
+  const menuSettingsToggle = document.getElementById("menu-settings-toggle");
+  const menuSettingsPopover = document.getElementById("menu-settings-popover");
   const settingsOnlyTabs = new Set(["conta", "configuracao"]);
 
   function isDesktopSidebarMode() {
@@ -7111,6 +7113,18 @@ async function initApp() {
 
   function closeAppMenu() {
     setAppMenuOpen(false);
+  }
+
+  function setSettingsPopoverOpen(open) {
+    if (!menuSettingsToggle || !menuSettingsPopover) {
+      return;
+    }
+    menuSettingsToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    menuSettingsPopover.hidden = !open;
+  }
+
+  function closeSettingsPopover() {
+    setSettingsPopoverOpen(false);
   }
 
   function setStatusMessage(element, message, tone = "neutral") {
@@ -10497,6 +10511,7 @@ async function initApp() {
   tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
       selectTab(button.dataset.tabTarget);
+      closeSettingsPopover();
       closeAppMenu();
     });
   });
@@ -10504,12 +10519,20 @@ async function initApp() {
   document.querySelectorAll("[data-menu-shortcut]").forEach((button) => {
     button.addEventListener("click", () => {
       selectTab(button.dataset.menuShortcut);
+      closeSettingsPopover();
       closeAppMenu();
     });
   });
 
+  menuSettingsToggle?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const isOpen = menuSettingsToggle.getAttribute("aria-expanded") === "true";
+    setSettingsPopoverOpen(!isOpen);
+  });
+
   appHomeShortcut?.addEventListener("click", () => {
     selectTab("home");
+    closeSettingsPopover();
     closeAppMenu();
   });
 
@@ -10523,6 +10546,9 @@ async function initApp() {
   });
 
   document.addEventListener("click", (event) => {
+    if (menuSettingsPopover && !menuSettingsPopover.hidden && !menuSettingsPopover.contains(event.target) && !menuSettingsToggle?.contains(event.target)) {
+      closeSettingsPopover();
+    }
     if (isDesktopSidebarMode() || !appMenuPanel || appMenuPanel.hidden || !appMenuShell) {
       return;
     }
@@ -10533,6 +10559,7 @@ async function initApp() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      closeSettingsPopover();
       closeAppMenu();
     }
   });
