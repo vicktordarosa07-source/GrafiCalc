@@ -53,6 +53,7 @@
         <button class="tab-button" data-tab-target="configuracao">Configuração</button>
         <button class="tab-button" data-tab-target="clientes">Clientes</button>
         <button class="tab-button" data-tab-target="os">OS</button>
+        <button class="tab-button" data-tab-target="relatorios">Relatórios</button>
         <button class="tab-button" data-tab-target="historico">Histórico</button>
         <button class="tab-button" data-tab-target="orcamento">Orçamento</button>
         <button class="tab-button developer-tab-button" data-tab-target="desenvolvedor" data-dev-only hidden>Área do desenvolvedor</button>
@@ -192,7 +193,7 @@
       <section class="tab-panel" data-tab-panel="home">
         <div class="summary-grid">
           <article class="summary-card">
-            <span class="summary-label">Orçamentos salvos</span>
+            <span class="summary-label">Orçamentos no mês</span>
             <strong id="home-quote-count">0</strong>
           </article>
           <article class="summary-card">
@@ -206,6 +207,27 @@
           <article class="summary-card">
             <span class="summary-label">Valor pendente</span>
             <strong id="home-pending-value">R$ 0,00</strong>
+          </article>
+        </div>
+
+        <div class="summary-grid">
+          <article class="summary-card">
+            <span class="summary-label">Menor orçamento</span>
+            <strong id="home-min-quote-value">R$ 0,00</strong>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Maior orçamento</span>
+            <strong id="home-max-quote-value">R$ 0,00</strong>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Produto mais barato</span>
+            <strong id="home-cheapest-product-value">R$ 0,00</strong>
+            <small id="home-cheapest-product-label">Sem dados no mês</small>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Produto mais caro</span>
+            <strong id="home-most-expensive-product-value">R$ 0,00</strong>
+            <small id="home-most-expensive-product-label">Sem dados no mês</small>
           </article>
         </div>
 
@@ -224,12 +246,12 @@
           <article class="panel">
             <div class="panel-heading">
               <div>
-                <h2>Acesso rápido</h2>
-                <p class="panel-copy">Entre direto nas áreas liberadas para este usuário.</p>
+                <h2>Vendas mês a mês</h2>
+                <p class="panel-copy">Resultado das OSs fechadas e entregues por mês.</p>
               </div>
             </div>
 
-            <div id="home-quick-links" class="home-quick-links"></div>
+            <div id="home-monthly-sales" class="dashboard-chart"></div>
           </article>
         </div>
 
@@ -1383,6 +1405,121 @@
 
           <div id="os-list" class="stack-list"></div>
         </article>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="relatorios">
+        <div class="summary-grid">
+          <article class="summary-card">
+            <span class="summary-label">Orçamentos filtrados</span>
+            <strong id="reports-quote-count">0</strong>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Valor em orçamento</span>
+            <strong id="reports-quote-total">R$ 0,00</strong>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">OSs filtradas</span>
+            <strong id="reports-os-count">0</strong>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Valor fechado</span>
+            <strong id="reports-os-total">R$ 0,00</strong>
+          </article>
+        </div>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Painel de acompanhamento</h2>
+              <p class="panel-copy">Pesquise por período, status de orçamento e etapa de OS para acompanhar conversão e produção.</p>
+            </div>
+          </div>
+
+          <div class="history-filter-grid">
+            <label>
+              <span>De</span>
+              <input id="reports-filter-start" type="date">
+            </label>
+            <label>
+              <span>Até</span>
+              <input id="reports-filter-end" type="date">
+            </label>
+            <label>
+              <span>Status do orçamento</span>
+              <select id="reports-filter-quote-status">
+                <option value="all">Todos</option>
+                <option value="pending">Pendente</option>
+                <option value="sent">Enviado</option>
+                <option value="negotiation">Em negociação</option>
+                <option value="approved">Aprovado</option>
+                <option value="converted">Virou OS</option>
+                <option value="completed">Concluído</option>
+                <option value="cancelled">Cancelado</option>
+              </select>
+            </label>
+            <label>
+              <span>Status da OS</span>
+              <select id="reports-filter-os-status">
+                <option value="all">Todos</option>
+                <option value="created">Aberta</option>
+                <option value="prepress">Pré-produção</option>
+                <option value="production">Produção</option>
+                <option value="finishing">Acabamento</option>
+                <option value="ready">Pronta para entrega</option>
+                <option value="delivered">Entregue</option>
+                <option value="closed">Fechada</option>
+                <option value="cancelled">Cancelada</option>
+              </select>
+            </label>
+            <div class="history-filter-actions">
+              <button id="reports-filter-clear" class="button" type="button">Limpar filtros</button>
+            </div>
+          </div>
+        </article>
+
+        <div class="workspace-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Orçamentos por status</h2>
+                <p class="panel-copy">Comparativo dos orçamentos salvos dentro do filtro aplicado.</p>
+              </div>
+            </div>
+            <div id="reports-quote-chart" class="dashboard-chart"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>OSs por mês</h2>
+                <p class="panel-copy">Vendas fechadas mês a mês conforme OSs entregues ou fechadas.</p>
+              </div>
+            </div>
+            <div id="reports-monthly-sales" class="dashboard-chart"></div>
+          </article>
+        </div>
+
+        <div class="workspace-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Orçamentos encontrados</h2>
+                <p class="panel-copy">Últimos registros que batem com a pesquisa.</p>
+              </div>
+            </div>
+            <div id="reports-quote-list" class="stack-list"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>OSs encontradas</h2>
+                <p class="panel-copy">Ordens de serviço dentro dos filtros selecionados.</p>
+              </div>
+            </div>
+            <div id="reports-os-list" class="stack-list"></div>
+          </article>
+        </div>
       </section>
 
       <section class="tab-panel" data-tab-panel="historico">

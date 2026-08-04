@@ -58,6 +58,7 @@ const APP_TAB_LABELS = [
   { id: "configuracao", label: "Configuração" },
   { id: "clientes", label: "Clientes" },
   { id: "os", label: "OS" },
+  { id: "relatorios", label: "Relatórios" },
   { id: "historico", label: "Histórico" },
   { id: "orcamento", label: "Orçamento" },
   { id: "desenvolvedor", label: "Área do desenvolvedor", developerOnly: true },
@@ -126,7 +127,7 @@ const WORK_ORDER_PRIORITY_META = {
 };
 const DASHBOARD_CARD_DEFS = [
   { id: "statusChart", label: "Gráfico de status" },
-  { id: "quickLinks", label: "Acesso rápido" },
+  { id: "monthlySales", label: "Vendas mês a mês" },
   { id: "topProducts", label: "Mais vendidos" },
   { id: "lowProducts", label: "Menos vendidos" },
 ];
@@ -1854,13 +1855,20 @@ function normalizeSharedCollections(candidate) {
 function normalizeAccessControlCandidate(candidate) {
   const defaults = createDefaultAccessControl();
   const groups = Array.isArray(candidate?.groups) && candidate.groups.length
-    ? candidate.groups.map((group, index) => ({
-        id: group?.id || `group-${index + 1}`,
-        name: group?.name || "Novo grupo",
-        tabs: { ...createTabPermissionMap(false, false), conta: true, ...(group?.tabs || {}) },
-        dashboards: { ...createDashboardPermissionMap(false), ...(group?.dashboards || {}) },
-        protected: Boolean(group?.protected),
-      }))
+    ? candidate.groups.map((group, index) => {
+        const dashboards = { ...createDashboardPermissionMap(false), ...(group?.dashboards || {}) };
+        if (group?.dashboards?.quickLinks && !Object.prototype.hasOwnProperty.call(group.dashboards, "monthlySales")) {
+          dashboards.monthlySales = true;
+        }
+        delete dashboards.quickLinks;
+        return {
+          id: group?.id || `group-${index + 1}`,
+          name: group?.name || "Novo grupo",
+          tabs: { ...createTabPermissionMap(false, false), conta: true, ...(group?.tabs || {}) },
+          dashboards,
+          protected: Boolean(group?.protected),
+        };
+      })
     : defaults.groups;
   const hasDeveloperGroup = groups.some((group) => group.id === "developer");
   if (!hasDeveloperGroup) {
@@ -1961,7 +1969,7 @@ function createDefaultAccessControl() {
         dashboards: {
           ...createDashboardPermissionMap(false),
           statusChart: true,
-          quickLinks: true,
+          monthlySales: true,
         },
       },
     ],
@@ -2161,7 +2169,12 @@ function getUserDashboardPermissions(accessControl, user) {
   }
   const group = getGroupForUser(accessControl, user);
   const overrides = accessControl.dashboardOverrides?.[user.id] || {};
-  return { ...createDashboardPermissionMap(false), ...(group?.dashboards || {}), ...overrides };
+  const permissions = { ...createDashboardPermissionMap(false), ...(group?.dashboards || {}), ...overrides };
+  if ((group?.dashboards?.quickLinks || overrides.quickLinks) && permissions.monthlySales === false) {
+    permissions.monthlySales = true;
+  }
+  delete permissions.quickLinks;
+  return permissions;
 }
 
 function buildPasswordResetMailto(user, newPassword) {
@@ -7038,6 +7051,11 @@ async function initApp() {
   const osFilterOwner = document.getElementById("os-filter-owner");
   const osFilterDate = document.getElementById("os-filter-date");
   const osFilterClear = document.getElementById("os-filter-clear");
+  const reportsFilterStart = document.getElementById("reports-filter-start");
+  const reportsFilterEnd = document.getElementById("reports-filter-end");
+  const reportsFilterQuoteStatus = document.getElementById("reports-filter-quote-status");
+  const reportsFilterOsStatus = document.getElementById("reports-filter-os-status");
+  const reportsFilterClear = document.getElementById("reports-filter-clear");
   const blockTableBodies = {
     sulfite: document.getElementById("blocks-sulfite-rows-table-body"),
     autocopiativo: document.getElementById("blocks-autocopiativo-rows-table-body"),
@@ -7060,6 +7078,12 @@ async function initApp() {
     owner: "",
     date: "",
   };
+  let reportsFilters = {
+    start: "",
+    end: "",
+    quoteStatus: "all",
+    osStatus: "all",
+  };
   let lastGeneratedTemporaryPassword = "";
 
   const tabButtons = [...document.querySelectorAll(".tab-button")];
@@ -7069,7 +7093,8 @@ async function initApp() {
   const appMenuPanel = document.getElementById("main-tab-menu");
 
   function isDesktopSidebarMode() {
-    return Boolean(currentUser) && window.matchMedia("(min-width: 1181px)").matches;
+    const activeTab = document.querySelector(".tab-panel.is-active")?.dataset.tabPanel || "login";
+    return Boolean(currentUser) && activeTab === "home" && window.matchMedia("(min-width: 1181px)").matches;
   }
 
   function setAppMenuOpen(open) {
@@ -8677,6 +8702,11 @@ async function initApp() {
     tabPanels.forEach((panel) => {
       panel.classList.toggle("is-active", panel.dataset.tabPanel === tabName);
     });
+    const appShell = document.getElementById("app-shell");
+    if (appShell) {
+      appShell.dataset.activeTab = tabName;
+    }
+    setAppMenuOpen(false);
 
     if (tabName === "configuracao") {
       activeConfigSection = CONFIG_SECTIONS.includes(lastConfigSourceTab) ? lastConfigSourceTab : "calculo";
@@ -9240,24 +9270,156 @@ async function initApp() {
       : `<div class="empty-state"><strong>Nenhuma OS encontrada</strong><span>Gere uma OS a partir do orçamento atual ou de um item aprovado do histórico.</span></div>`;
   }
 
+  function renderReportsTab() {
+    const getDateKey = (value) => (typeof value === "string" && value.length >= 10 ? value.slice(0, 10) : "");
+    const getMonthKey = (value) => (typeof value === "string" && value.length >= 7 ? value.slice(0, 7) : "");
+    const inPeriod = (value) => {
+      const dateKey = getDateKey(value);
+      if (!dateKey) {
+        return !reportsFilters.start && !reportsFilters.end;
+      }
+      const startMatch = !reportsFilters.start || dateKey >= reportsFilters.start;
+      const endMatch = !reportsFilters.end || dateKey <= reportsFilters.end;
+      return startMatch && endMatch;
+    };
+
+    if (reportsFilterStart) reportsFilterStart.value = reportsFilters.start;
+    if (reportsFilterEnd) reportsFilterEnd.value = reportsFilters.end;
+    if (reportsFilterQuoteStatus) reportsFilterQuoteStatus.value = reportsFilters.quoteStatus;
+    if (reportsFilterOsStatus) reportsFilterOsStatus.value = reportsFilters.osStatus;
+
+    const filteredQuotes = state.quoteHistory.filter((item) => {
+      const status = normalizeQuoteStatus(item.status);
+      const statusMatch = reportsFilters.quoteStatus === "all" || status === reportsFilters.quoteStatus;
+      return statusMatch && inPeriod(item.createdAt);
+    });
+    const filteredOrders = state.workOrders.filter((item) => {
+      const status = normalizeWorkOrderStatus(item.status);
+      const statusMatch = reportsFilters.osStatus === "all" || status === reportsFilters.osStatus;
+      return statusMatch && inPeriod(item.deliveryDate || item.updatedAt || item.createdAt);
+    });
+
+    document.getElementById("reports-quote-count").textContent = formatInteger(filteredQuotes.length);
+    document.getElementById("reports-quote-total").textContent = formatCurrency(filteredQuotes.reduce((sum, item) => sum + Number(item.total || 0), 0));
+    document.getElementById("reports-os-count").textContent = formatInteger(filteredOrders.length);
+    document.getElementById("reports-os-total").textContent = formatCurrency(filteredOrders.reduce((sum, item) => sum + Number(item.total || 0), 0));
+
+    const quoteChart = document.getElementById("reports-quote-chart");
+    if (quoteChart) {
+      const chartData = Object.entries(QUOTE_STATUS_META).map(([statusId, meta]) => ({
+        id: statusId,
+        label: meta.label,
+        tone: meta.tone,
+        count: filteredQuotes.filter((item) => normalizeQuoteStatus(item.status) === statusId).length,
+      }));
+      const maxCount = Math.max(1, ...chartData.map((item) => item.count));
+      quoteChart.innerHTML = `
+        <div class="dashboard-chart-grid">
+          ${chartData.map((item) => `
+            <article class="dashboard-bar-card">
+              <span>${escapeHtml(item.label)}</span>
+              <strong>${formatInteger(item.count)}</strong>
+              <div class="dashboard-bar-track">
+                <div class="dashboard-bar dashboard-bar-${escapeHtml(item.tone)}" style="width:${(item.count / maxCount) * 100}%"></div>
+              </div>
+            </article>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    const monthlySales = document.getElementById("reports-monthly-sales");
+    if (monthlySales) {
+      const monthTotals = new Map();
+      filteredOrders
+        .filter((item) => ["delivered", "closed"].includes(normalizeWorkOrderStatus(item.status)))
+        .forEach((item) => {
+          const key = getMonthKey(item.deliveryDate || item.updatedAt || item.createdAt);
+          if (!key) {
+            return;
+          }
+          const current = monthTotals.get(key) || { total: 0, count: 0 };
+          current.total += Number(item.total || 0);
+          current.count += 1;
+          monthTotals.set(key, current);
+        });
+      const orderedMonths = [...monthTotals.entries()].sort(([left], [right]) => left.localeCompare(right)).slice(-12);
+      const maxValue = Math.max(1, ...orderedMonths.map(([, item]) => item.total));
+      monthlySales.innerHTML = orderedMonths.length
+        ? `<div class="dashboard-chart-grid dashboard-month-grid">
+            ${orderedMonths.map(([key, item]) => `
+              <article class="dashboard-bar-card">
+                <span>${escapeHtml(key.split("-").reverse().join("/"))}</span>
+                <strong>${escapeHtml(formatCurrency(item.total))}</strong>
+                <small>${formatInteger(item.count)} OSs fechadas</small>
+                <div class="dashboard-bar-track">
+                  <div class="dashboard-bar dashboard-bar-approved" style="width:${(item.total / maxValue) * 100}%"></div>
+                </div>
+              </article>
+            `).join("")}
+          </div>`
+        : `<div class="empty-state"><strong>Sem OS fechada no filtro</strong><span>Quando houver OS entregue ou fechada, o gráfico mensal aparece aqui.</span></div>`;
+    }
+
+    const quoteList = document.getElementById("reports-quote-list");
+    if (quoteList) {
+      quoteList.innerHTML = filteredQuotes.slice(0, 8).map((item) => {
+        const meta = getQuoteStatusMeta(item.status);
+        return `
+          <article class="list-card compact-card">
+            <div>
+              <h3>${escapeHtml(item.title || "Orçamento salvo")}</h3>
+              <p class="list-meta">${escapeHtml(item.clientName || "Cliente não informado")} | ${escapeHtml(formatDateTime(item.createdAt) || "data indisponível")}</p>
+              <p class="list-meta"><span class="status-inline status-inline-${escapeHtml(meta.tone)}">${escapeHtml(meta.label)}</span> | ${escapeHtml(formatCurrency(item.total || 0))}</p>
+            </div>
+          </article>
+        `;
+      }).join("") || `<div class="empty-state"><strong>Nenhum orçamento no filtro</strong><span>Ajuste o período ou o status selecionado.</span></div>`;
+    }
+
+    const osReportList = document.getElementById("reports-os-list");
+    if (osReportList) {
+      osReportList.innerHTML = filteredOrders.slice(0, 8).map((item) => {
+        const meta = getWorkOrderStatusMeta(item.status);
+        return `
+          <article class="list-card compact-card">
+            <div>
+              <h3>${escapeHtml(item.osNumber || "OS")}</h3>
+              <p class="list-meta">${escapeHtml(item.clientName || "Cliente não informado")} | ${escapeHtml(item.owner || "Sem responsável")}</p>
+              <p class="list-meta"><span class="status-inline status-inline-${escapeHtml(meta.tone)}">${escapeHtml(meta.label)}</span> | ${escapeHtml(formatCurrency(item.total || 0))}</p>
+            </div>
+          </article>
+        `;
+      }).join("") || `<div class="empty-state"><strong>Nenhuma OS no filtro</strong><span>Ajuste o período ou a etapa selecionada.</span></div>`;
+    }
+  }
+
   function renderHomeTab() {
-    const quoteCount = state.quoteHistory.length;
-    const approvedCount = state.quoteHistory.filter((item) => normalizeQuoteStatus(item.status) === "approved").length;
-    const completedCount = state.quoteHistory.filter((item) => normalizeQuoteStatus(item.status) === "completed").length;
-    const pendingCount = state.quoteHistory.filter((item) => ["pending", "sent", "negotiation"].includes(normalizeQuoteStatus(item.status))).length;
-    const convertedCount = state.quoteHistory.filter((item) => normalizeQuoteStatus(item.status) === "converted").length;
-    const cancelledCount = state.quoteHistory.filter((item) => normalizeQuoteStatus(item.status) === "cancelled").length;
+    const now = new Date();
+    const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const getMonthKey = (value) => (typeof value === "string" && value.length >= 7 ? value.slice(0, 7) : "");
+    const monthlyQuotes = state.quoteHistory.filter((item) => getMonthKey(item.createdAt) === currentMonthKey);
+    const soldQuotes = monthlyQuotes.filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status)));
+    const quoteCount = monthlyQuotes.length;
+    const approvedCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "approved").length;
+    const completedCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "completed").length;
+    const pendingCount = monthlyQuotes.filter((item) => ["pending", "sent", "negotiation"].includes(normalizeQuoteStatus(item.status))).length;
+    const convertedCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "converted").length;
+    const cancelledCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "cancelled").length;
     const conversionCount = approvedCount + convertedCount + completedCount;
     const conversionRate = quoteCount ? (conversionCount / quoteCount) * 100 : 0;
-    const approvedValue = state.quoteHistory
+    const approvedValue = monthlyQuotes
       .filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status)))
       .reduce((sum, item) => sum + Number(item.total || 0), 0);
-    const pendingValue = state.quoteHistory
+    const pendingValue = monthlyQuotes
       .filter((item) => ["pending", "sent", "negotiation"].includes(normalizeQuoteStatus(item.status)))
       .reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const quoteValues = monthlyQuotes.map((item) => Number(item.total || 0)).filter((value) => value > 0);
+    const minQuoteValue = quoteValues.length ? Math.min(...quoteValues) : 0;
+    const maxQuoteValue = quoteValues.length ? Math.max(...quoteValues) : 0;
 
     const statusChart = document.getElementById("home-status-chart");
-    const quickLinks = document.getElementById("home-quick-links");
+    const monthlySales = document.getElementById("home-monthly-sales");
     const topProducts = document.getElementById("home-top-products");
     const lowProducts = document.getElementById("home-low-products");
     const dashboardPermissions = getUserDashboardPermissions(accessControl, currentUser);
@@ -9266,6 +9428,8 @@ async function initApp() {
     document.getElementById("home-conversion-rate").textContent = `${formatDecimal(conversionRate, 1)}%`;
     document.getElementById("home-approved-value").textContent = formatCurrency(approvedValue);
     document.getElementById("home-pending-value").textContent = formatCurrency(pendingValue);
+    document.getElementById("home-min-quote-value").textContent = formatCurrency(minQuoteValue);
+    document.getElementById("home-max-quote-value").textContent = formatCurrency(maxQuoteValue);
 
     if (statusChart) {
       statusChart.closest(".panel")?.toggleAttribute("hidden", !dashboardPermissions.statusChart);
@@ -9292,24 +9456,8 @@ async function initApp() {
       `;
     }
 
-    if (quickLinks) {
-      quickLinks.closest(".panel")?.toggleAttribute("hidden", !dashboardPermissions.quickLinks);
-      const visibleLinks = tabButtons
-        .filter((button) => !button.hidden && !["login", "home"].includes(button.dataset.tabTarget))
-        .map((button) => `
-          <button class="quick-link-card" type="button" data-home-link="${escapeHtml(button.dataset.tabTarget)}">
-            <strong>${escapeHtml(button.textContent.trim())}</strong>
-            <span>Acessar esta área</span>
-          </button>
-        `)
-        .join("");
-      quickLinks.innerHTML = visibleLinks || `<div class="empty-state"><strong>Nenhuma aba liberada</strong><span>Libere abas para este usuário na área do desenvolvedor.</span></div>`;
-    }
-
     const productMap = new Map();
-    state.quoteHistory
-      .filter((quote) => ["approved", "completed"].includes(normalizeQuoteStatus(quote.status)))
-      .forEach((quote) => {
+    soldQuotes.forEach((quote) => {
         (quote.items || []).forEach((entry) => {
           const key = normalizeLookupText(entry.label || "");
           if (!key) {
@@ -9323,8 +9471,50 @@ async function initApp() {
       });
 
     const rankedProducts = [...productMap.values()].sort((left, right) => right.count - left.count || right.total - left.total);
+    const productEntriesByValue = [...productMap.values()].filter((item) => item.total > 0);
+    const cheapestProduct = productEntriesByValue.sort((left, right) => left.total - right.total)[0] || null;
+    const expensiveProduct = productEntriesByValue.sort((left, right) => right.total - left.total)[0] || null;
     const topList = rankedProducts.slice(0, 5);
     const lowList = [...rankedProducts].reverse().slice(0, 5);
+    document.getElementById("home-cheapest-product-value").textContent = formatCurrency(cheapestProduct?.total || 0);
+    document.getElementById("home-cheapest-product-label").textContent = cheapestProduct?.label || "Sem dados no mês";
+    document.getElementById("home-most-expensive-product-value").textContent = formatCurrency(expensiveProduct?.total || 0);
+    document.getElementById("home-most-expensive-product-label").textContent = expensiveProduct?.label || "Sem dados no mês";
+
+    if (monthlySales) {
+      monthlySales.closest(".panel")?.toggleAttribute("hidden", !dashboardPermissions.monthlySales);
+      const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit" });
+      const monthlyData = Array.from({ length: 6 }, (_, index) => {
+        const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+        const orders = state.workOrders.filter((item) => {
+          const status = normalizeWorkOrderStatus(item.status);
+          const dateBase = item.deliveryDate || item.updatedAt || item.createdAt || "";
+          return ["delivered", "closed"].includes(status) && getMonthKey(dateBase) === key;
+        });
+        return {
+          key,
+          label: monthFormatter.format(date).replace(".", ""),
+          count: orders.length,
+          total: orders.reduce((sum, item) => sum + Number(item.total || 0), 0),
+        };
+      });
+      const maxMonthlyValue = Math.max(1, ...monthlyData.map((item) => item.total));
+      monthlySales.innerHTML = `
+        <div class="dashboard-chart-grid dashboard-month-grid">
+          ${monthlyData.map((item) => `
+            <article class="dashboard-bar-card">
+              <span>${escapeHtml(item.label)}</span>
+              <strong>${escapeHtml(formatCurrency(item.total))}</strong>
+              <small>${formatInteger(item.count)} OSs fechadas</small>
+              <div class="dashboard-bar-track">
+                <div class="dashboard-bar dashboard-bar-approved" style="width:${(item.total / maxMonthlyValue) * 100}%"></div>
+              </div>
+            </article>
+          `).join("")}
+        </div>
+      `;
+    }
     const renderProductList = (items, emptyMessage) => items.length
       ? items.map((item) => `
           <article class="list-card compact-card">
@@ -10235,6 +10425,7 @@ async function initApp() {
       ["clients-tab", () => renderClientsTab()],
       ["home-tab", () => renderHomeTab()],
       ["os-tab", () => renderOrdersTab()],
+      ["reports-tab", () => renderReportsTab()],
       ["history-tab", () => renderHistoryTab()],
       ["developer-area", () => renderDeveloperArea()],
       ["access-rules", () => applyAccessRules()],
@@ -10480,6 +10671,37 @@ async function initApp() {
       date: "",
     };
     renderOrdersTab();
+  });
+
+  [reportsFilterStart, reportsFilterEnd, reportsFilterQuoteStatus, reportsFilterOsStatus].forEach((field) => {
+    field?.addEventListener("input", () => {
+      reportsFilters = {
+        start: reportsFilterStart?.value || "",
+        end: reportsFilterEnd?.value || "",
+        quoteStatus: reportsFilterQuoteStatus?.value || "all",
+        osStatus: reportsFilterOsStatus?.value || "all",
+      };
+      renderReportsTab();
+    });
+    field?.addEventListener("change", () => {
+      reportsFilters = {
+        start: reportsFilterStart?.value || "",
+        end: reportsFilterEnd?.value || "",
+        quoteStatus: reportsFilterQuoteStatus?.value || "all",
+        osStatus: reportsFilterOsStatus?.value || "all",
+      };
+      renderReportsTab();
+    });
+  });
+
+  reportsFilterClear?.addEventListener("click", () => {
+    reportsFilters = {
+      start: "",
+      end: "",
+      quoteStatus: "all",
+      osStatus: "all",
+    };
+    renderReportsTab();
   });
 
   developerUsersList?.addEventListener("click", (event) => {

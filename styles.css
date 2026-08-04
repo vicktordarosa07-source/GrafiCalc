@@ -544,6 +544,23 @@ button {
   font-family: var(--font-display);
 }
 
+.dashboard-bar-card small,
+.summary-card small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.summary-card small {
+  max-width: 230px;
+  margin-top: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .dashboard-bar-track {
   height: 12px;
   border-radius: 999px;
@@ -3440,6 +3457,79 @@ textarea:hover {
     background:
       linear-gradient(135deg, transparent 0 42%, rgba(16, 185, 129, 0.28) 42% 48%, transparent 48%),
       linear-gradient(155deg, transparent 0 52%, rgba(15, 118, 110, 0.22) 52% 58%, transparent 58%);
+  }
+
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) {
+    width: min(1600px, calc(100vw - 32px));
+    display: block;
+  }
+
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .hero {
+    display: none;
+  }
+
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell {
+    position: sticky;
+    top: 14px;
+    z-index: 40;
+    display: flex;
+    justify-content: flex-end;
+    height: auto;
+    margin: 0 0 16px;
+    pointer-events: none;
+  }
+
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-toggle {
+    display: inline-flex;
+  }
+
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-bar {
+    position: absolute;
+    right: 0;
+    left: auto;
+    top: calc(100% + 12px);
+    width: min(620px, calc(100vw - 36px));
+    height: auto;
+    max-height: min(72vh, 690px);
+    grid-template-columns: repeat(2, minmax(190px, 1fr));
+    padding: 16px;
+    border-radius: 26px;
+    animation: menu-pop 150ms ease both;
+  }
+
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-menu-head {
+    min-height: auto;
+    display: flex;
+    justify-items: stretch;
+    justify-content: space-between;
+    text-align: left;
+    padding: 4px 4px 10px;
+    border-bottom: 1px solid rgba(31, 42, 47, 0.08);
+  }
+
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-menu-head span {
+    order: 0;
+    margin-top: 0;
+  }
+
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-menu-head strong {
+    width: auto;
+    height: auto;
+    color: var(--ink);
+    overflow: visible;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    font-size: 1.25rem;
+  }
+
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-menu-head strong::before {
+    content: none;
+  }
+
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-panels {
+    min-width: 0;
+    margin-top: 0;
   }
 }
 
