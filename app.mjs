@@ -10499,6 +10499,13 @@ async function initApp() {
     });
   });
 
+  document.querySelectorAll("[data-menu-shortcut]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectTab(button.dataset.menuShortcut);
+      closeAppMenu();
+    });
+  });
+
   appMenuToggle?.addEventListener("click", () => {
     const isOpen = appMenuToggle.getAttribute("aria-expanded") === "true";
     setAppMenuOpen(!isOpen);

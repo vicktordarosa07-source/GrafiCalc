@@ -987,17 +987,74 @@ button {
   color: var(--muted);
 }
 
-.tab-menu-head span {
-  font-size: 0.75rem;
-  font-weight: 900;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--accent);
+.menu-settings-card,
+.menu-account-shortcut {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
 }
 
-.tab-menu-head strong {
-  font-family: var(--font-display);
-  font-size: 1.25rem;
+.menu-settings-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 20px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(232, 255, 246, 0.72)),
+    radial-gradient(circle at top left, rgba(16, 185, 129, 0.18), transparent 5rem);
+  color: var(--ink);
+  box-shadow:
+    0 14px 28px rgba(15, 118, 110, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.menu-settings-card strong {
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.menu-settings-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #f9fffc, #dff8ec);
+  box-shadow: inset 0 0 0 1px rgba(15, 118, 110, 0.12);
+}
+
+.menu-settings-icon img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.menu-settings-icon span {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #10b981, #0f766e);
+  color: #fff;
+  font-size: 0.82rem;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.26);
+}
+
+.menu-account-shortcut {
+  padding: 10px 13px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted-strong);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 @keyframes menu-pop {
@@ -3368,38 +3425,34 @@ textarea:hover {
     padding: 0 0 18px;
   }
 
-  .page-shell:not(.is-auth-mode) .tab-menu-head span {
-    order: 2;
-    margin-top: 8px;
-    color: var(--muted);
-    letter-spacing: 0.12em;
-  }
-
-  .page-shell:not(.is-auth-mode) .tab-menu-head strong {
-    position: relative;
+  .page-shell:not(.is-auth-mode) .menu-settings-card {
+    width: 100%;
     display: grid;
-    place-items: center;
-    width: 96px;
-    height: 96px;
-    overflow: hidden;
-    border-radius: 28px;
-    color: transparent;
-    background:
-      radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.98), transparent 22%),
-      linear-gradient(145deg, #14c98e, #0f766e);
-    box-shadow:
-      0 18px 40px rgba(16, 185, 129, 0.28),
-      inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    justify-items: center;
+    gap: 12px;
+    padding: 18px 14px;
+    text-align: center;
   }
 
-  .page-shell:not(.is-auth-mode) .tab-menu-head strong::before {
-    content: "G";
-    color: #fff;
-    font-family: var(--font-ui);
-    font-size: 3.3rem;
-    font-weight: 950;
-    letter-spacing: -0.08em;
-    text-shadow: 0 5px 18px rgba(0, 72, 54, 0.24);
+  .page-shell:not(.is-auth-mode) .menu-settings-icon {
+    width: 104px;
+    height: 104px;
+    border-radius: 30px;
+  }
+
+  .page-shell:not(.is-auth-mode) .menu-settings-icon img {
+    width: 66px;
+    height: 66px;
+  }
+
+  .page-shell:not(.is-auth-mode) .menu-settings-icon span {
+    width: 34px;
+    height: 34px;
+    font-size: 1rem;
+  }
+
+  .page-shell:not(.is-auth-mode) .menu-account-shortcut {
+    margin-top: 8px;
   }
 
   .page-shell:not(.is-auth-mode) .tab-bar .tab-button {
@@ -3507,24 +3560,29 @@ textarea:hover {
     border-bottom: 1px solid rgba(31, 42, 47, 0.08);
   }
 
-  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-menu-head span {
-    order: 0;
-    margin-top: 0;
-  }
-
-  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-menu-head strong {
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .menu-settings-card {
     width: auto;
-    height: auto;
-    color: var(--ink);
-    overflow: visible;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
-    font-size: 1.25rem;
+    display: inline-flex;
+    justify-items: stretch;
+    gap: 12px;
+    padding: 10px 12px;
+    text-align: left;
   }
 
-  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-menu-head strong::before {
-    content: none;
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .menu-settings-icon {
+    width: 54px;
+    height: 54px;
+  }
+
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .menu-settings-icon img {
+    width: 34px;
+    height: 34px;
+  }
+
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .menu-settings-icon span {
+    width: 24px;
+    height: 24px;
+    font-size: 0.82rem;
   }
 
   .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-panels {

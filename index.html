@@ -10,7 +10,7 @@
 <body>
   <div class="page-shell" id="app-shell">
     <header class="hero">
-      <img class="hero-logo" src="./assets/logo-graficalc.png" alt="GrafiCalc">
+      <img class="hero-logo" src="./assets/logo-graficalc-login.png" alt="GrafiCalc">
       <p class="hero-copy">
         Importe PDFs, ajuste as opções de capa e acabamento, e monte vários orçamentos no mesmo lugar.
       </p>
@@ -34,8 +34,14 @@
       </button>
       <nav class="tab-bar" id="main-tab-menu" aria-label="Abas principais" hidden>
         <div class="tab-menu-head">
-          <span>Navegação</span>
-          <strong>GrafiCalc</strong>
+          <button class="menu-settings-card" type="button" data-menu-shortcut="configuracao" aria-label="Abrir configurações do sistema">
+            <span class="menu-settings-icon">
+              <img src="./assets/favicon.png" alt="">
+              <span aria-hidden="true">⚙</span>
+            </span>
+            <strong>Configurações</strong>
+          </button>
+          <button class="menu-account-shortcut" type="button" data-menu-shortcut="conta">Minha conta</button>
         </div>
         <button class="tab-button is-active" data-tab-target="login">Login</button>
         <button class="tab-button" data-tab-target="home">Home</button>
