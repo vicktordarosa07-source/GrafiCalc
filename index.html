@@ -66,6 +66,7 @@
         <button class="tab-button" data-tab-target="clientes">Clientes</button>
         <button class="tab-button" data-tab-target="os">OS</button>
         <button class="tab-button" data-tab-target="relatorios">Relatórios</button>
+        <button class="tab-button" data-tab-target="equipe" data-dev-only hidden>Equipe</button>
         <button class="tab-button" data-tab-target="historico">Histórico</button>
         <button class="tab-button" data-tab-target="orcamento">Orçamento</button>
         <button class="tab-button developer-tab-button" data-tab-target="desenvolvedor" data-dev-only hidden>Área do desenvolvedor</button>
@@ -1697,6 +1698,73 @@
 
           <div class="quote-preview" id="quote-preview"></div>
         </article>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="equipe" data-dev-only hidden>
+        <div class="summary-grid">
+          <article class="summary-card">
+            <span class="summary-label">Funcionários ativos</span>
+            <strong id="employees-active-count">0</strong>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Orçamentos do mês</span>
+            <strong id="employees-month-quotes">0</strong>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">OSs convertidas</span>
+            <strong id="employees-month-os">0</strong>
+          </article>
+          <article class="summary-card">
+            <span class="summary-label">Valor convertido</span>
+            <strong id="employees-month-total">R$ 0,00</strong>
+          </article>
+        </div>
+
+        <div class="workspace-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Cadastro de funcionário</h2>
+                <p class="panel-copy">Crie acessos internos para a equipe. Funcionários entram apenas nas áreas de orçamento liberadas.</p>
+              </div>
+            </div>
+            <form class="employee-form quote-form-grid" id="employee-form">
+              <label>
+                <span>Nome do funcionário</span>
+                <input id="employee-name" type="text" placeholder="Ex.: Ana do balcão" autocomplete="name">
+              </label>
+              <label>
+                <span>E-mail</span>
+                <input id="employee-email" type="email" placeholder="funcionario@email.com" autocomplete="email">
+              </label>
+              <label>
+                <span>Senha</span>
+                <span class="password-input-wrap">
+                  <input id="employee-password" type="password" autocomplete="new-password" placeholder="Mínimo 8 caracteres">
+                  <button class="password-eye-button" type="button" data-password-toggle="employee-password" aria-label="Mostrar senha" aria-pressed="false">◐</button>
+                </span>
+              </label>
+              <label>
+                <span>Função / setor</span>
+                <input id="employee-company" type="text" placeholder="Ex.: Atendimento, produção, vendedor">
+              </label>
+              <div class="history-filter-actions">
+                <button class="button button-primary" type="submit">Cadastrar funcionário</button>
+              </div>
+            </form>
+            <p class="helper-text status-note" id="employee-status">Funcionários criados aqui ficam ativos e com e-mail verificado para uso interno.</p>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>Desempenho por funcionário</h2>
+                <p class="panel-copy">Compare orçamentos lançados, conversão em OS e valor fechado por pessoa.</p>
+              </div>
+            </div>
+            <div id="employees-performance-list" class="stack-list"></div>
+          </article>
+        </div>
       </section>
 
       <section class="tab-panel developer-panel" data-tab-panel="desenvolvedor" data-dev-only hidden>

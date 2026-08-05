@@ -2026,6 +2026,48 @@ textarea {
   min-width: 210px;
 }
 
+.employee-form {
+  align-items: end;
+}
+
+.employee-performance-card {
+  align-items: stretch;
+  gap: 18px;
+}
+
+.employee-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.employee-metric-grid span {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid rgba(15, 118, 110, 0.12);
+  border-radius: 18px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.84), rgba(226, 255, 245, 0.56)),
+    radial-gradient(circle at top right, rgba(16, 185, 129, 0.14), transparent 5rem);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+.employee-metric-grid strong {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: clamp(1.15rem, 2vw, 1.55rem);
+  line-height: 1;
+}
+
+.employee-metric-grid small {
+  color: var(--muted);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .developer-groups-list {
   display: grid;
   gap: 14px;
@@ -3701,6 +3743,10 @@ textarea:hover {
   .developer-user-actions label,
   .developer-user-actions button {
     width: 100%;
+  }
+
+  .employee-metric-grid {
+    grid-template-columns: 1fr;
   }
 
   .developer-override-row {

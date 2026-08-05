@@ -59,10 +59,25 @@ const APP_TAB_LABELS = [
   { id: "clientes", label: "Clientes" },
   { id: "os", label: "OS" },
   { id: "relatorios", label: "Relatórios" },
+  { id: "equipe", label: "Equipe", developerOnly: true },
   { id: "historico", label: "Histórico" },
   { id: "orcamento", label: "Orçamento" },
   { id: "desenvolvedor", label: "Área do desenvolvedor", developerOnly: true },
 ];
+
+const EMPLOYEE_OPERATION_TABS = new Set([
+  "calculo",
+  "impressos",
+  "credenciais",
+  "m2",
+  "prontos",
+  "resinados",
+  "cartoes",
+  "panfletos",
+  "blocosSulfite",
+  "blocosAutocopiativo",
+  "orcamento",
+]);
 
 const OPTIONS = {
   printTypes: ["Preto e branco", "Colorido jato de tinta", "Colorido laser"],
@@ -1575,6 +1590,8 @@ function mergeState(candidate, configCandidate = null) {
           total: Number.isFinite(Number(item.total)) ? Number(item.total) : 0,
           summary: typeof item.summary === "string" ? item.summary : "",
           status: normalizeQuoteStatus(item.status),
+          createdByUserId: typeof item.createdByUserId === "string" ? item.createdByUserId : "",
+          createdByUsername: typeof item.createdByUsername === "string" ? item.createdByUsername : "",
           items: Array.isArray(item.items)
             ? item.items
                 .filter((entry) => entry && typeof entry === "object")
@@ -1630,6 +1647,8 @@ function mergeState(candidate, configCandidate = null) {
           updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString(),
           createdByUserId: typeof item.createdByUserId === "string" ? item.createdByUserId : "",
           createdByUsername: typeof item.createdByUsername === "string" ? item.createdByUsername : "",
+          salesUserId: typeof item.salesUserId === "string" ? item.salesUserId : (typeof item.createdByUserId === "string" ? item.createdByUserId : ""),
+          salesUsername: typeof item.salesUsername === "string" ? item.salesUsername : (typeof item.createdByUsername === "string" ? item.createdByUsername : ""),
           sequenceNumber: Math.max(1, toWholeNumber(item.sequenceNumber || 1)),
           timeline: Array.isArray(item.timeline)
             ? item.timeline
@@ -1864,7 +1883,12 @@ function normalizeAccessControlCandidate(candidate) {
         return {
           id: group?.id || `group-${index + 1}`,
           name: group?.name || "Novo grupo",
-          tabs: { ...createTabPermissionMap(false, false), conta: true, ...(group?.tabs || {}) },
+          tabs: {
+            ...createTabPermissionMap(false, false),
+            ...(group?.id === "funcionarios" ? {} : { conta: true }),
+            ...(group?.tabs || {}),
+            ...(group?.id === "funcionarios" ? { conta: false, home: false, configuracao: false, clientes: false, os: false, relatorios: false, historico: false, desenvolvedor: false } : {}),
+          },
           dashboards,
           protected: Boolean(group?.protected),
         };
@@ -1873,6 +1897,10 @@ function normalizeAccessControlCandidate(candidate) {
   const hasDeveloperGroup = groups.some((group) => group.id === "developer");
   if (!hasDeveloperGroup) {
     groups.unshift(defaults.groups[0]);
+  }
+  const hasEmployeeGroup = groups.some((group) => group.id === "funcionarios");
+  if (!hasEmployeeGroup) {
+    groups.push(defaults.groups.find((group) => group.id === "funcionarios"));
   }
   return {
     groups,
@@ -1959,6 +1987,7 @@ function createDefaultAccessControl() {
         name: "Assinatura básica",
         tabs: {
           ...createTabPermissionMap(false, false),
+          home: true,
           conta: true,
           calculo: true,
           impressos: true,
@@ -1971,6 +2000,19 @@ function createDefaultAccessControl() {
           statusChart: true,
           monthlySales: true,
         },
+      },
+      {
+        id: "funcionarios",
+        name: "Funcionários",
+        tabs: {
+          ...createTabPermissionMap(false, false),
+          ...Object.fromEntries([...EMPLOYEE_OPERATION_TABS].map((tabId) => [tabId, true])),
+        },
+        dashboards: {
+          ...createDashboardPermissionMap(false),
+          statusChart: true,
+        },
+        protected: true,
       },
     ],
     userOverrides: {},
@@ -2026,7 +2068,7 @@ function normalizeUserRecord(user, index = 0) {
     document,
     birthDate,
     company: typeof user?.company === "string" ? user.company.trim() : "",
-    role: user?.role === "developer" ? "developer" : "user",
+    role: ["developer", "employee"].includes(user?.role) ? user.role : "user",
     status: ["active", "pending", "blocked"].includes(user?.status) ? user.status : "pending",
     mustChangePassword: Boolean(user?.mustChangePassword),
     passwordMode: user?.passwordMode === "temporary" ? "temporary" : "permanent",
@@ -2175,6 +2217,20 @@ function getUserDashboardPermissions(accessControl, user) {
   }
   delete permissions.quickLinks;
   return permissions;
+}
+
+function getUserRoleLabel(user) {
+  if (user?.role === "developer") return "Desenvolvedor";
+  if (user?.role === "employee") return "Funcionário";
+  return "Usuário";
+}
+
+function getQuoteOwnerId(item) {
+  return item?.createdByUserId || item?.salesUserId || "";
+}
+
+function getQuoteOwnerName(item) {
+  return item?.createdByUsername || item?.salesUsername || "Sem responsável";
 }
 
 function buildPasswordResetMailto(user, newPassword) {
@@ -7056,6 +7112,9 @@ async function initApp() {
   const reportsFilterQuoteStatus = document.getElementById("reports-filter-quote-status");
   const reportsFilterOsStatus = document.getElementById("reports-filter-os-status");
   const reportsFilterClear = document.getElementById("reports-filter-clear");
+  const employeeForm = document.getElementById("employee-form");
+  const employeeStatus = document.getElementById("employee-status");
+  const employeesPerformanceList = document.getElementById("employees-performance-list");
   const blockTableBodies = {
     sulfite: document.getElementById("blocks-sulfite-rows-table-body"),
     autocopiativo: document.getElementById("blocks-autocopiativo-rows-table-body"),
@@ -7382,13 +7441,16 @@ async function initApp() {
     if (syncStatus) {
       syncStatus.hidden = !logged;
     }
+    if (appHomeShortcut) {
+      appHomeShortcut.hidden = !logged || !Boolean(getUserTabPermissions(accessControl, currentUser).home);
+    }
     tabButtons.forEach((button) => {
       const tab = button.dataset.tabTarget;
       let allowed = false;
       if (tab === "login") {
         allowed = !logged;
       } else if (tab === "home") {
-        allowed = logged;
+        allowed = logged && Boolean(getUserTabPermissions(accessControl, currentUser).home);
       } else if (logged) {
         const permissions = getUserTabPermissions(accessControl, currentUser);
         allowed = Boolean(permissions[tab]);
@@ -7402,7 +7464,7 @@ async function initApp() {
       if (tab === "login") {
         allowed = !logged;
       } else if (tab === "home") {
-        allowed = logged;
+        allowed = logged && Boolean(getUserTabPermissions(accessControl, currentUser).home);
       } else if (logged) {
         const permissions = getUserTabPermissions(accessControl, currentUser);
         allowed = Boolean(permissions[tab]);
@@ -7457,7 +7519,7 @@ async function initApp() {
               <p>${escapeHtml(user.company || "Empresa não informada")}</p>
               <p class="list-meta">${escapeHtml(user.email || "Sem e-mail cadastrado")}</p>
               <p class="list-meta">${escapeHtml(user.document || "Sem CPF/CNPJ cadastrado")}</p>
-              <p class="list-meta">Status: ${escapeHtml(statusLabel)} | Perfil: ${isDev ? "Desenvolvedor" : "Usuário"}</p>
+              <p class="list-meta">Status: ${escapeHtml(statusLabel)} | Perfil: ${escapeHtml(getUserRoleLabel(user))}</p>
               <div class="developer-validation-badges">
                 <span class="status-inline status-inline-${escapeHtml(emailMeta.tone)}">${escapeHtml(emailMeta.label)}</span>
                 <span class="status-inline status-inline-${escapeHtml(documentMeta.tone)}">${escapeHtml(documentMeta.label)}</span>
@@ -8166,6 +8228,8 @@ async function initApp() {
       snapshot: buildQuoteStateSnapshot(),
       createdAt: savedAt,
       updatedAt: savedAt,
+      createdByUserId: currentUser?.id || "",
+      createdByUsername: currentUser?.username || "",
       osId: "",
     };
   }
@@ -8182,6 +8246,8 @@ async function initApp() {
           createdAt: current.createdAt,
           status: current.status || record.status,
           osId: current.osId || "",
+          createdByUserId: current.createdByUserId || record.createdByUserId || "",
+          createdByUsername: current.createdByUsername || record.createdByUsername || "",
           updatedAt: new Date().toISOString(),
         };
         state.quoteHistory[existingIndex] = updated;
@@ -8275,6 +8341,8 @@ async function initApp() {
       updatedAt: createdAt,
       createdByUserId: numbering.userId,
       createdByUsername: numbering.username,
+      salesUserId: quote.createdByUserId || numbering.userId,
+      salesUsername: quote.createdByUsername || numbering.username,
       sequenceNumber: numbering.sequenceNumber,
       timeline: [
         createWorkOrderTimelineEntry("OS gerada", `Criada a partir do orçamento ${quote.title || quote.id}.`),
@@ -8699,16 +8767,20 @@ async function initApp() {
     if (!logged && tabName !== "login") {
       tabName = "login";
     } else if (logged && tabName === "login") {
-      tabName = "home";
+      const permissions = getUserTabPermissions(accessControl, currentUser);
+      const fallback = tabButtons.find((button) => {
+        const target = button.dataset.tabTarget;
+        return permissions[target] && !button.hidden;
+      });
+      tabName = fallback?.dataset.tabTarget || "orcamento";
     } else if (logged) {
       const permissions = getUserTabPermissions(accessControl, currentUser);
-      const allowedSpecial = tabName === "home";
-      if (!allowedSpecial && !permissions[tabName]) {
+      if (!permissions[tabName]) {
         const fallback = tabButtons.find((button) => {
           const target = button.dataset.tabTarget;
-          return (target === "home" || permissions[target]) && !button.hidden;
+          return permissions[target] && !button.hidden;
         });
-        tabName = fallback?.dataset.tabTarget || "home";
+        tabName = fallback?.dataset.tabTarget || "orcamento";
       }
     }
 
@@ -9408,6 +9480,61 @@ async function initApp() {
         `;
       }).join("") || `<div class="empty-state"><strong>Nenhuma OS no filtro</strong><span>Ajuste o período ou a etapa selecionada.</span></div>`;
     }
+  }
+
+  function renderEmployeesTab() {
+    const employeeUsers = authUsers.filter((user) => user.role === "employee");
+    const currentMonthKey = new Date().toISOString().slice(0, 7);
+    const isCurrentMonth = (value) => typeof value === "string" && value.slice(0, 7) === currentMonthKey;
+    const convertedStatuses = new Set(["approved", "converted", "completed"]);
+    const monthQuotes = state.quoteHistory.filter((item) => isCurrentMonth(item.createdAt));
+    const monthOrders = state.workOrders.filter((item) => isCurrentMonth(item.createdAt || item.updatedAt));
+    const employeeIds = new Set(employeeUsers.map((user) => user.id));
+    const employeeMonthQuotes = monthQuotes.filter((item) => employeeIds.has(getQuoteOwnerId(item)));
+    const employeeMonthOrders = monthOrders.filter((item) => employeeIds.has(item.salesUserId || item.createdByUserId));
+
+    const activeCountEl = document.getElementById("employees-active-count");
+    const monthQuotesEl = document.getElementById("employees-month-quotes");
+    const monthOsEl = document.getElementById("employees-month-os");
+    const monthTotalEl = document.getElementById("employees-month-total");
+    if (activeCountEl) activeCountEl.textContent = formatInteger(employeeUsers.filter((user) => user.status === "active").length);
+    if (monthQuotesEl) monthQuotesEl.textContent = formatInteger(employeeMonthQuotes.length);
+    if (monthOsEl) monthOsEl.textContent = formatInteger(employeeMonthOrders.length);
+    if (monthTotalEl) monthTotalEl.textContent = formatCurrency(employeeMonthOrders.reduce((sum, item) => sum + Number(item.total || 0), 0));
+
+    if (!employeesPerformanceList) {
+      return;
+    }
+
+    employeesPerformanceList.innerHTML = employeeUsers.length
+      ? employeeUsers.map((user) => {
+          const userQuotes = state.quoteHistory.filter((item) => getQuoteOwnerId(item) === user.id);
+          const userMonthQuotes = userQuotes.filter((item) => isCurrentMonth(item.createdAt));
+          const convertedQuotes = userMonthQuotes.filter((item) => convertedStatuses.has(normalizeQuoteStatus(item.status)));
+          const userOrders = state.workOrders.filter((item) => (item.salesUserId || item.createdByUserId) === user.id);
+          const userMonthOrders = userOrders.filter((item) => isCurrentMonth(item.createdAt || item.updatedAt));
+          const quoteTotal = userMonthQuotes.reduce((sum, item) => sum + Number(item.total || 0), 0);
+          const osTotal = userMonthOrders.reduce((sum, item) => sum + Number(item.total || 0), 0);
+          const conversion = userMonthQuotes.length ? (convertedQuotes.length / userMonthQuotes.length) * 100 : 0;
+          const statusLabel = user.status === "active" ? "Ativo" : user.status === "blocked" ? "Bloqueado" : "Pendente";
+          return `
+            <article class="list-card employee-performance-card">
+              <div>
+                <h3>${escapeHtml(user.username)}</h3>
+                <p class="list-meta">${escapeHtml(user.company || "Sem setor definido")} | ${escapeHtml(statusLabel)}</p>
+                <p class="list-meta">${escapeHtml(user.email || "Sem e-mail cadastrado")}</p>
+              </div>
+              <div class="employee-metric-grid">
+                <span><strong>${formatInteger(userMonthQuotes.length)}</strong><small>Orçamentos no mês</small></span>
+                <span><strong>${formatCurrency(quoteTotal)}</strong><small>Valor orçado</small></span>
+                <span><strong>${formatInteger(userMonthOrders.length)}</strong><small>OSs convertidas</small></span>
+                <span><strong>${formatCurrency(osTotal)}</strong><small>Valor em OS</small></span>
+                <span><strong>${conversion.toFixed(1).replace(".", ",")}%</strong><small>Conversão</small></span>
+              </div>
+            </article>
+          `;
+        }).join("")
+      : `<div class="empty-state"><strong>Nenhum funcionário cadastrado</strong><span>Cadastre a equipe para começar a medir orçamentos, OSs e conversão individual.</span></div>`;
   }
 
   function renderHomeTab() {
@@ -10442,6 +10569,7 @@ async function initApp() {
       ["home-tab", () => renderHomeTab()],
       ["os-tab", () => renderOrdersTab()],
       ["reports-tab", () => renderReportsTab()],
+      ["employees-tab", () => renderEmployeesTab()],
       ["history-tab", () => renderHistoryTab()],
       ["developer-area", () => renderDeveloperArea()],
       ["access-rules", () => applyAccessRules()],
@@ -10745,6 +10873,71 @@ async function initApp() {
     renderReportsTab();
   });
 
+  employeeForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!isDeveloperSession()) {
+      setStatusMessage(employeeStatus, "Somente o administrador pode cadastrar funcionários.", "error");
+      return;
+    }
+    const username = document.getElementById("employee-name")?.value.trim() || "";
+    const email = document.getElementById("employee-email")?.value.trim() || "";
+    const password = document.getElementById("employee-password")?.value || "";
+    const company = document.getElementById("employee-company")?.value.trim() || "Funcionário";
+    if (!username) {
+      setStatusMessage(employeeStatus, "Digite o nome do funcionário.", "warning");
+      document.getElementById("employee-name")?.focus();
+      return;
+    }
+    if (authUsers.some((user) => user.username.trim().toLowerCase() === username.toLowerCase())) {
+      setStatusMessage(employeeStatus, "Já existe um usuário com este nome.", "warning");
+      return;
+    }
+    const emailError = email ? validateEmailAddress(email) : "";
+    if (emailError) {
+      setStatusMessage(employeeStatus, emailError, "warning");
+      document.getElementById("employee-email")?.focus();
+      return;
+    }
+    if (email && authUsers.some((user) => normalizeLookupEmail(user.email) === normalizeLookupEmail(email))) {
+      setStatusMessage(employeeStatus, "Já existe um usuário com este e-mail.", "warning");
+      return;
+    }
+    const passwordError = validateSecurePassword(password);
+    if (passwordError) {
+      setStatusMessage(employeeStatus, passwordError, "warning");
+      document.getElementById("employee-password")?.focus();
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    const employee = normalizeUserRecord({
+      id: `employee-${Date.now()}`,
+      username,
+      password,
+      email,
+      company,
+      role: "employee",
+      status: "active",
+      groupId: "funcionarios",
+      emailVerification: {
+        status: "verified",
+        code: "",
+        sentAt: "",
+        verifiedAt: nowIso,
+        expiresAt: "",
+        resendAvailableAt: "",
+        lastDeliveryMode: "internal-admin",
+      },
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+    authUsers.push(employee);
+    await refreshAuthStorage(true);
+    employeeForm.reset();
+    renderDeveloperArea();
+    renderEmployeesTab();
+    setStatusMessage(employeeStatus, `Funcionário ${employee.username} cadastrado com acesso interno.`, "success");
+  });
+
   developerUsersList?.addEventListener("click", (event) => {
     if (!isDeveloperSession()) {
       return;
@@ -10794,6 +10987,7 @@ async function initApp() {
         }
         refreshAuthStorage();
         renderDeveloperArea();
+        renderEmployeesTab();
         applyAccessRules();
         setConfigStatus(`Usuário ${user.username} deletado com sucesso.`, "warning");
       });
@@ -10806,6 +11000,7 @@ async function initApp() {
     user.updatedAt = new Date().toISOString();
     refreshAuthStorage();
     renderDeveloperArea();
+    renderEmployeesTab();
     applyAccessRules();
     setConfigStatus("Usuário atualizado na área do desenvolvedor.", "success");
   });
@@ -10827,6 +11022,7 @@ async function initApp() {
     user.updatedAt = new Date().toISOString();
     refreshAuthStorage();
     renderDeveloperArea();
+    renderEmployeesTab();
     setConfigStatus("Grupo do usuário atualizado.", "success");
   });
 
@@ -12883,6 +13079,7 @@ async function initApp() {
     renderHistoryTab();
     renderOrdersTab();
     renderHomeTab();
+    renderEmployeesTab();
     setMainFeedback(isEditingExistingQuote ? "Orçamento salvo e atualizado no histórico compartilhado." : "Orçamento salvo no histórico compartilhado.", "success");
   });
 
@@ -12894,6 +13091,7 @@ async function initApp() {
     renderHistoryTab();
     renderOrdersTab();
     renderHomeTab();
+    renderEmployeesTab();
     setStatusMessage(osStatus, `OS ${workOrder.osNumber} gerada com sucesso.`, "success");
     setMainFeedback(isEditingExistingQuote ? `Orçamento atualizado e convertido na ${workOrder.osNumber}.` : `Orçamento salvo e convertido na ${workOrder.osNumber}.`, "success");
   });
@@ -12907,6 +13105,7 @@ async function initApp() {
     renderHistoryTab();
     renderOrdersTab();
     renderHomeTab();
+    renderEmployeesTab();
     selectTab("os");
     setStatusMessage(osStatus, `OS ${workOrder.osNumber} criada a partir do orçamento atual.`, "success");
     setMainFeedback(isEditingExistingQuote ? `Orçamento atualizado e OS ${workOrder.osNumber} criada com sucesso.` : `OS ${workOrder.osNumber} criada com sucesso.`, "success");
@@ -12976,6 +13175,7 @@ async function initApp() {
       persist();
       renderHistoryTab();
       renderHomeTab();
+      renderEmployeesTab();
       setMainFeedback(`Status do orçamento alterado para ${getQuoteStatusMeta(item.status).label}.`, "success");
       return;
     }
@@ -13019,6 +13219,7 @@ async function initApp() {
       renderHistoryTab();
       renderOrdersTab();
       renderHomeTab();
+      renderEmployeesTab();
       selectTab("os");
       setStatusMessage(osStatus, `OS ${workOrder.osNumber} gerada a partir do histórico.`, "success");
       setMainFeedback(`OS ${workOrder.osNumber} criada com sucesso.`, "success");
@@ -13040,6 +13241,7 @@ async function initApp() {
       persist();
       renderHistoryTab();
       renderHomeTab();
+      renderEmployeesTab();
       setMainFeedback("Item removido do histórico.", "warning");
     }
   });
@@ -13059,6 +13261,7 @@ async function initApp() {
       renderOrdersTab();
       renderHistoryTab();
       renderHomeTab();
+      renderEmployeesTab();
       setStatusMessage(osStatus, `OS ${item.osNumber} atualizada para ${getWorkOrderStatusMeta(item.status).label}.`, "success");
       return;
     }
@@ -13135,6 +13338,7 @@ async function initApp() {
       renderOrdersTab();
       renderHistoryTab();
       renderHomeTab();
+      renderEmployeesTab();
       setStatusMessage(osStatus, `${item.osNumber} excluída.`, "warning");
     }
   });
