@@ -205,48 +205,81 @@
       </section>
 
       <section class="tab-panel" data-tab-panel="home">
-        <div class="summary-grid">
-          <article class="summary-card">
+        <article class="panel home-command-panel">
+          <div class="home-command-copy">
+            <h2>Gestão inteligente. Resultados que impressionam.</h2>
+            <p class="panel-copy">
+              Acompanhe conversão, vendas, faixas de preço e movimentação comercial do GrafiCalc
+              com uma leitura mais clara, rápida e pronta para tomada de decisão.
+            </p>
+            <div class="home-command-badges">
+              <span>Operação comercial</span>
+              <span>Visão do mês</span>
+              <span>Base compartilhada</span>
+            </div>
+          </div>
+          <div class="home-command-meta">
+            <article class="home-mini-card">
+              <span>Mês ativo</span>
+              <strong id="home-active-month">-</strong>
+            </article>
+            <article class="home-mini-card">
+              <span>Aprovados no mês</span>
+              <strong id="home-approved-count">0</strong>
+            </article>
+            <article class="home-mini-card">
+              <span>OS geradas</span>
+              <strong id="home-os-count">0</strong>
+            </article>
+            <article class="home-mini-card">
+              <span>Em aberto</span>
+              <strong id="home-open-count">0</strong>
+            </article>
+          </div>
+        </article>
+
+        <div class="summary-grid home-summary-grid">
+          <article class="summary-card summary-card-orcamentos">
             <span class="summary-label">Orçamentos no mês</span>
             <strong id="home-quote-count">0</strong>
           </article>
-          <article class="summary-card">
+          <article class="summary-card summary-card-conversao">
             <span class="summary-label">Conversão</span>
             <strong id="home-conversion-rate">0%</strong>
           </article>
-          <article class="summary-card">
+          <article class="summary-card summary-card-aprovado">
             <span class="summary-label">Valor aprovado</span>
             <strong id="home-approved-value">R$ 0,00</strong>
           </article>
-          <article class="summary-card">
+          <article class="summary-card summary-card-pendente">
             <span class="summary-label">Valor pendente</span>
             <strong id="home-pending-value">R$ 0,00</strong>
           </article>
         </div>
 
-        <div class="summary-grid">
-          <article class="summary-card">
+        <div class="summary-grid home-summary-grid">
+          <article class="summary-card summary-card-minimo">
             <span class="summary-label">Menor orçamento</span>
             <strong id="home-min-quote-value">R$ 0,00</strong>
           </article>
-          <article class="summary-card">
+          <article class="summary-card summary-card-maximo">
             <span class="summary-label">Maior orçamento</span>
             <strong id="home-max-quote-value">R$ 0,00</strong>
           </article>
-          <article class="summary-card">
+          <article class="summary-card summary-card-barato">
             <span class="summary-label">Produto mais barato</span>
             <strong id="home-cheapest-product-value">R$ 0,00</strong>
             <small id="home-cheapest-product-label">Sem dados no mês</small>
           </article>
-          <article class="summary-card">
+          <article class="summary-card summary-card-caro">
             <span class="summary-label">Produto mais caro</span>
             <strong id="home-most-expensive-product-value">R$ 0,00</strong>
             <small id="home-most-expensive-product-label">Sem dados no mês</small>
           </article>
         </div>
 
-        <div class="workspace-grid">
-          <article class="panel">
+        <div class="workspace-grid home-dashboard-grid">
+          <article class="panel home-panel-chart">
             <div class="panel-heading">
               <div>
                 <h2>Painel comercial</h2>
@@ -257,7 +290,7 @@
             <div id="home-status-chart" class="dashboard-chart"></div>
           </article>
 
-          <article class="panel">
+          <article class="panel home-panel-chart">
             <div class="panel-heading">
               <div>
                 <h2>Vendas mês a mês</h2>
@@ -269,8 +302,8 @@
           </article>
         </div>
 
-        <div class="workspace-grid">
-          <article class="panel">
+        <div class="workspace-grid home-products-grid">
+          <article class="panel home-panel-products">
             <div class="panel-heading">
               <div>
                 <h2>Mais vendidos</h2>
@@ -281,7 +314,7 @@
             <div id="home-top-products" class="stack-list"></div>
           </article>
 
-          <article class="panel">
+          <article class="panel home-panel-products">
             <div class="panel-heading">
               <div>
                 <h2>Menos vendidos</h2>

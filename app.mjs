@@ -7146,6 +7146,7 @@ async function initApp() {
   let lastGeneratedTemporaryPassword = "";
 
   const tabButtons = [...document.querySelectorAll(".tab-button")];
+  const menuShortcutButtons = [...document.querySelectorAll("[data-menu-shortcut]")];
   const tabPanels = [...document.querySelectorAll(".tab-panel")];
   const appMenuShell = document.querySelector(".app-menu-shell");
   const appHomeShortcut = document.getElementById("app-home-shortcut");
@@ -7444,6 +7445,13 @@ async function initApp() {
     if (appHomeShortcut) {
       appHomeShortcut.hidden = !logged || !Boolean(getUserTabPermissions(accessControl, currentUser).home);
     }
+    menuShortcutButtons.forEach((button) => {
+      const target = button.dataset.menuShortcut;
+      const permissions = logged ? getUserTabPermissions(accessControl, currentUser) : {};
+      const allowed = logged && Boolean(permissions[target]);
+      button.hidden = !allowed;
+      button.disabled = !allowed;
+    });
     tabButtons.forEach((button) => {
       const tab = button.dataset.tabTarget;
       let allowed = false;
@@ -9542,6 +9550,7 @@ async function initApp() {
     const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const getMonthKey = (value) => (typeof value === "string" && value.length >= 7 ? value.slice(0, 7) : "");
     const monthlyQuotes = state.quoteHistory.filter((item) => getMonthKey(item.createdAt) === currentMonthKey);
+    const monthlyWorkOrders = state.workOrders.filter((item) => getMonthKey(item.createdAt || item.updatedAt || item.deliveryDate) === currentMonthKey);
     const soldQuotes = monthlyQuotes.filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status)));
     const quoteCount = monthlyQuotes.length;
     const approvedCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "approved").length;
@@ -9566,6 +9575,10 @@ async function initApp() {
     const topProducts = document.getElementById("home-top-products");
     const lowProducts = document.getElementById("home-low-products");
     const dashboardPermissions = getUserDashboardPermissions(accessControl, currentUser);
+    const activeMonth = new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit" })
+      .format(now)
+      .replace(".", "")
+      .toUpperCase();
 
     document.getElementById("home-quote-count").textContent = formatInteger(quoteCount);
     document.getElementById("home-conversion-rate").textContent = `${formatDecimal(conversionRate, 1)}%`;
@@ -9573,6 +9586,10 @@ async function initApp() {
     document.getElementById("home-pending-value").textContent = formatCurrency(pendingValue);
     document.getElementById("home-min-quote-value").textContent = formatCurrency(minQuoteValue);
     document.getElementById("home-max-quote-value").textContent = formatCurrency(maxQuoteValue);
+    document.getElementById("home-active-month").textContent = activeMonth;
+    document.getElementById("home-approved-count").textContent = formatInteger(conversionCount);
+    document.getElementById("home-os-count").textContent = formatInteger(monthlyWorkOrders.length);
+    document.getElementById("home-open-count").textContent = formatInteger(pendingCount);
 
     if (statusChart) {
       statusChart.closest(".panel")?.toggleAttribute("hidden", !dashboardPermissions.statusChart);
@@ -9659,12 +9676,14 @@ async function initApp() {
       `;
     }
     const renderProductList = (items, emptyMessage) => items.length
-      ? items.map((item) => `
+      ? items.map((item, index) => `
           <article class="list-card compact-card">
-            <div>
+            <span class="list-rank">${String(index + 1).padStart(2, "0")}</span>
+            <div class="list-card-main">
               <h3>${escapeHtml(item.label)}</h3>
               <p class="list-meta">${formatInteger(item.count)} unidades | ${escapeHtml(formatCurrency(item.total))}</p>
             </div>
+            <span class="list-card-spark" aria-hidden="true"></span>
           </article>
         `).join("")
       : `<div class="empty-state"><strong>Sem dados suficientes</strong><span>${escapeHtml(emptyMessage)}</span></div>`;
@@ -10644,7 +10663,7 @@ async function initApp() {
     });
   });
 
-  document.querySelectorAll("[data-menu-shortcut]").forEach((button) => {
+  menuShortcutButtons.forEach((button) => {
     button.addEventListener("click", () => {
       selectTab(button.dataset.menuShortcut);
       closeSettingsPopover();
