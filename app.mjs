@@ -7153,7 +7153,7 @@ async function initApp() {
   const appMenuPanel = document.getElementById("main-tab-menu");
   const menuSettingsToggle = document.getElementById("menu-settings-toggle");
   const menuSettingsPopover = document.getElementById("menu-settings-popover");
-  const settingsOnlyTabs = new Set(["conta", "configuracao"]);
+  const settingsOnlyTabs = new Set(["conta", "configuracao", "equipe"]);
 
   function isDesktopSidebarMode() {
     const activeTab = document.querySelector(".tab-panel.is-active")?.dataset.tabPanel || "login";
