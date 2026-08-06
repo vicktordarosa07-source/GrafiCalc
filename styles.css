@@ -1028,6 +1028,17 @@ button {
   color: var(--muted);
 }
 
+.tab-menu-section-label {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  padding: 6px 10px 2px;
+  color: rgba(60, 84, 92, 0.78);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
 .menu-settings-card {
   display: grid;
   justify-items: center;
@@ -5049,6 +5060,15 @@ body::before {
   line-height: 1.06;
   letter-spacing: 0.02em;
   word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.page-shell:not(.is-auth-mode) .tab-bar .tab-menu-section-label {
+  padding: 8px 4px 2px;
+  font-size: 0.5rem;
+  letter-spacing: 0.1em;
+  text-align: center;
+  line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
