@@ -9659,6 +9659,18 @@ async function initApp() {
         { id: "cancelled", label: "Reprovados", count: cancelledCount, tone: "cancelled" },
         { id: "completed", label: "Expirados", count: Math.max(0, completedCount - convertedCount), tone: "completed" },
       ];
+      if (!quoteCount) {
+        statusChart.innerHTML = `
+          <div class="home-chart-empty home-chart-empty-status">
+            <div class="home-chart-empty-figure home-chart-empty-donut" aria-hidden="true"></div>
+            <div class="home-chart-empty-copy">
+              <strong>Os status do mês aparecem aqui</strong>
+              <span>Assim que você salvar orçamentos, o painel passa a mostrar a distribuição entre aprovados, pendentes, análise e perdas.</span>
+            </div>
+          </div>
+        `;
+        return;
+      }
       const totalStatuses = Math.max(1, chartData.reduce((sum, item) => sum + item.count, 0));
       let cumulative = 0;
       const donutStops = chartData.map((item) => {
@@ -9720,6 +9732,27 @@ async function initApp() {
 
     if (monthlySales) {
       monthlySales.closest(".panel")?.toggleAttribute("hidden", !dashboardPermissions.monthlySales);
+      if (!state.workOrders.length && !state.quoteHistory.length) {
+        monthlySales.innerHTML = `
+          <div class="home-chart-empty home-chart-empty-bars">
+            <div class="home-chart-empty-bars-visual" aria-hidden="true">
+              <span style="height:22%"></span>
+              <span style="height:34%"></span>
+              <span style="height:28%"></span>
+              <span style="height:46%"></span>
+              <span style="height:38%"></span>
+              <span style="height:58%"></span>
+              <span style="height:52%"></span>
+              <span style="height:68%"></span>
+            </div>
+            <div class="home-chart-empty-copy">
+              <strong>Seu comparativo mensal nasce aqui</strong>
+              <span>Quando as OSs e os orçamentos aprovados começarem a entrar, o gráfico mostra a evolução do faturamento mês a mês.</span>
+            </div>
+          </div>
+        `;
+        return;
+      }
       const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "short" });
       const historicalClosedAverage = state.workOrders.length
         ? state.workOrders
@@ -9790,7 +9823,13 @@ async function initApp() {
           `).join("")}
         </div>
       `
-      : `<div class="empty-state"><strong>Sem dados suficientes</strong><span>${escapeHtml(emptyMessage)}</span></div>`;
+      : `
+        <div class="empty-state empty-state-dashboard">
+          <div class="empty-state-dashboard-icon" aria-hidden="true"></div>
+          <strong>Sem dados suficientes</strong>
+          <span>${escapeHtml(emptyMessage)}</span>
+        </div>
+      `;
 
     if (topProducts) {
       topProducts.closest(".panel")?.toggleAttribute("hidden", !dashboardPermissions.topProducts);
