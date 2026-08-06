@@ -6977,6 +6977,12 @@ async function initApp() {
   let accessControl = loadAccessControl();
   let currentUser = loadAuthSession(authUsers);
   let pendingVerificationEmail = loadPendingVerificationEmail();
+  const previewParams = new URLSearchParams(window.location.search);
+  const isPreviewHomeMode = previewParams.get("preview-home") === "1";
+  if (isPreviewHomeMode) {
+    saveAuthSession(DEVELOPER_ACCOUNT);
+    currentUser = DEVELOPER_ACCOUNT;
+  }
   const hiddenStateCleanupChanged = cleanupHiddenImpressosEntries(config, state);
   if (hiddenStateCleanupChanged) {
     saveToStorage(STORAGE_KEYS.state, state);
@@ -7364,6 +7370,11 @@ async function initApp() {
   }
 
   function reloadAuthContextFromStorage() {
+    if (isPreviewHomeMode) {
+      currentUser = DEVELOPER_ACCOUNT;
+      saveAuthSession(DEVELOPER_ACCOUNT);
+      return;
+    }
     const previousUserId = currentUser?.id || "";
     authUsers = loadAuthUsers();
     accessControl = loadAccessControl();
@@ -7379,6 +7390,16 @@ async function initApp() {
   }
 
   async function hydrateServerSecuritySession() {
+    if (isPreviewHomeMode) {
+      serverSecuritySession = {
+        developerLoggedIn: true,
+        configUnlocked: true,
+        username: DEVELOPER_ACCOUNT.username,
+      };
+      isConfigUnlocked = true;
+      saveSessionFlag(SESSION_KEYS.configUnlocked, true);
+      return;
+    }
     try {
       const result = await requestServerAuthSession();
       serverSecuritySession = {
@@ -9548,14 +9569,18 @@ async function initApp() {
   function renderHomeTab() {
     const now = new Date();
     const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const previousMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const previousMonthKey = `${previousMonthDate.getFullYear()}-${String(previousMonthDate.getMonth() + 1).padStart(2, "0")}`;
     const getMonthKey = (value) => (typeof value === "string" && value.length >= 7 ? value.slice(0, 7) : "");
     const monthlyQuotes = state.quoteHistory.filter((item) => getMonthKey(item.createdAt) === currentMonthKey);
+    const previousMonthlyQuotes = state.quoteHistory.filter((item) => getMonthKey(item.createdAt) === previousMonthKey);
     const monthlyWorkOrders = state.workOrders.filter((item) => getMonthKey(item.createdAt || item.updatedAt || item.deliveryDate) === currentMonthKey);
     const soldQuotes = monthlyQuotes.filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status)));
     const quoteCount = monthlyQuotes.length;
-    const approvedCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "approved").length;
+    const approvedCount = monthlyQuotes.filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status))).length;
     const completedCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "completed").length;
-    const pendingCount = monthlyQuotes.filter((item) => ["pending", "sent", "negotiation"].includes(normalizeQuoteStatus(item.status))).length;
+    const pendingCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "pending").length;
+    const inAnalysisCount = monthlyQuotes.filter((item) => ["sent", "negotiation"].includes(normalizeQuoteStatus(item.status))).length;
     const convertedCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "converted").length;
     const cancelledCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "cancelled").length;
     const conversionCount = approvedCount + convertedCount + completedCount;
@@ -9569,6 +9594,14 @@ async function initApp() {
     const quoteValues = monthlyQuotes.map((item) => Number(item.total || 0)).filter((value) => value > 0);
     const minQuoteValue = quoteValues.length ? Math.min(...quoteValues) : 0;
     const maxQuoteValue = quoteValues.length ? Math.max(...quoteValues) : 0;
+    const previousApprovedValue = previousMonthlyQuotes
+      .filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status)))
+      .reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const previousPendingValue = previousMonthlyQuotes
+      .filter((item) => ["pending", "sent", "negotiation"].includes(normalizeQuoteStatus(item.status)))
+      .reduce((sum, item) => sum + Number(item.total || 0), 0);
+    const previousConversionCount = previousMonthlyQuotes.filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status))).length;
+    const previousConversionRate = previousMonthlyQuotes.length ? (previousConversionCount / previousMonthlyQuotes.length) * 100 : 0;
 
     const statusChart = document.getElementById("home-status-chart");
     const monthlySales = document.getElementById("home-monthly-sales");
@@ -9579,6 +9612,29 @@ async function initApp() {
       .format(now)
       .replace(".", "")
       .toUpperCase();
+    const currentUserLabel = currentUser?.username || currentUser?.company || "Usuário";
+    const currentRoleLabel = currentUser?.role === "developer"
+      ? "Administrador"
+      : currentUser?.role === "employee"
+        ? "Equipe comercial"
+        : "Painel comercial";
+    const percentTrend = (current, previous) => {
+      if (!previous && !current) {
+        return "0% vs. mês anterior";
+      }
+      if (!previous && current) {
+        return `↑ ${formatDecimal(100, 1)}% vs. mês anterior`;
+      }
+      const variation = ((current - previous) / previous) * 100;
+      return `${variation >= 0 ? "↑" : "↓"} ${formatDecimal(Math.abs(variation), 1)}% vs. mês anterior`;
+    };
+    const pointTrend = (current, previous) => {
+      const variation = current - previous;
+      return `${variation >= 0 ? "↑" : "↓"} ${formatDecimal(Math.abs(variation), 1)} p.p. vs. mês anterior`;
+    };
+
+    document.getElementById("home-profile-name").textContent = currentUserLabel;
+    document.getElementById("home-profile-role").textContent = currentRoleLabel;
 
     document.getElementById("home-quote-count").textContent = formatInteger(quoteCount);
     document.getElementById("home-conversion-rate").textContent = `${formatDecimal(conversionRate, 1)}%`;
@@ -9586,32 +9642,53 @@ async function initApp() {
     document.getElementById("home-pending-value").textContent = formatCurrency(pendingValue);
     document.getElementById("home-min-quote-value").textContent = formatCurrency(minQuoteValue);
     document.getElementById("home-max-quote-value").textContent = formatCurrency(maxQuoteValue);
+    document.getElementById("home-quote-trend").textContent = percentTrend(quoteCount, previousMonthlyQuotes.length);
+    document.getElementById("home-conversion-trend").textContent = pointTrend(conversionRate, previousConversionRate);
+    document.getElementById("home-approved-trend").textContent = percentTrend(approvedValue, previousApprovedValue);
+    document.getElementById("home-pending-trend").textContent = percentTrend(pendingValue, previousPendingValue);
+    document.getElementById("home-min-quote-label").textContent = quoteCount ? `${formatInteger(quoteCount)} orçamentos no mês` : "Sem dados no mês";
+    document.getElementById("home-max-quote-label").textContent = monthlyWorkOrders.length ? `${formatInteger(monthlyWorkOrders.length)} OSs neste mês` : "Sem dados no mês";
     document.getElementById("home-active-month").textContent = activeMonth;
-    document.getElementById("home-approved-count").textContent = formatInteger(conversionCount);
-    document.getElementById("home-os-count").textContent = formatInteger(monthlyWorkOrders.length);
-    document.getElementById("home-open-count").textContent = formatInteger(pendingCount);
 
     if (statusChart) {
       statusChart.closest(".panel")?.toggleAttribute("hidden", !dashboardPermissions.statusChart);
       const chartData = [
-        { id: "pending", label: "Pendentes", count: pendingCount, tone: "pending" },
         { id: "approved", label: "Aprovados", count: approvedCount, tone: "approved" },
-        { id: "converted", label: "Viraram OS", count: convertedCount, tone: "accent" },
-        { id: "completed", label: "Concluídos", count: completedCount, tone: "completed" },
-        { id: "cancelled", label: "Cancelados", count: cancelledCount, tone: "cancelled" },
+        { id: "pending", label: "Pendentes", count: pendingCount, tone: "pending" },
+        { id: "analysis", label: "Em análise", count: inAnalysisCount, tone: "accent" },
+        { id: "cancelled", label: "Reprovados", count: cancelledCount, tone: "cancelled" },
+        { id: "completed", label: "Expirados", count: Math.max(0, completedCount - convertedCount), tone: "completed" },
       ];
-      const maxCount = Math.max(1, ...chartData.map((item) => item.count));
+      const totalStatuses = Math.max(1, chartData.reduce((sum, item) => sum + item.count, 0));
+      let cumulative = 0;
+      const donutStops = chartData.map((item) => {
+        const start = cumulative;
+        cumulative += (item.count / totalStatuses) * 100;
+        return `${resolveHomeToneColor(item.tone)} ${start}% ${cumulative}%`;
+      });
       statusChart.innerHTML = `
-        <div class="dashboard-chart-grid">
-          ${chartData.map((item) => `
-            <article class="dashboard-bar-card">
-              <span>${escapeHtml(item.label)}</span>
-              <strong>${formatInteger(item.count)}</strong>
-              <div class="dashboard-bar-track">
-                <div class="dashboard-bar dashboard-bar-${escapeHtml(item.tone)}" style="width:${(item.count / maxCount) * 100}%"></div>
+        <div class="home-status-layout">
+          <div class="home-donut-card">
+            <div class="home-donut-ring" style="--donut-fill:${escapeHtml(donutStops.join(", "))};">
+              <div class="home-donut-center">
+                <strong>${formatInteger(quoteCount)}</strong>
+                <span>orçamentos este mês</span>
               </div>
-            </article>
-          `).join("")}
+            </div>
+          </div>
+          <div class="home-status-legend">
+            ${chartData.map((item) => {
+              const percentage = totalStatuses ? (item.count / totalStatuses) * 100 : 0;
+              return `
+                <article class="home-status-legend-item">
+                  <span class="home-status-swatch home-status-swatch-${escapeHtml(item.tone)}" aria-hidden="true"></span>
+                  <span class="home-status-legend-label">${escapeHtml(item.label)}</span>
+                  <strong>${formatInteger(item.count)}</strong>
+                  <small>${formatDecimal(percentage, 1)}%</small>
+                </article>
+              `;
+            }).join("")}
+          </div>
         </div>
       `;
     }
@@ -9643,49 +9720,76 @@ async function initApp() {
 
     if (monthlySales) {
       monthlySales.closest(".panel")?.toggleAttribute("hidden", !dashboardPermissions.monthlySales);
-      const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "short", year: "2-digit" });
-      const monthlyData = Array.from({ length: 6 }, (_, index) => {
-        const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+      const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "short" });
+      const historicalClosedAverage = state.workOrders.length
+        ? state.workOrders
+          .filter((item) => ["delivered", "closed"].includes(normalizeWorkOrderStatus(item.status)))
+          .reduce((sum, item) => sum + Number(item.total || 0), 0) / Math.max(1, state.workOrders.filter((item) => ["delivered", "closed"].includes(normalizeWorkOrderStatus(item.status))).length)
+        : 0;
+      const approvedProjectionBase = monthlyQuotes.length
+        ? approvedValue / Math.max(1, now.getMonth() + 1)
+        : historicalClosedAverage;
+      const monthlyData = Array.from({ length: 12 }, (_, index) => {
+        const date = new Date(now.getFullYear(), index, 1);
         const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
         const orders = state.workOrders.filter((item) => {
           const status = normalizeWorkOrderStatus(item.status);
           const dateBase = item.deliveryDate || item.updatedAt || item.createdAt || "";
           return ["delivered", "closed"].includes(status) && getMonthKey(dateBase) === key;
         });
+        const isFuture = date.getMonth() > now.getMonth();
+        const total = orders.reduce((sum, item) => sum + Number(item.total || 0), 0);
         return {
           key,
           label: monthFormatter.format(date).replace(".", ""),
           count: orders.length,
-          total: orders.reduce((sum, item) => sum + Number(item.total || 0), 0),
+          total: isFuture ? approvedProjectionBase : total,
+          projected: isFuture,
         };
       });
       const maxMonthlyValue = Math.max(1, ...monthlyData.map((item) => item.total));
       monthlySales.innerHTML = `
-        <div class="dashboard-chart-grid dashboard-month-grid">
+        <div class="home-monthly-chart">
           ${monthlyData.map((item) => `
-            <article class="dashboard-bar-card">
-              <span>${escapeHtml(item.label)}</span>
-              <strong>${escapeHtml(formatCurrency(item.total))}</strong>
-              <small>${formatInteger(item.count)} OSs fechadas</small>
-              <div class="dashboard-bar-track">
-                <div class="dashboard-bar dashboard-bar-approved" style="width:${(item.total / maxMonthlyValue) * 100}%"></div>
+            <article class="home-month-bar-card${item.key === currentMonthKey ? " is-current" : ""}${item.projected ? " is-projected" : ""}">
+              <span class="home-month-bar-value">${escapeHtml(formatCurrency(item.total))}</span>
+              <div class="home-month-bar-wrap">
+                <div class="home-month-bar-fill" style="height:${Math.max(12, (item.total / maxMonthlyValue) * 100)}%"></div>
               </div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <small>${item.projected ? "Projeção" : `${formatInteger(item.count)} OSs`}</small>
             </article>
           `).join("")}
         </div>
       `;
     }
     const renderProductList = (items, emptyMessage) => items.length
-      ? items.map((item, index) => `
-          <article class="list-card compact-card">
-            <span class="list-rank">${String(index + 1).padStart(2, "0")}</span>
-            <div class="list-card-main">
-              <h3>${escapeHtml(item.label)}</h3>
-              <p class="list-meta">${formatInteger(item.count)} unidades | ${escapeHtml(formatCurrency(item.total))}</p>
-            </div>
-            <span class="list-card-spark" aria-hidden="true"></span>
-          </article>
-        `).join("")
+      ? `
+        <div class="product-performance-table">
+          <div class="product-performance-head">
+            <span>#</span>
+            <span>Produto</span>
+            <span>Qtde.</span>
+            <span>Faturamento</span>
+            <span></span>
+          </div>
+          ${items.map((item, index) => `
+            <article class="product-performance-row">
+              <span class="product-rank">${index + 1}</span>
+              <div class="product-main">
+                <span class="product-thumb" aria-hidden="true"></span>
+                <div>
+                  <h3>${escapeHtml(item.label)}</h3>
+                  <p class="list-meta">Ticket ${escapeHtml(formatCurrency(item.total / Math.max(1, item.count)))}</p>
+                </div>
+              </div>
+              <strong>${formatInteger(item.count)}</strong>
+              <strong>${escapeHtml(formatCurrency(item.total))}</strong>
+              <span class="list-card-spark" aria-hidden="true"></span>
+            </article>
+          `).join("")}
+        </div>
+      `
       : `<div class="empty-state"><strong>Sem dados suficientes</strong><span>${escapeHtml(emptyMessage)}</span></div>`;
 
     if (topProducts) {
@@ -9696,6 +9800,17 @@ async function initApp() {
       lowProducts.closest(".panel")?.toggleAttribute("hidden", !dashboardPermissions.lowProducts);
       lowProducts.innerHTML = renderProductList(lowList, "Quando mais produtos forem vendidos, o ranking de baixa saída aparece aqui.");
     }
+  }
+
+  function resolveHomeToneColor(tone) {
+    const toneMap = {
+      approved: "#28c890",
+      pending: "#d88a4c",
+      accent: "#6cb3f2",
+      cancelled: "#74808f",
+      completed: "#d5d8de",
+    };
+    return toneMap[tone] || "#28c890";
   }
 
   function getBlockSelectOptions(config, tab, row) {
@@ -13418,6 +13533,9 @@ async function initApp() {
   await hydrateServerSecuritySession();
   startSharedRefresh();
   renderAll();
+  if (isPreviewHomeMode) {
+    selectTab("home");
+  }
 }
 
   if (typeof window !== "undefined" && typeof document !== "undefined") {

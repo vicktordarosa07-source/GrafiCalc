@@ -205,124 +205,204 @@
       </section>
 
       <section class="tab-panel" data-tab-panel="home">
-        <article class="panel home-command-panel">
-          <div class="home-command-copy">
-            <h2>Gestão inteligente. Resultados que impressionam.</h2>
-            <p class="panel-copy">
-              Acompanhe conversão, vendas, faixas de preço e movimentação comercial do GrafiCalc
-              com uma leitura mais clara, rápida e pronta para tomada de decisão.
-            </p>
-            <div class="home-command-badges">
-              <span>Operação comercial</span>
-              <span>Visão do mês</span>
-              <span>Base compartilhada</span>
+        <article class="panel home-overview-shell">
+          <div class="home-overview-brand">
+            <div class="home-overview-logo-wrap">
+              <img class="home-overview-logo" src="./assets/logo-graficalc.png" alt="GrafiCalc">
+            </div>
+            <div class="home-overview-divider" aria-hidden="true"></div>
+          </div>
+          <div class="home-overview-copy">
+            <div class="home-overview-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M4 18.5h16"></path>
+                <path d="M7 16V9.5"></path>
+                <path d="M12 16V6.5"></path>
+                <path d="M17 16v-4"></path>
+                <path d="M6 10.5 10 7l3 2.5 5-5"></path>
+                <path d="m16.9 4.5 2.1.1-.1 2.1"></path>
+              </svg>
+            </div>
+            <div>
+              <h2>Gestão inteligente. Resultados que impressionam.</h2>
+              <p>Acompanhe seus números e tome decisões com precisão.</p>
             </div>
           </div>
-          <div class="home-command-meta">
-            <article class="home-mini-card">
-              <span>Mês ativo</span>
-              <strong id="home-active-month">-</strong>
+          <div class="home-overview-statuses">
+            <article class="home-status-pill">
+              <span class="home-status-dot" aria-hidden="true"></span>
+              <div>
+                <strong>Sistema online</strong>
+                <small>Todos os serviços ativos</small>
+              </div>
             </article>
-            <article class="home-mini-card">
-              <span>Aprovados no mês</span>
-              <strong id="home-approved-count">0</strong>
-            </article>
-            <article class="home-mini-card">
-              <span>OS geradas</span>
-              <strong id="home-os-count">0</strong>
-            </article>
-            <article class="home-mini-card">
-              <span>Em aberto</span>
-              <strong id="home-open-count">0</strong>
+            <article class="home-profile-pill">
+              <div class="home-profile-avatar" aria-hidden="true"></div>
+              <div>
+                <strong id="home-profile-name">Administrador</strong>
+                <small id="home-profile-role">Painel comercial</small>
+              </div>
             </article>
           </div>
         </article>
 
-        <div class="summary-grid home-summary-grid">
-          <article class="summary-card summary-card-orcamentos">
-            <span class="summary-label">Orçamentos no mês</span>
-            <strong id="home-quote-count">0</strong>
+        <div class="summary-grid home-kpi-grid">
+          <article class="summary-card home-kpi-card summary-card-orcamentos">
+            <span class="home-kpi-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M7 4.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V6A1.5 1.5 0 0 1 7.5 4.5Z"></path>
+                <path d="M14 4.5V9h4.5"></path>
+                <path d="M9 12h6"></path>
+                <path d="M9 15.5h6"></path>
+              </svg>
+            </span>
+            <div class="home-kpi-content">
+              <span class="summary-label">Orçamentos este mês</span>
+              <strong id="home-quote-count">0</strong>
+              <small id="home-quote-trend">0% vs. mês anterior</small>
+            </div>
           </article>
-          <article class="summary-card summary-card-conversao">
-            <span class="summary-label">Conversão</span>
-            <strong id="home-conversion-rate">0%</strong>
+          <article class="summary-card home-kpi-card summary-card-conversao">
+            <span class="home-kpi-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <circle cx="12" cy="12" r="7.5"></circle>
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="m14.8 9.2 4-4"></path>
+                <path d="m16 5.2 2.8-.1.1 2.8"></path>
+              </svg>
+            </span>
+            <div class="home-kpi-content">
+              <span class="summary-label">Taxa de conversão</span>
+              <strong id="home-conversion-rate">0%</strong>
+              <small id="home-conversion-trend">0 p.p. vs. mês anterior</small>
+            </div>
           </article>
-          <article class="summary-card summary-card-aprovado">
-            <span class="summary-label">Valor aprovado</span>
-            <strong id="home-approved-value">R$ 0,00</strong>
+          <article class="summary-card home-kpi-card summary-card-aprovado">
+            <span class="home-kpi-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <circle cx="12" cy="12" r="8.5"></circle>
+                <path d="m8.7 12.2 2.2 2.3 4.7-5.2"></path>
+              </svg>
+            </span>
+            <div class="home-kpi-content">
+              <span class="summary-label">Valor aprovado</span>
+              <strong id="home-approved-value">R$ 0,00</strong>
+              <small id="home-approved-trend">0% vs. mês anterior</small>
+            </div>
           </article>
-          <article class="summary-card summary-card-pendente">
-            <span class="summary-label">Valor pendente</span>
-            <strong id="home-pending-value">R$ 0,00</strong>
+          <article class="summary-card home-kpi-card summary-card-pendente">
+            <span class="home-kpi-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <circle cx="12" cy="12" r="8.5"></circle>
+                <path d="M12 7v5l3.4 2"></path>
+              </svg>
+            </span>
+            <div class="home-kpi-content">
+              <span class="summary-label">Valor pendente</span>
+              <strong id="home-pending-value">R$ 0,00</strong>
+              <small id="home-pending-trend">0% vs. mês anterior</small>
+            </div>
           </article>
-        </div>
-
-        <div class="summary-grid home-summary-grid">
-          <article class="summary-card summary-card-minimo">
-            <span class="summary-label">Menor orçamento</span>
-            <strong id="home-min-quote-value">R$ 0,00</strong>
+          <article class="summary-card home-kpi-card summary-card-minimo">
+            <span class="home-kpi-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M6.5 9.5 12 4l5.5 5.5"></path>
+                <path d="M12 5v14"></path>
+              </svg>
+            </span>
+            <div class="home-kpi-content">
+              <span class="summary-label">Menor orçamento</span>
+              <strong id="home-min-quote-value">R$ 0,00</strong>
+              <small id="home-min-quote-label">Sem dados no mês</small>
+            </div>
           </article>
-          <article class="summary-card summary-card-maximo">
-            <span class="summary-label">Maior orçamento</span>
-            <strong id="home-max-quote-value">R$ 0,00</strong>
+          <article class="summary-card home-kpi-card summary-card-maximo">
+            <span class="home-kpi-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M6.5 14.5 12 20l5.5-5.5"></path>
+                <path d="M12 19V5"></path>
+              </svg>
+            </span>
+            <div class="home-kpi-content">
+              <span class="summary-label">Maior orçamento</span>
+              <strong id="home-max-quote-value">R$ 0,00</strong>
+              <small id="home-max-quote-label">Sem dados no mês</small>
+            </div>
           </article>
-          <article class="summary-card summary-card-barato">
-            <span class="summary-label">Produto mais barato</span>
-            <strong id="home-cheapest-product-value">R$ 0,00</strong>
-            <small id="home-cheapest-product-label">Sem dados no mês</small>
+          <article class="summary-card home-kpi-card summary-card-barato">
+            <span class="home-kpi-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="M11 4.5H6.5A1.5 1.5 0 0 0 5 6v4.5l7 7 7-7-7-6Z"></path>
+                <circle cx="8.5" cy="8.5" r="1.2"></circle>
+              </svg>
+            </span>
+            <div class="home-kpi-content">
+              <span class="summary-label">Produto mais barato vendido</span>
+              <strong id="home-cheapest-product-value">R$ 0,00</strong>
+              <small id="home-cheapest-product-label">Sem dados no mês</small>
+            </div>
           </article>
-          <article class="summary-card summary-card-caro">
-            <span class="summary-label">Produto mais caro</span>
-            <strong id="home-most-expensive-product-value">R$ 0,00</strong>
-            <small id="home-most-expensive-product-label">Sem dados no mês</small>
+          <article class="summary-card home-kpi-card summary-card-caro">
+            <span class="home-kpi-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                <path d="m12 4.5 6.4 4-2 8H7.6l-2-8L12 4.5Z"></path>
+              </svg>
+            </span>
+            <div class="home-kpi-content">
+              <span class="summary-label">Produto mais caro vendido</span>
+              <strong id="home-most-expensive-product-value">R$ 0,00</strong>
+              <small id="home-most-expensive-product-label">Sem dados no mês</small>
+            </div>
           </article>
         </div>
 
         <div class="workspace-grid home-dashboard-grid">
-          <article class="panel home-panel-chart">
-            <div class="panel-heading">
+          <article class="panel home-panel-chart home-status-panel">
+            <div class="panel-heading home-section-heading">
               <div>
-                <h2>Painel comercial</h2>
-                <p class="panel-copy">Acompanhe conversão, volume de orçamentos e resultado por status.</p>
+                <h2>Status de vendas</h2>
+                <p class="panel-copy">Comparativo dos orçamentos do mês por etapa comercial.</p>
               </div>
+              <span class="home-heading-dotmenu" aria-hidden="true">•••</span>
             </div>
-
             <div id="home-status-chart" class="dashboard-chart"></div>
           </article>
 
-          <article class="panel home-panel-chart">
-            <div class="panel-heading">
+          <article class="panel home-panel-chart home-sales-panel">
+            <div class="panel-heading home-section-heading">
               <div>
-                <h2>Vendas mês a mês</h2>
-                <p class="panel-copy">Resultado das OSs fechadas e entregues por mês.</p>
+                <h2>Vendas mensais</h2>
+                <p class="panel-copy">Valor aprovado e OSs fechadas mês a mês.</p>
+              </div>
+              <div class="home-period-chip">
+                <span id="home-active-month">Ano atual</span>
               </div>
             </div>
-
             <div id="home-monthly-sales" class="dashboard-chart"></div>
           </article>
         </div>
 
         <div class="workspace-grid home-products-grid">
           <article class="panel home-panel-products">
-            <div class="panel-heading">
+            <div class="panel-heading home-section-heading">
               <div>
-                <h2>Mais vendidos</h2>
-                <p class="panel-copy">Produtos com maior saída entre orçamentos aprovados e concluídos.</p>
+                <h2>Produtos mais vendidos</h2>
+                <p class="panel-copy">Ranking com quantidade e faturamento dos itens com maior giro.</p>
               </div>
+              <span class="home-panel-link">Ver todos</span>
             </div>
-
-            <div id="home-top-products" class="stack-list"></div>
+            <div id="home-top-products" class="stack-list product-performance-list"></div>
           </article>
 
           <article class="panel home-panel-products">
-            <div class="panel-heading">
+            <div class="panel-heading home-section-heading">
               <div>
-                <h2>Menos vendidos</h2>
-                <p class="panel-copy">Itens com menor recorrência, úteis para revisar mix e campanhas.</p>
+                <h2>Produtos menos vendidos</h2>
+                <p class="panel-copy">Itens com menor saída para ajudar na revisão do mix comercial.</p>
               </div>
+              <span class="home-panel-link">Ver todos</span>
             </div>
-
-            <div id="home-low-products" class="stack-list"></div>
+            <div id="home-low-products" class="stack-list product-performance-list"></div>
           </article>
         </div>
       </section>
