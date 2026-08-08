@@ -5,6 +5,31 @@ const crypto = require("crypto");
 const os = require("os");
 const { URL } = require("url");
 
+function loadGrafiCalcLocalEnv() {
+  const envPath = path.join(__dirname, "graficalc.local-env.ps1");
+  if (!fs.existsSync(envPath)) {
+    return;
+  }
+  try {
+    const content = fs.readFileSync(envPath, "utf8");
+    const lines = content.split(/\r?\n/);
+    for (const line of lines) {
+      const match = line.match(/^\s*\$env:([A-Za-z_][A-Za-z0-9_]*)\s*=\s*"([^"]*)"\s*$/);
+      if (!match) {
+        continue;
+      }
+      const [, key, value] = match;
+      if (!process.env[key]) {
+        process.env[key] = value;
+      }
+    }
+  } catch {
+    // If local env cannot be read, the app falls back to current process env.
+  }
+}
+
+loadGrafiCalcLocalEnv();
+
 const PORT = Number(process.env.PORT || 3210);
 const HOST = process.env.HOST || "0.0.0.0";
 const ROOT_DIR = __dirname;
@@ -24,10 +49,15 @@ const GRAFICALC_TENANT_SLUG = String(process.env.GRAFICALC_TENANT_SLUG || "defau
 const DEVELOPER_USERNAME = String(process.env.GRAFICALC_DEVELOPER_USERNAME || "").trim();
 const DEVELOPER_PASSWORD = String(process.env.GRAFICALC_DEVELOPER_PASSWORD || "").trim();
 const CONFIG_ACCESS_PASSWORD = String(process.env.GRAFICALC_CONFIG_PASSWORD || "").trim();
+const SESSION_SECRET = String(
+  process.env.GRAFICALC_SESSION_SECRET
+  || process.env.SUPABASE_SERVICE_ROLE_KEY
+  || process.env.GRAFICALC_DEVELOPER_PASSWORD
+  || "graficalc-local-session-secret"
+).trim();
 const SHARED_BACKEND_MODE = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? "supabase" : "local-file";
 const SESSION_COOKIE_NAME = "graficalc_session";
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
-const SECURITY_SESSIONS = new Map();
 
 function getEmailRuntimeStatus() {
   return {
@@ -51,16 +81,6 @@ const MIME_TYPES = {
   ".ico": "image/x-icon",
   ".txt": "text/plain; charset=utf-8",
 };
-
-function cleanupExpiredSessions() {
-  const now = Date.now();
-  for (const [token, session] of SECURITY_SESSIONS.entries()) {
-    const expiresAt = Number(session?.expiresAt || 0);
-    if (!expiresAt || expiresAt <= now) {
-      SECURITY_SESSIONS.delete(token);
-    }
-  }
-}
 
 function parseCookies(headerValue) {
   return String(headerValue || "")
@@ -105,9 +125,47 @@ function appendSetCookie(response, cookieValue) {
   response.setHeader("Set-Cookie", [existing, cookieValue]);
 }
 
+function base64UrlEncode(value) {
+  return Buffer.from(String(value || ""), "utf8").toString("base64url");
+}
+
+function base64UrlDecode(value) {
+  return Buffer.from(String(value || ""), "base64url").toString("utf8");
+}
+
+function signSessionPayload(encodedPayload) {
+  return crypto
+    .createHmac("sha256", SESSION_SECRET)
+    .update(String(encodedPayload || ""))
+    .digest("base64url");
+}
+
+function serializeSecuritySession(session) {
+  const payload = base64UrlEncode(JSON.stringify(session));
+  const signature = signSessionPayload(payload);
+  return `${payload}.${signature}`;
+}
+
+function parseSecuritySessionToken(token) {
+  if (!token || !String(token).includes(".")) {
+    return null;
+  }
+  const [payload, signature] = String(token).split(".");
+  if (!payload || !signature) {
+    return null;
+  }
+  const expected = signSessionPayload(payload);
+  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+    return null;
+  }
+  try {
+    return JSON.parse(base64UrlDecode(payload));
+  } catch {
+    return null;
+  }
+}
+
 function createSecuritySession(data = {}) {
-  cleanupExpiredSessions();
-  const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = Date.now() + SESSION_TTL_MS;
   const session = {
     role: data.role || "developer",
@@ -116,32 +174,27 @@ function createSecuritySession(data = {}) {
     createdAt: new Date().toISOString(),
     expiresAt,
   };
-  SECURITY_SESSIONS.set(token, session);
+  const token = serializeSecuritySession(session);
   return { token, session };
 }
 
 function getSecuritySession(request) {
-  cleanupExpiredSessions();
   const cookies = parseCookies(request.headers.cookie);
   const token = cookies[SESSION_COOKIE_NAME];
   if (!token) {
     return null;
   }
-  const session = SECURITY_SESSIONS.get(token);
+  const session = parseSecuritySessionToken(token);
   if (!session) {
     return null;
   }
   if (Number(session.expiresAt || 0) <= Date.now()) {
-    SECURITY_SESSIONS.delete(token);
     return null;
   }
   return { token, session };
 }
 
-function clearSecuritySession(response, token) {
-  if (token) {
-    SECURITY_SESSIONS.delete(token);
-  }
+function clearSecuritySession(response) {
   appendSetCookie(response, buildCookieHeader(SESSION_COOKIE_NAME, "", 0));
 }
 
@@ -659,7 +712,7 @@ async function handleRequest(request, response) {
       return;
     }
     const entry = getSecuritySession(request);
-    clearSecuritySession(response, entry?.token);
+    clearSecuritySession(response);
     sendJson(response, 200, {
       ok: true,
       developerLoggedIn: false,
@@ -694,8 +747,8 @@ async function handleRequest(request, response) {
         return;
       }
       entry.session.configUnlocked = true;
-      SECURITY_SESSIONS.set(entry.token, entry.session);
-      applySecuritySessionCookie(response, entry.token);
+      const nextToken = serializeSecuritySession(entry.session);
+      applySecuritySessionCookie(response, nextToken);
       sendJson(response, 200, {
         ok: true,
         configUnlocked: true,

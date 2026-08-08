@@ -1,6 +1,16 @@
-# App interno de orcamento de apostilas
+# GrafiCalc Local
 
-Abra [index.html](C:/Users/Usuário/Documents/Codex/2026-07-08/oi/internal-web-app/index.html) no navegador ou execute [abrir-app.ps1](C:/Users/Usuário/Documents/Codex/2026-07-08/oi/internal-web-app/abrir-app.ps1).
+Para abrir ou reiniciar o preview local com 1 clique, use:
+
+- [iniciar-graficalc.bat](C:/Users/Júnior/Documents/Codex/2026-07-10/internal-web-app/iniciar-graficalc.bat)
+- [abrir-app.ps1](C:/Users/Júnior/Documents/Codex/2026-07-10/internal-web-app/abrir-app.ps1)
+
+O iniciador faz este processo automaticamente:
+
+- fecha a porta `3210` se houver uma instancia antiga presa
+- carrega as variaveis locais do GrafiCalc
+- sobe o arquivo `server.js`
+- abre o navegador em [http://localhost:3210](http://localhost:3210)
 
 O app permite:
 
@@ -11,7 +21,7 @@ O app permite:
 - editar tabelas de preco na aba `Configuracao`
 - montar uma previa bonita de orcamento para o cliente
 
-Observacao:
+Observacoes:
 
 - a leitura de paginas do PDF e automatica, mas se algum arquivo vier com contagem incorreta voce pode ajustar manualmente
 - as configuracoes ficam salvas no navegador usado nesse computador

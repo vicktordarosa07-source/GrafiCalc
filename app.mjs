@@ -7,6 +7,7 @@
   authSession: "graficalc-auth-session-v1",
   authPendingVerification: "graficalc-auth-pending-verification-v1",
   accessControl: "graficalc-access-control-v1",
+  developerPersistentLogin: "graficalc-developer-persistent-login-v1",
 };
 
 const SESSION_KEYS = {
@@ -2137,18 +2138,126 @@ function saveAccessControl(accessControl) {
 
 function loadAuthSession(users) {
   const session = loadFromStorage(STORAGE_KEYS.authSession, (candidate) => candidate && typeof candidate === "object" ? candidate : null);
-  if (!session?.userId) {
+  if (!session?.userId && !session?.username) {
     return null;
   }
-  return users.find((user) => user.id === session.userId && user.status === "active") || null;
+  const activeUsers = Array.isArray(users) ? users : [];
+  const directMatch = activeUsers.find((user) => user.id === session.userId && user.status === "active") || null;
+  if (directMatch) {
+    return directMatch;
+  }
+  const normalizedUsername = String(session?.username || "").trim().toLowerCase();
+  const developerRequested = session?.role === "developer"
+    || session?.userId === DEVELOPER_ACCOUNT.id
+    || normalizedUsername === DEVELOPER_ACCOUNT.username.toLowerCase();
+  if (!developerRequested) {
+    return null;
+  }
+  return activeUsers.find((user) => user.id === DEVELOPER_ACCOUNT.id && user.status === "active")
+    || normalizeUserRecord(DEVELOPER_ACCOUNT);
+}
+
+function hasStoredAuthSession(userId = "") {
+  const normalizedUserId = String(userId || "").trim();
+  const session = loadFromStorage(
+    STORAGE_KEYS.authSession,
+    (candidate) => candidate && typeof candidate === "object" ? candidate : null
+  );
+  if (!session?.userId) {
+    return false;
+  }
+  if (!normalizedUserId) {
+    return true;
+  }
+  return session.userId === normalizedUserId;
+}
+
+function loadDeveloperPersistentLogin() {
+  return loadFromStorage(
+    STORAGE_KEYS.developerPersistentLogin,
+    (candidate) => Boolean(candidate && typeof candidate === "object" && candidate.enabled === true)
+  );
+}
+
+function saveDeveloperPersistentLogin(enabled) {
+  if (!enabled) {
+    localStorage.removeItem(STORAGE_KEYS.developerPersistentLogin);
+    return;
+  }
+  saveToStorage(STORAGE_KEYS.developerPersistentLogin, {
+    enabled: true,
+    username: DEVELOPER_ACCOUNT.username,
+    savedAt: new Date().toISOString(),
+  });
 }
 
 function saveAuthSession(user) {
   if (!user) {
     localStorage.removeItem(STORAGE_KEYS.authSession);
+    saveDeveloperPersistentLogin(false);
     return;
   }
-  saveToStorage(STORAGE_KEYS.authSession, { userId: user.id, loggedAt: new Date().toISOString() });
+  saveToStorage(STORAGE_KEYS.authSession, {
+    userId: user.id,
+    username: user.username || "",
+    role: user.role || "",
+    loggedAt: new Date().toISOString(),
+  });
+  if (user.role === "developer") {
+    saveDeveloperPersistentLogin(true);
+  }
+}
+
+function restoreActiveSession(users, fallbackUser = null) {
+  const restored = loadAuthSession(users);
+  if (restored?.status === "active") {
+    return restored;
+  }
+  if (loadDeveloperPersistentLogin()) {
+    return (Array.isArray(users) ? users : []).find((user) => user.id === DEVELOPER_ACCOUNT.id && user.status === "active")
+      || normalizeUserRecord(DEVELOPER_ACCOUNT);
+  }
+  if (fallbackUser?.status === "active") {
+    if (fallbackUser.role === "developer" && hasStoredAuthSession(fallbackUser.id)) {
+      return normalizeUserRecord({
+        ...DEVELOPER_ACCOUNT,
+        createdAt: fallbackUser.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    const matchedFallback = (Array.isArray(users) ? users : []).find((user) => user.id === fallbackUser.id && user.status === "active");
+    if (matchedFallback) {
+      return matchedFallback;
+    }
+  }
+  return null;
+}
+
+function restoreDeveloperSession(users, fallbackUser = null) {
+  const activeUsers = Array.isArray(users) ? users : [];
+  const matchedDeveloper = activeUsers.find((user) => user.id === DEVELOPER_ACCOUNT.id && user.status === "active");
+  if (matchedDeveloper) {
+    return matchedDeveloper;
+  }
+  if (fallbackUser?.role === "developer" && fallbackUser?.status === "active") {
+    return normalizeUserRecord({
+      ...DEVELOPER_ACCOUNT,
+      createdAt: fallbackUser.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+  return normalizeUserRecord(DEVELOPER_ACCOUNT);
+}
+
+function resolvePersistentSession(users, fallbackUser = null) {
+  const restored = restoreActiveSession(users, fallbackUser);
+  if (restored?.status === "active") {
+    return restored;
+  }
+  if (loadDeveloperPersistentLogin()) {
+    return restoreDeveloperSession(users, fallbackUser);
+  }
+  return null;
 }
 
 function loadPendingVerificationEmail() {
@@ -6976,6 +7085,11 @@ async function initApp() {
   let authUsers = loadAuthUsers();
   let accessControl = loadAccessControl();
   let currentUser = loadAuthSession(authUsers);
+  if (!currentUser && loadDeveloperPersistentLogin()) {
+    currentUser = authUsers.find((user) => user.id === DEVELOPER_ACCOUNT.id && user.status === "active")
+      || normalizeUserRecord(DEVELOPER_ACCOUNT);
+    saveAuthSession(currentUser);
+  }
   let pendingVerificationEmail = loadPendingVerificationEmail();
   const previewParams = new URLSearchParams(window.location.search);
   const isPreviewHomeMode = previewParams.get("preview-home") === "1";
@@ -6991,6 +7105,7 @@ async function initApp() {
   let configViewMode = loadConfigViewMode();
   let activeConfigSection = loadConfigSection();
   let lastConfigSourceTab = activeConfigSection;
+  let authBootstrapComplete = false;
   let isConfigUnlocked = loadSessionFlag(SESSION_KEYS.configUnlocked);
   let sharedSyncTimer = null;
   let sharedSyncInFlight = false;
@@ -7332,6 +7447,54 @@ async function initApp() {
     return currentUser?.role === "developer" && currentUser?.status === "active";
   }
 
+  function ensureDeveloperSessionFromPersistence() {
+    if (currentUser?.role === "developer" && currentUser?.status === "active") {
+      return true;
+    }
+    if (!loadDeveloperPersistentLogin()) {
+      return false;
+    }
+    currentUser = authUsers.find((user) => user.id === DEVELOPER_ACCOUNT.id && user.status === "active")
+      || normalizeUserRecord(DEVELOPER_ACCOUNT);
+    saveAuthSession(currentUser);
+    return true;
+  }
+
+  function ensureCurrentSessionResolved(fallbackUser = currentUser) {
+    const resolved = resolvePersistentSession(authUsers, fallbackUser);
+    if (!resolved?.status || resolved.status !== "active") {
+      return null;
+    }
+    currentUser = resolved;
+    saveAuthSession(currentUser);
+    return currentUser;
+  }
+
+  function forceDeveloperAuthenticatedState() {
+    if (!serverSecuritySession?.developerLoggedIn) {
+      return null;
+    }
+    currentUser = restoreDeveloperSession(authUsers, currentUser);
+    saveAuthSession(currentUser);
+    clearPendingVerificationStep();
+    return currentUser;
+  }
+
+  function getFirstAllowedLoggedTab(user = currentUser) {
+    if (!user?.status || user.status !== "active") {
+      return "login";
+    }
+    const permissions = getUserTabPermissions(accessControl, user);
+    if (permissions.home) {
+      return "home";
+    }
+    const fallbackButton = tabButtons.find((button) => {
+      const target = button.dataset.tabTarget;
+      return permissions[target] && !button.hidden && !button.disabled && target !== "login";
+    });
+    return fallbackButton?.dataset.tabTarget || "orcamento";
+  }
+
   function userNeedsPasswordChange(user) {
     return Boolean(user?.mustChangePassword);
   }
@@ -7376,17 +7539,22 @@ async function initApp() {
       return;
     }
     const previousUserId = currentUser?.id || "";
+    const previousUser = currentUser?.status === "active" ? { ...currentUser } : null;
     authUsers = loadAuthUsers();
     accessControl = loadAccessControl();
-    const rememberedUser = authUsers.find((user) => user.id === previousUserId && user.status === "active") || null;
-    const storedUser = loadAuthSession(authUsers);
-    const resolvedUser = rememberedUser || storedUser || null;
-    if (resolvedUser?.role === "developer" && !serverSecuritySession.developerLoggedIn) {
-      currentUser = null;
-      saveAuthSession(null);
+    if (loadDeveloperPersistentLogin()) {
+      currentUser = authUsers.find((user) => user.id === DEVELOPER_ACCOUNT.id && user.status === "active")
+        || normalizeUserRecord(DEVELOPER_ACCOUNT);
+      saveAuthSession(currentUser);
       return;
     }
+    const rememberedUser = authUsers.find((user) => user.id === previousUserId && user.status === "active") || null;
+    const storedUser = loadAuthSession(authUsers);
+    const resolvedUser = rememberedUser || storedUser || resolvePersistentSession(authUsers, previousUser) || null;
     currentUser = resolvedUser;
+    if (currentUser?.status === "active") {
+      saveAuthSession(currentUser);
+    }
   }
 
   async function hydrateServerSecuritySession() {
@@ -7394,34 +7562,47 @@ async function initApp() {
       serverSecuritySession = {
         developerLoggedIn: true,
         configUnlocked: true,
+        available: true,
         username: DEVELOPER_ACCOUNT.username,
       };
       isConfigUnlocked = true;
       saveSessionFlag(SESSION_KEYS.configUnlocked, true);
       return;
     }
+    const currentDeveloper = currentUser?.role === "developer";
+    const hasLocalDeveloperSession = currentDeveloper && hasStoredAuthSession(currentUser?.id);
+    const previousConfigUnlocked = loadSessionFlag(SESSION_KEYS.configUnlocked);
     try {
       const result = await requestServerAuthSession();
       serverSecuritySession = {
-        developerLoggedIn: Boolean(result?.developerLoggedIn),
-        configUnlocked: Boolean(result?.configUnlocked),
-        username: typeof result?.username === "string" ? result.username : "",
+        developerLoggedIn: Boolean(result?.developerLoggedIn) || hasLocalDeveloperSession,
+        configUnlocked: Boolean(result?.configUnlocked) || (hasLocalDeveloperSession && previousConfigUnlocked),
+        username: typeof result?.username === "string" ? result.username : (currentDeveloper ? currentUser?.username || DEVELOPER_ACCOUNT.username : ""),
+        available: true,
       };
     } catch {
       serverSecuritySession = {
-        developerLoggedIn: false,
-        configUnlocked: false,
-        username: "",
+        developerLoggedIn: hasLocalDeveloperSession,
+        configUnlocked: currentDeveloper ? previousConfigUnlocked : false,
+        username: currentDeveloper ? currentUser?.username || DEVELOPER_ACCOUNT.username : "",
+        available: false,
       };
     }
 
-    const currentDeveloper = currentUser?.role === "developer";
-    if (currentDeveloper && !serverSecuritySession.developerLoggedIn) {
-      currentUser = null;
-      saveAuthSession(null);
+    if (
+      serverSecuritySession.developerLoggedIn
+      && (!currentUser || currentUser.status !== "active" || currentUser.role !== "developer")
+    ) {
+      forceDeveloperAuthenticatedState();
     }
 
-    isConfigUnlocked = Boolean(serverSecuritySession.configUnlocked && (serverSecuritySession.developerLoggedIn || currentUser?.role === "developer"));
+    isConfigUnlocked = Boolean(
+      serverSecuritySession.configUnlocked
+      && (
+        serverSecuritySession.developerLoggedIn
+        || (currentUser?.role === "developer" && !serverSecuritySession.available)
+      )
+    );
     saveSessionFlag(SESSION_KEYS.configUnlocked, isConfigUnlocked);
   }
 
@@ -7450,10 +7631,14 @@ async function initApp() {
   }
 
   function applyAccessRules() {
-    const logged = Boolean(currentUser?.status === "active");
+    ensureDeveloperSessionFromPersistence();
+    forceDeveloperAuthenticatedState();
+    const resolvedUser = ensureCurrentSessionResolved(currentUser);
+    const hasRecoverableSession = Boolean(resolvePersistentSession(authUsers, currentUser));
+    const logged = Boolean(resolvedUser?.status === "active");
     if (appShell) {
       appShell.hidden = false;
-      appShell.classList.toggle("is-auth-mode", !logged);
+      appShell.classList.toggle("is-auth-mode", !logged && !hasRecoverableSession);
     }
     if (currentUserLabel) {
       currentUserLabel.textContent = logged
@@ -7477,7 +7662,7 @@ async function initApp() {
       const tab = button.dataset.tabTarget;
       let allowed = false;
       if (tab === "login") {
-        allowed = !logged;
+        allowed = !logged && !hasRecoverableSession;
       } else if (tab === "home") {
         allowed = logged && Boolean(getUserTabPermissions(accessControl, currentUser).home);
       } else if (logged) {
@@ -7491,7 +7676,7 @@ async function initApp() {
       const tab = panel.dataset.tabPanel;
       let allowed = false;
       if (tab === "login") {
-        allowed = !logged;
+        allowed = !logged && !hasRecoverableSession;
       } else if (tab === "home") {
         allowed = logged && Boolean(getUserTabPermissions(accessControl, currentUser).home);
       } else if (logged) {
@@ -7509,6 +7694,8 @@ async function initApp() {
       const firstAllowed = tabButtons.find((button) => !button.hidden && !button.disabled);
       if (firstAllowed) {
         selectTab(firstAllowed.dataset.tabTarget);
+      } else if (logged) {
+        selectTab(getFirstAllowedLoggedTab(currentUser));
       }
     }
   }
@@ -8432,6 +8619,7 @@ async function initApp() {
       return;
     }
 
+    const previousCurrentUser = currentUser && currentUser.status === "active" ? { ...currentUser } : null;
     const sourceState = payload.sharedState || payload.state || {};
     const sharedCollections = normalizeSharedCollections(sourceState);
     state.clients = sharedCollections.clients;
@@ -8440,7 +8628,10 @@ async function initApp() {
     const sharedSecurity = normalizeSharedSecurity(payload.security || {});
     authUsers = mergeAuthUserCollections(authUsers, sharedSecurity.authUsers);
     accessControl = sharedSecurity.accessControl;
-    currentUser = loadAuthSession(authUsers);
+    currentUser = resolvePersistentSession(authUsers, previousCurrentUser);
+    if (currentUser?.status === "active") {
+      saveAuthSession(currentUser);
+    }
     if (payload.config && typeof payload.config === "object") {
       Object.assign(config, mergeConfig(payload.config));
       cleanupHiddenImpressosEntries(config, state);
@@ -8792,24 +8983,22 @@ async function initApp() {
   }
 
   function selectTab(tabName) {
-    const logged = currentUser?.status === "active";
+    ensureDeveloperSessionFromPersistence();
+    forceDeveloperAuthenticatedState();
+    const resolvedUser = ensureCurrentSessionResolved(currentUser);
+    const logged = resolvedUser?.status === "active";
+    const hasRecoverableSession = Boolean(resolvedUser || resolvePersistentSession(authUsers, currentUser));
+    if (!authBootstrapComplete && tabName === "login" && hasRecoverableSession) {
+      tabName = getFirstAllowedLoggedTab(resolvedUser || currentUser);
+    }
     if (!logged && tabName !== "login") {
       tabName = "login";
     } else if (logged && tabName === "login") {
-      const permissions = getUserTabPermissions(accessControl, currentUser);
-      const fallback = tabButtons.find((button) => {
-        const target = button.dataset.tabTarget;
-        return permissions[target] && !button.hidden;
-      });
-      tabName = fallback?.dataset.tabTarget || "orcamento";
+      tabName = getFirstAllowedLoggedTab(currentUser);
     } else if (logged) {
       const permissions = getUserTabPermissions(accessControl, currentUser);
       if (!permissions[tabName]) {
-        const fallback = tabButtons.find((button) => {
-          const target = button.dataset.tabTarget;
-          return permissions[target] && !button.hidden;
-        });
-        tabName = fallback?.dataset.tabTarget || "orcamento";
+        tabName = getFirstAllowedLoggedTab(currentUser);
       }
     }
 
@@ -10733,6 +10922,11 @@ async function initApp() {
   }
 
   function renderAll() {
+    forceDeveloperAuthenticatedState();
+    currentUser = resolvePersistentSession(authUsers, currentUser);
+    if (currentUser?.status === "active") {
+      saveAuthSession(currentUser);
+    }
     const steps = [
       ["preset-controls", () => renderPresetControls()],
       ["client-fields", () => renderClientFields()],
@@ -10757,6 +10951,14 @@ async function initApp() {
     }
 
     setAppMenuOpen(false);
+
+    if (currentUser?.status === "active") {
+      const appShellNode = document.getElementById("app-shell");
+      const activeTab = appShellNode?.dataset.activeTab || "";
+      if (!activeTab || activeTab === "login") {
+        selectTab(getFirstAllowedLoggedTab(currentUser));
+      }
+    }
 
     if (currentUser && userNeedsPasswordChange(currentUser)) {
       openPasswordChangeModal(currentUser);
@@ -13571,8 +13773,11 @@ async function initApp() {
   await bootstrapSharedState();
   await hydrateServerSecuritySession();
   startSharedRefresh();
+  authBootstrapComplete = true;
   renderAll();
-  if (isPreviewHomeMode) {
+  if (currentUser?.status === "active") {
+    selectTab(getFirstAllowedLoggedTab(currentUser));
+  } else if (isPreviewHomeMode) {
     selectTab("home");
   }
 }
