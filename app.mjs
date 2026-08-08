@@ -7277,6 +7277,10 @@ async function initApp() {
   const menuSettingsPopover = document.getElementById("menu-settings-popover");
   const settingsOnlyTabs = new Set(["conta", "configuracao", "equipe"]);
 
+  function finishBootstrapUi() {
+    appShell?.classList.remove("is-booting");
+  }
+
   function isDesktopSidebarMode() {
     const activeTab = document.querySelector(".tab-panel.is-active")?.dataset.tabPanel || "login";
     return Boolean(currentUser) && activeTab === "home" && window.matchMedia("(min-width: 1181px)").matches;
@@ -13780,6 +13784,7 @@ async function initApp() {
   } else if (isPreviewHomeMode) {
     selectTab("home");
   }
+  finishBootstrapUi();
 }
 
   if (typeof window !== "undefined" && typeof document !== "undefined") {
@@ -13793,6 +13798,7 @@ async function initApp() {
     const appShell = document.getElementById("app-shell");
     if (appShell) {
       appShell.hidden = false;
+      appShell.classList.remove("is-booting");
       appShell.classList.add("is-auth-mode");
     }
     const loginPanel = document.querySelector('[data-tab-panel="login"]');

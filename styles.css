@@ -823,6 +823,11 @@ button {
   margin: 24px auto 40px;
 }
 
+.page-shell.is-booting {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .page-shell.is-auth-mode .session-bar,
 .page-shell.is-auth-mode .app-menu-shell {
   display: none;
