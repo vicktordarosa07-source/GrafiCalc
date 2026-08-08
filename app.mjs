@@ -7275,7 +7275,7 @@ async function initApp() {
   const appMenuPanel = document.getElementById("main-tab-menu");
   const menuSettingsToggle = document.getElementById("menu-settings-toggle");
   const menuSettingsPopover = document.getElementById("menu-settings-popover");
-  const settingsOnlyTabs = new Set(["conta", "configuracao", "equipe"]);
+  const settingsOnlyTabs = new Set();
 
   function finishBootstrapUi() {
     appShell?.classList.remove("is-booting");
