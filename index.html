@@ -24,34 +24,25 @@
     </header>
 
     <div class="app-menu-shell">
-      <button class="app-home-shortcut" id="app-home-shortcut" type="button">
-        <span aria-hidden="true">⌂</span>
-        <strong>Home</strong>
-      </button>
-      <button class="app-menu-toggle" id="app-menu-toggle" type="button" aria-expanded="false" aria-controls="main-tab-menu">
-        <span class="app-menu-icon" aria-hidden="true">
-          <span></span>
-          <span></span>
-          <span></span>
-        </span>
-        <span>Menu</span>
-      </button>
-      <nav class="tab-bar" id="main-tab-menu" aria-label="Abas principais" hidden>
+      <nav class="tab-bar" id="main-tab-menu" aria-label="Abas principais">
         <div class="tab-menu-head">
-          <button class="menu-settings-card" id="menu-settings-toggle" type="button" aria-expanded="false" aria-controls="menu-settings-popover" aria-label="Abrir configurações e conta">
+          <button class="menu-logout-button" id="menu-logout-button" type="button">
+            <span aria-hidden="true">↗</span>
+            <strong>Sair</strong>
+          </button>
+          <div class="menu-settings-card" aria-hidden="true">
             <span class="menu-settings-icon">
               <img src="./assets/favicon.png" alt="">
               <span aria-hidden="true">⚙</span>
             </span>
-          </button>
-          <div class="menu-settings-popover" id="menu-settings-popover" hidden>
-            <button class="menu-settings-action" type="button" data-menu-shortcut="conta">Minha conta</button>
-            <button class="menu-settings-action" type="button" data-menu-shortcut="configuracao">Configuração do sistema</button>
-            <button class="menu-settings-action" type="button" data-menu-shortcut="equipe" data-dev-only hidden>Equipe</button>
           </div>
         </div>
         <button class="tab-button is-active" data-tab-target="login">Login</button>
-        <button class="tab-button" data-tab-target="conta" hidden>Minha conta</button>
+        <div class="tab-menu-section-label">Configuradores</div>
+        <button class="tab-button developer-tab-button" data-tab-target="desenvolvedor" data-dev-only hidden title="Área do desenvolvedor" data-tooltip="Área do desenvolvedor">Dev</button>
+        <button class="tab-button" data-tab-target="conta" title="Minha conta" data-tooltip="Minha conta">Minha conta</button>
+        <button class="tab-button" data-tab-target="configuracao" title="Configuração do sistema" data-tooltip="Configuração do sistema">Configuração</button>
+        <button class="tab-button" data-tab-target="equipe" data-dev-only hidden title="Equipe" data-tooltip="Equipe">Equipe</button>
         <div class="tab-menu-section-label">Comercial</div>
         <button class="tab-button" data-tab-target="home" title="Home" data-tooltip="Home">Home</button>
         <button class="tab-button" data-tab-target="clientes" title="Clientes" data-tooltip="Clientes">Clientes</button>
@@ -59,7 +50,6 @@
         <button class="tab-button" data-tab-target="orcamento" title="Orçamentos" data-tooltip="Orçamentos">Orçamentos</button>
         <button class="tab-button" data-tab-target="os" title="Ordens de serviço" data-tooltip="Ordens de serviço">OS</button>
         <button class="tab-button" data-tab-target="relatorios" title="Relatórios" data-tooltip="Relatórios">Relatórios</button>
-        <button class="tab-button developer-tab-button" data-tab-target="desenvolvedor" data-dev-only hidden title="Área do desenvolvedor" data-tooltip="Área do desenvolvedor">Dev</button>
         <div class="tab-menu-section-label">Cálculo</div>
         <button class="tab-button" data-tab-target="calculo" title="Cálculo de apostila" data-tooltip="Cálculo de apostila">Apostilas</button>
         <button class="tab-button" data-tab-target="blocosSulfite" title="Blocos sulfite 75g" data-tooltip="Blocos sulfite 75g">Blocos 75g</button>
@@ -71,8 +61,6 @@
         <button class="tab-button" data-tab-target="prontos" title="Materiais prontos" data-tooltip="Materiais prontos">Materiais</button>
         <button class="tab-button" data-tab-target="panfletos" title="Panfletos e folders" data-tooltip="Panfletos e folders">Panfletos</button>
         <button class="tab-button" data-tab-target="resinados" title="Resinados" data-tooltip="Resinados">Resinados</button>
-        <button class="tab-button" data-tab-target="configuracao" hidden>Configuração</button>
-        <button class="tab-button" data-tab-target="equipe" data-dev-only hidden>Equipe</button>
       </nav>
     </div>
 

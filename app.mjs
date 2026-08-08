@@ -7282,8 +7282,7 @@ async function initApp() {
   }
 
   function isDesktopSidebarMode() {
-    const activeTab = document.querySelector(".tab-panel.is-active")?.dataset.tabPanel || "login";
-    return Boolean(currentUser) && activeTab === "home" && window.matchMedia("(min-width: 1181px)").matches;
+    return Boolean(currentUser) && window.matchMedia("(min-width: 1181px)").matches;
   }
 
   function setAppMenuOpen(open) {
@@ -11156,6 +11155,10 @@ async function initApp() {
   updateEmailVerificationCountdown();
 
   document.getElementById("logout-button")?.addEventListener("click", async () => {
+    await logoutCurrentUser();
+  });
+
+  document.getElementById("menu-logout-button")?.addEventListener("click", async () => {
     await logoutCurrentUser();
   });
 
