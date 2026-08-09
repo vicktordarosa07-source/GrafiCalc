@@ -7291,6 +7291,7 @@ async function initApp() {
   const menuSettingsToggle = document.getElementById("menu-settings-toggle");
   const menuSettingsPopover = document.getElementById("menu-settings-popover");
   const settingsOnlyTabs = new Set();
+  let desktopMenuUnlockTimer = 0;
 
   function finishBootstrapUi() {
     appShell?.classList.remove("is-booting");
@@ -7322,6 +7323,7 @@ async function initApp() {
     if (!appMenuShell || !isDesktopSidebarMode()) {
       return;
     }
+    window.clearTimeout(desktopMenuUnlockTimer);
     lockDesktopMenuCollapsed(true);
     setDesktopMenuExpanded(false);
     appMenuShell.classList.remove("is-open");
@@ -7333,6 +7335,9 @@ async function initApp() {
         setDesktopMenuExpanded(false);
       });
     });
+    desktopMenuUnlockTimer = window.setTimeout(() => {
+      lockDesktopMenuCollapsed(false);
+    }, 220);
   }
 
   function setAppMenuOpen(open) {
