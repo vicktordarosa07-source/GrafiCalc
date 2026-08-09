@@ -7300,12 +7300,26 @@ async function initApp() {
     return Boolean(currentUser) && window.matchMedia("(min-width: 1181px)").matches;
   }
 
+  function setDesktopMenuExpanded(expanded) {
+    if (!appMenuShell) {
+      return;
+    }
+    if (!isDesktopSidebarMode()) {
+      appMenuShell.classList.remove("is-expanded");
+      return;
+    }
+    appMenuShell.classList.toggle("is-expanded", expanded);
+  }
+
   function setAppMenuOpen(open) {
     if (!appMenuToggle || !appMenuPanel) {
       return;
     }
     const keepSidebarVisible = isDesktopSidebarMode();
     appMenuShell?.classList.toggle("is-open", open || keepSidebarVisible);
+    if (!keepSidebarVisible) {
+      appMenuShell?.classList.remove("is-expanded");
+    }
     appMenuToggle.setAttribute("aria-expanded", open ? "true" : "false");
     appMenuPanel.hidden = keepSidebarVisible ? false : !open;
   }
@@ -11066,8 +11080,27 @@ async function initApp() {
     setAppMenuOpen(!isOpen);
   });
 
+  appMenuShell?.addEventListener("mouseenter", () => {
+    setDesktopMenuExpanded(true);
+  });
+
+  appMenuShell?.addEventListener("mouseleave", () => {
+    setDesktopMenuExpanded(false);
+  });
+
+  appMenuShell?.addEventListener("focusout", () => {
+    window.setTimeout(() => {
+      if (!appMenuShell.matches(":hover")) {
+        setDesktopMenuExpanded(false);
+      }
+    }, 0);
+  });
+
   window.addEventListener("resize", () => {
     setAppMenuOpen(appMenuToggle?.getAttribute("aria-expanded") === "true");
+    if (!isDesktopSidebarMode()) {
+      appMenuShell?.classList.remove("is-expanded");
+    }
   });
 
   document.addEventListener("click", (event) => {

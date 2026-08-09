@@ -7611,6 +7611,77 @@ body::before {
 
 /* Final desktop collapsed-menu fix */
 @media (min-width: 1181px) {
+  .page-shell:not(.is-auth-mode) .app-menu-shell.is-expanded .tab-bar,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.is-expanded .tab-bar {
+    width: 214px !important;
+    max-width: 214px !important;
+    padding: 14px 12px 18px !important;
+    box-shadow:
+      0 26px 54px rgba(16, 89, 85, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.is-expanded .menu-brand-card,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.is-expanded .menu-brand-card {
+    grid-template-columns: 44px minmax(0, 1fr) !important;
+    justify-items: start !important;
+    gap: 10px !important;
+    padding: 10px !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.is-expanded .menu-brand-copy,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.is-expanded .menu-brand-copy {
+    display: grid !important;
+    opacity: 1 !important;
+    max-height: 40px !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.is-expanded .menu-logout-button,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.is-expanded .menu-logout-button {
+    justify-content: flex-start !important;
+    padding: 10px 14px !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.is-expanded .menu-logout-button strong,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.is-expanded .menu-logout-button strong {
+    display: inline !important;
+    opacity: 1 !important;
+    max-height: 40px !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.is-expanded .tab-menu-section-label,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.is-expanded .tab-menu-section-label {
+    display: block !important;
+    opacity: 1 !important;
+    max-height: 24px !important;
+    margin-top: 6px !important;
+    padding: 8px 8px 2px !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.is-expanded .tab-bar .tab-button,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.is-expanded .tab-bar .tab-button {
+    min-height: 50px !important;
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    justify-items: start !important;
+    gap: 10px !important;
+    padding: 9px 12px !important;
+    text-align: left !important;
+    font-size: 0.79rem !important;
+    line-height: 1.2 !important;
+    color: #45656b !important;
+    text-indent: 0 !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.86),
+      0 10px 22px rgba(18, 60, 68, 0.08) !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.is-expanded .tab-bar .tab-button[data-tooltip]::after,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.is-expanded .tab-bar .tab-button[data-tooltip]::after {
+    display: none !important;
+  }
+
   .page-shell:not(.is-auth-mode) .app-menu-shell:focus-within:not(:hover) .tab-menu-section-label,
   .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell:focus-within:not(:hover) .tab-menu-section-label,
   .page-shell:not(.is-auth-mode) .app-menu-shell:focus-within:not(:hover) .menu-brand-copy,
