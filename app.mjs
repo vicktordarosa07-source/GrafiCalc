@@ -11109,13 +11109,40 @@ async function initApp() {
   });
 
   appMenuShell?.addEventListener("mouseenter", () => {
+    if (!isDesktopSidebarMode()) {
+      return;
+    }
     if (appMenuShell.classList.contains("is-collapsed-lock")) {
       return;
     }
     setDesktopMenuExpanded(true);
   });
 
+  appMenuPanel?.addEventListener("mouseenter", () => {
+    if (!isDesktopSidebarMode()) {
+      return;
+    }
+    if (appMenuShell?.classList.contains("is-collapsed-lock")) {
+      return;
+    }
+    setDesktopMenuExpanded(true);
+  });
+
   appMenuShell?.addEventListener("mouseleave", () => {
+    if (!isDesktopSidebarMode()) {
+      return;
+    }
+    lockDesktopMenuCollapsed(false);
+    setDesktopMenuExpanded(false);
+  });
+
+  appMenuPanel?.addEventListener("mouseleave", () => {
+    if (!isDesktopSidebarMode()) {
+      return;
+    }
+    if (appMenuShell?.matches(":hover")) {
+      return;
+    }
     lockDesktopMenuCollapsed(false);
     setDesktopMenuExpanded(false);
   });
