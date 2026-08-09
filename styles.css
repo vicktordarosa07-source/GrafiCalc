@@ -23,6 +23,125 @@
   --font-display: "Cambria", "Georgia", serif;
 }
 
+/* MOBILE MENU V3 - authoritative final override */
+@media (max-width: 1180px) {
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3 {
+    position: sticky !important;
+    top: 0 !important;
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 0 10px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    z-index: 45 !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3.is-expanded,
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3.is-collapsed-lock,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3.is-expanded,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3.is-collapsed-lock {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3 .menu-brand-card,
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3 .menu-logout-button,
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3 .tab-menu-head,
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3 .tab-menu-section-label,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3 .menu-brand-card,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3 .menu-logout-button,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3 .tab-menu-head,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3 .tab-menu-section-label {
+    display: none !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3 .tab-bar.tab-bar--v3,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3 .tab-bar.tab-bar--v3,
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3.is-expanded .tab-bar.tab-bar--v3,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3.is-expanded .tab-bar.tab-bar--v3 {
+    position: relative !important;
+    inset: auto !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    grid-template-columns: none !important;
+    grid-auto-flow: unset !important;
+    gap: 10px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    padding: 4px 2px 12px !important;
+    margin: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    scrollbar-width: none !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3 .tab-bar.tab-bar--v3::-webkit-scrollbar,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3 .tab-bar.tab-bar--v3::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3 .tab-bar.tab-bar--v3 .tab-button,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3 .tab-bar.tab-bar--v3 .tab-button,
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3.is-expanded .tab-bar.tab-bar--v3 .tab-button,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3.is-expanded .tab-bar.tab-bar--v3 .tab-button {
+    flex: 0 0 auto !important;
+    display: inline-flex !important;
+    grid-template-columns: none !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    width: auto !important;
+    min-width: 108px !important;
+    max-width: 148px !important;
+    min-height: 58px !important;
+    height: 58px !important;
+    padding: 10px 14px !important;
+    border-radius: 18px !important;
+    font-size: 0.82rem !important;
+    line-height: 1.1 !important;
+    color: #29464b !important;
+    text-indent: 0 !important;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow: hidden !important;
+    box-shadow: 0 12px 26px rgba(16, 78, 74, 0.12) !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3 .tab-bar.tab-bar--v3 .tab-button::before,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3 .tab-bar.tab-bar--v3 .tab-button::before {
+    margin: 0 !important;
+    text-indent: 0 !important;
+    flex: 0 0 auto !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3 .tab-bar.tab-bar--v3 .tab-button::after,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3 .tab-bar.tab-bar--v3 .tab-button::after {
+    display: none !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-main,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-main {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+}
+
 /* Vertical calculation workspaces */
 .table-shell:has(.calculation-vertical-table) {
   overflow: visible;
