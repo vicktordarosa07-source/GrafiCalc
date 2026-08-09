@@ -6928,6 +6928,20 @@ function createQuoteHistoryItems(state, workbook, colorWorkbook, credentialWorkb
   }));
 }
 
+function refreshVerticalCalculationTables() {
+  document.querySelectorAll(".calculation-vertical-table").forEach((table) => {
+    const headers = Array.from(table.querySelectorAll("thead th")).map((header) => header.textContent.trim());
+    table.querySelectorAll("tbody tr").forEach((row) => {
+      Array.from(row.children).forEach((cell, index) => {
+        if (!(cell instanceof HTMLElement)) {
+          return;
+        }
+        cell.dataset.label = headers[index] || `Campo ${index + 1}`;
+      });
+    });
+  });
+}
+
 function createQuoteHtml(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, flyerWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, blockSulfiteWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, blockAutocopiativoWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }) {
   const dateText = new Intl.DateTimeFormat("pt-BR").format(new Date());
   const quoteEntries = createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook);
@@ -7093,6 +7107,7 @@ async function initApp() {
   let pendingVerificationEmail = loadPendingVerificationEmail();
   const previewParams = new URLSearchParams(window.location.search);
   const isPreviewHomeMode = previewParams.get("preview-home") === "1";
+  const previewTabName = previewParams.get("preview-tab") || "";
   if (isPreviewHomeMode) {
     saveAuthSession(DEVELOPER_ACCOUNT);
     currentUser = DEVELOPER_ACCOUNT;
@@ -10476,6 +10491,7 @@ async function initApp() {
     resinWarningList.innerHTML = resinWorkbook.warnings.length
       ? resinWorkbook.warnings.map((warning) => `<div class="warning-item">${escapeHtml(warning)}</div>`).join("")
       : `<div class="warning-item is-success">Informe medidas em milímetros para calcular automaticamente a resina, o aproveitamento e o total por A3.</div>`;
+    refreshVerticalCalculationTables();
     quotePreview.innerHTML = createQuoteHtml(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook);
     return { workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook };
   }
@@ -13783,9 +13799,10 @@ async function initApp() {
   authBootstrapComplete = true;
   renderAll();
   if (currentUser?.status === "active") {
-    selectTab(getFirstAllowedLoggedTab(currentUser));
+    const initialTab = previewTabName.trim() || getFirstAllowedLoggedTab(currentUser);
+    selectTab(initialTab);
   } else if (isPreviewHomeMode) {
-    selectTab("home");
+    selectTab(previewTabName.trim() || "home");
   }
   finishBootstrapUi();
 }
