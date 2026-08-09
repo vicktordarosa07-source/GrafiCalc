@@ -11033,6 +11033,7 @@ async function initApp() {
   tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
       selectTab(button.dataset.tabTarget);
+      button.blur();
       closeSettingsPopover();
       closeAppMenu();
     });
@@ -11041,6 +11042,7 @@ async function initApp() {
   menuShortcutButtons.forEach((button) => {
     button.addEventListener("click", () => {
       selectTab(button.dataset.menuShortcut);
+      button.blur();
       closeSettingsPopover();
       closeAppMenu();
     });
@@ -11054,6 +11056,7 @@ async function initApp() {
 
   appHomeShortcut?.addEventListener("click", () => {
     selectTab("home");
+    appHomeShortcut.blur();
     closeSettingsPopover();
     closeAppMenu();
   });
