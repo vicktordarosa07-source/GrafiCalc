@@ -7318,6 +7318,23 @@ async function initApp() {
     appMenuShell.classList.toggle("is-collapsed-lock", Boolean(lock) && isDesktopSidebarMode());
   }
 
+  function collapseDesktopMenuAfterNavigation() {
+    if (!appMenuShell || !isDesktopSidebarMode()) {
+      return;
+    }
+    lockDesktopMenuCollapsed(true);
+    setDesktopMenuExpanded(false);
+    appMenuShell.classList.remove("is-open");
+    window.requestAnimationFrame(() => {
+      lockDesktopMenuCollapsed(true);
+      setDesktopMenuExpanded(false);
+      window.requestAnimationFrame(() => {
+        lockDesktopMenuCollapsed(true);
+        setDesktopMenuExpanded(false);
+      });
+    });
+  }
+
   function setAppMenuOpen(open) {
     if (!appMenuToggle || !appMenuPanel) {
       return;
@@ -9052,6 +9069,7 @@ async function initApp() {
       appShell.dataset.activeTab = tabName;
     }
     setAppMenuOpen(false);
+    collapseDesktopMenuAfterNavigation();
 
     if (tabName === "configuracao") {
       activeConfigSection = CONFIG_SECTIONS.includes(lastConfigSourceTab) ? lastConfigSourceTab : "calculo";
@@ -11053,23 +11071,21 @@ async function initApp() {
 
   tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      lockDesktopMenuCollapsed(true);
-      setDesktopMenuExpanded(false);
       selectTab(button.dataset.tabTarget);
       button.blur();
       closeSettingsPopover();
       closeAppMenu();
+      collapseDesktopMenuAfterNavigation();
     });
   });
 
   menuShortcutButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      lockDesktopMenuCollapsed(true);
-      setDesktopMenuExpanded(false);
       selectTab(button.dataset.menuShortcut);
       button.blur();
       closeSettingsPopover();
       closeAppMenu();
+      collapseDesktopMenuAfterNavigation();
     });
   });
 
@@ -11080,12 +11096,11 @@ async function initApp() {
   });
 
   appHomeShortcut?.addEventListener("click", () => {
-    lockDesktopMenuCollapsed(true);
-    setDesktopMenuExpanded(false);
     selectTab("home");
     appHomeShortcut.blur();
     closeSettingsPopover();
     closeAppMenu();
+    collapseDesktopMenuAfterNavigation();
   });
 
   appMenuToggle?.addEventListener("click", () => {
