@@ -7301,6 +7301,157 @@ async function initApp() {
     return Boolean(currentUser) && window.matchMedia("(min-width: 1181px)").matches;
   }
 
+  function applyResponsiveMenuRuntimeStyles() {
+    if (!appMenuShell || !appMenuPanel) {
+      return;
+    }
+
+    const isMobileMenuMode = window.matchMedia("(max-width: 1180px)").matches;
+    const menuHead = appMenuPanel.querySelector(".tab-menu-head");
+    const sectionLabels = [...appMenuPanel.querySelectorAll(".tab-menu-section-label")];
+
+    if (isMobileMenuMode) {
+      appMenuShell.classList.remove("is-expanded", "is-collapsed-lock");
+      appMenuShell.style.position = "sticky";
+      appMenuShell.style.top = "0";
+      appMenuShell.style.left = "auto";
+      appMenuShell.style.right = "auto";
+      appMenuShell.style.width = "100%";
+      appMenuShell.style.minWidth = "0";
+      appMenuShell.style.maxWidth = "100%";
+      appMenuShell.style.height = "auto";
+      appMenuShell.style.maxHeight = "none";
+      appMenuShell.style.margin = "0 0 10px";
+      appMenuShell.style.padding = "0";
+      appMenuShell.style.border = "0";
+      appMenuShell.style.background = "transparent";
+      appMenuShell.style.boxShadow = "none";
+      appMenuShell.style.overflow = "visible";
+      appMenuShell.style.zIndex = "70";
+
+      appMenuPanel.hidden = false;
+      appMenuPanel.style.position = "relative";
+      appMenuPanel.style.left = "auto";
+      appMenuPanel.style.top = "auto";
+      appMenuPanel.style.display = "flex";
+      appMenuPanel.style.flexWrap = "nowrap";
+      appMenuPanel.style.alignItems = "stretch";
+      appMenuPanel.style.justifyContent = "flex-start";
+      appMenuPanel.style.gap = "10px";
+      appMenuPanel.style.width = "100%";
+      appMenuPanel.style.minWidth = "0";
+      appMenuPanel.style.maxWidth = "100%";
+      appMenuPanel.style.height = "auto";
+      appMenuPanel.style.maxHeight = "none";
+      appMenuPanel.style.padding = "4px 2px 12px";
+      appMenuPanel.style.margin = "0";
+      appMenuPanel.style.overflowX = "auto";
+      appMenuPanel.style.overflowY = "hidden";
+      appMenuPanel.style.whiteSpace = "nowrap";
+      appMenuPanel.style.borderRadius = "0";
+      appMenuPanel.style.background = "transparent";
+      appMenuPanel.style.boxShadow = "none";
+
+      if (menuHead) {
+        menuHead.style.display = "none";
+      }
+      sectionLabels.forEach((label) => {
+        label.style.display = "none";
+      });
+
+      tabButtons.forEach((button) => {
+        button.style.display = "inline-flex";
+        button.style.flex = "0 0 auto";
+        button.style.alignItems = "center";
+        button.style.justifyContent = "center";
+        button.style.gap = "8px";
+        button.style.width = "auto";
+        button.style.minWidth = "108px";
+        button.style.maxWidth = "148px";
+        button.style.minHeight = "58px";
+        button.style.height = "58px";
+        button.style.padding = "10px 14px";
+        button.style.margin = "0";
+        button.style.borderRadius = "18px";
+        button.style.fontSize = "0.82rem";
+        button.style.lineHeight = "1.1";
+        button.style.textIndent = "0";
+        button.style.whiteSpace = "normal";
+        button.style.wordBreak = "normal";
+        button.style.overflow = "hidden";
+      });
+      return;
+    }
+
+    appMenuShell.style.position = "";
+    appMenuShell.style.top = "";
+    appMenuShell.style.left = "";
+    appMenuShell.style.right = "";
+    appMenuShell.style.width = "";
+    appMenuShell.style.minWidth = "";
+    appMenuShell.style.maxWidth = "";
+    appMenuShell.style.height = "";
+    appMenuShell.style.maxHeight = "";
+    appMenuShell.style.margin = "";
+    appMenuShell.style.padding = "";
+    appMenuShell.style.border = "";
+    appMenuShell.style.background = "";
+    appMenuShell.style.boxShadow = "";
+    appMenuShell.style.overflow = "";
+    appMenuShell.style.zIndex = "";
+
+    appMenuPanel.style.position = "";
+    appMenuPanel.style.left = "";
+    appMenuPanel.style.top = "";
+    appMenuPanel.style.display = "";
+    appMenuPanel.style.flexWrap = "";
+    appMenuPanel.style.alignItems = "";
+    appMenuPanel.style.justifyContent = "";
+    appMenuPanel.style.gap = "";
+    appMenuPanel.style.width = "";
+    appMenuPanel.style.minWidth = "";
+    appMenuPanel.style.maxWidth = "";
+    appMenuPanel.style.height = "";
+    appMenuPanel.style.maxHeight = "";
+    appMenuPanel.style.padding = "";
+    appMenuPanel.style.margin = "";
+    appMenuPanel.style.overflowX = "";
+    appMenuPanel.style.overflowY = "";
+    appMenuPanel.style.whiteSpace = "";
+    appMenuPanel.style.borderRadius = "";
+    appMenuPanel.style.background = "";
+    appMenuPanel.style.boxShadow = "";
+
+    if (menuHead) {
+      menuHead.style.display = "";
+    }
+    sectionLabels.forEach((label) => {
+      label.style.display = "";
+    });
+
+    tabButtons.forEach((button) => {
+      button.style.display = "";
+      button.style.flex = "";
+      button.style.alignItems = "";
+      button.style.justifyContent = "";
+      button.style.gap = "";
+      button.style.width = "";
+      button.style.minWidth = "";
+      button.style.maxWidth = "";
+      button.style.minHeight = "";
+      button.style.height = "";
+      button.style.padding = "";
+      button.style.margin = "";
+      button.style.borderRadius = "";
+      button.style.fontSize = "";
+      button.style.lineHeight = "";
+      button.style.textIndent = "";
+      button.style.whiteSpace = "";
+      button.style.wordBreak = "";
+      button.style.overflow = "";
+    });
+  }
+
   function setDesktopMenuExpanded(expanded) {
     if (!appMenuShell) {
       return;
@@ -7344,6 +7495,7 @@ async function initApp() {
     if (!appMenuToggle || !appMenuPanel) {
       return;
     }
+    applyResponsiveMenuRuntimeStyles();
     const keepSidebarVisible = isDesktopSidebarMode();
     appMenuShell?.classList.toggle("is-open", open || keepSidebarVisible);
     if (!keepSidebarVisible) {
@@ -11161,12 +11313,15 @@ async function initApp() {
   });
 
   window.addEventListener("resize", () => {
+    applyResponsiveMenuRuntimeStyles();
     setAppMenuOpen(appMenuToggle?.getAttribute("aria-expanded") === "true");
     if (!isDesktopSidebarMode()) {
       appMenuShell?.classList.remove("is-expanded");
       appMenuShell?.classList.remove("is-collapsed-lock");
     }
   });
+
+  applyResponsiveMenuRuntimeStyles();
 
   document.addEventListener("click", (event) => {
     if (menuSettingsPopover && !menuSettingsPopover.hidden && !menuSettingsPopover.contains(event.target) && !menuSettingsToggle?.contains(event.target)) {
