@@ -7432,9 +7432,18 @@ body::before {
 @media (min-width: 1181px) {
   .page-shell:not(.is-auth-mode) .app-menu-shell,
   .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell {
+    position: sticky !important;
+    top: 14px !important;
+    left: auto !important;
+    right: auto !important;
+    display: block !important;
     width: 108px !important;
     min-width: 108px !important;
     max-width: 108px !important;
+    height: calc(100vh - 28px) !important;
+    max-height: calc(100vh - 28px) !important;
+    margin: 18px 0 14px !important;
+    z-index: 35 !important;
     pointer-events: auto !important;
     overflow: visible !important;
   }
@@ -7444,6 +7453,20 @@ body::before {
     width: 230px !important;
     min-width: 230px !important;
     max-width: 230px !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .tab-bar,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-bar {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    width: 92px !important;
+    min-width: 92px !important;
+    max-width: 92px !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
   }
 
   .page-shell:not(.is-auth-mode) .app-menu-shell:not(.is-expanded) .tab-bar,
@@ -7515,6 +7538,7 @@ body::before {
   .page-shell:not(.is-auth-mode) .app-menu-shell.is-expanded .tab-bar,
   .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.is-expanded .tab-bar {
     width: 214px !important;
+    min-width: 214px !important;
     max-width: 214px !important;
     padding: 14px 12px 18px !important;
     pointer-events: auto !important;
