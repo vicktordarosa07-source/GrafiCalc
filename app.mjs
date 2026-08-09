@@ -7311,6 +7311,13 @@ async function initApp() {
     appMenuShell.classList.toggle("is-expanded", expanded);
   }
 
+  function lockDesktopMenuCollapsed(lock) {
+    if (!appMenuShell) {
+      return;
+    }
+    appMenuShell.classList.toggle("is-collapsed-lock", Boolean(lock) && isDesktopSidebarMode());
+  }
+
   function setAppMenuOpen(open) {
     if (!appMenuToggle || !appMenuPanel) {
       return;
@@ -11046,6 +11053,8 @@ async function initApp() {
 
   tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
+      lockDesktopMenuCollapsed(true);
+      setDesktopMenuExpanded(false);
       selectTab(button.dataset.tabTarget);
       button.blur();
       closeSettingsPopover();
@@ -11055,6 +11064,8 @@ async function initApp() {
 
   menuShortcutButtons.forEach((button) => {
     button.addEventListener("click", () => {
+      lockDesktopMenuCollapsed(true);
+      setDesktopMenuExpanded(false);
       selectTab(button.dataset.menuShortcut);
       button.blur();
       closeSettingsPopover();
@@ -11069,6 +11080,8 @@ async function initApp() {
   });
 
   appHomeShortcut?.addEventListener("click", () => {
+    lockDesktopMenuCollapsed(true);
+    setDesktopMenuExpanded(false);
     selectTab("home");
     appHomeShortcut.blur();
     closeSettingsPopover();
@@ -11081,10 +11094,14 @@ async function initApp() {
   });
 
   appMenuShell?.addEventListener("mouseenter", () => {
+    if (appMenuShell.classList.contains("is-collapsed-lock")) {
+      return;
+    }
     setDesktopMenuExpanded(true);
   });
 
   appMenuShell?.addEventListener("mouseleave", () => {
+    lockDesktopMenuCollapsed(false);
     setDesktopMenuExpanded(false);
   });
 
@@ -11100,6 +11117,7 @@ async function initApp() {
     setAppMenuOpen(appMenuToggle?.getAttribute("aria-expanded") === "true");
     if (!isDesktopSidebarMode()) {
       appMenuShell?.classList.remove("is-expanded");
+      appMenuShell?.classList.remove("is-collapsed-lock");
     }
   });
 
