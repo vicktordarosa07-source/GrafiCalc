@@ -25,3 +25,13 @@ Observacoes:
 
 - a leitura de paginas do PDF e automatica, mas se algum arquivo vier com contagem incorreta voce pode ajustar manualmente
 - as configuracoes ficam salvas no navegador usado nesse computador
+
+## Nova camada SaaS
+
+O projeto agora possui uma camada Next.js + TypeScript com Supabase Auth. As calculadoras existentes continuam preservadas como módulo protegido durante a migração incremental.
+
+- configuração completa: [docs/AUTENTICACAO-SUPABASE.md](docs/AUTENTICACAO-SUPABASE.md)
+- migração de banco: `supabase/02_professional_auth.sql`
+- desenvolvimento: `npm run dev`
+- validação: `npm run check`
+- produção: `npm run build`

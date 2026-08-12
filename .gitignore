@@ -6,3 +6,16 @@ outputs/
 .env
 .env.*
 !.env.example
+public/legacy/app.mjs
+public/legacy/catalogo-loja.seed.js
+public/legacy/catalogo-loja.seed.mjs
+public/legacy/index.html
+public/legacy/styles.css
+public/legacy/assets/
+tsconfig.tsbuildinfo
+.next/
+node_modules/
+.env
+.env.local
+.env.*.local
+!.env.example

@@ -1,9 +1,31 @@
 {
-  "name": "graficalc-local",
+  "name": "graficalc-saas",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "scripts": {
-    "start": "node server.js",
-    "check": "node --check server.js && node --check app.mjs"
+    "prepare:legacy": "node scripts/prepare-legacy.mjs",
+    "predev": "npm run prepare:legacy",
+    "prebuild": "npm run prepare:legacy",
+    "dev": "next dev --hostname 0.0.0.0 --port 3210",
+    "build": "next build",
+    "start": "next start --hostname 0.0.0.0 --port 3210",
+    "legacy": "node server.js",
+    "check:legacy": "node --check server.js && node --check app.mjs",
+    "check": "npm run check:legacy && tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.2",
+    "next": "^16.3.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-hook-form": "^7.85.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "typescript": "^7.0.2"
   }
 }
