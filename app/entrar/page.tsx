@@ -2,13 +2,15 @@ import Link from "next/link";
 import { AuthShell } from "@/components/layout/auth-shell";
 
 const messages: Record<string, string> = {
-  campos: "Informe um e-mail e uma senha vÃ¡lidos.",
-  credenciais: "E-mail ou senha invÃ¡lidos.",
+  campos: "Informe um e-mail e uma senha válidos.",
+  credenciais: "E-mail ou senha inválidos.",
   confirmacao: "Confirme seu e-mail antes de entrar.",
   limite: "Muitas tentativas. Aguarde 15 minutos antes de tentar novamente.",
-  configuracao: "A autenticaÃ§Ã£o ainda nÃ£o estÃ¡ configurada corretamente.",
-  "rate-limit": "A proteÃ§Ã£o contra tentativas estÃ¡ indisponÃ­vel. Verifique a chave administrativa do Supabase na Vercel.",
-  autenticacao: "NÃ£o foi possÃ­vel concluir a autenticaÃ§Ã£o. Tente novamente em instantes.",
+  "configuracao-admin": "A chave administrativa do Supabase não está disponível na Vercel.",
+  "configuracao-publica": "A URL ou a chave publicável do Supabase não está disponível na Vercel.",
+  "rate-limit": "A proteção contra tentativas está indisponível. Verifique a chave administrativa do Supabase na Vercel.",
+  "cliente-supabase": "Não foi possível preparar a conexão segura com o Supabase.",
+  "conexao-supabase": "A Vercel não conseguiu alcançar a autenticação do Supabase. Verifique a URL e a chave publicável.",
 };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ erro?: string }> }) {
@@ -16,7 +18,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const message = erro ? messages[erro] : undefined;
 
   return (
-    <AuthShell eyebrow="Acesso seguro" title="Entrar no GrafiCalc" description="Use seu e-mail e senha para abrir sua Ã¡rea de trabalho.">
+    <AuthShell eyebrow="Acesso seguro" title="Entrar no GrafiCalc" description="Use seu e-mail e senha para abrir sua área de trabalho.">
       <form className="auth-form" action="/api/auth/login" method="post">
         <label className="field"><span>E-mail</span><input type="email" name="email" autoComplete="email" required /></label>
         <label className="field"><span>Senha</span><input type="password" name="password" autoComplete="current-password" required /></label>

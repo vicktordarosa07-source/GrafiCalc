@@ -9,6 +9,24 @@ function redirectToLogin(request: NextRequest, error: string) {
   return NextResponse.redirect(url, { status: 303 });
 }
 
+async function recordFailedAttempt(admin: ReturnType<typeof createAdminClient>, key: string) {
+  try {
+    await admin.rpc("graficalc_record_auth_failure", { p_key: key });
+  } catch (error) {
+    // The audit must never turn an invalid credential into an application failure.
+    console.error("graficalc_login_audit_failure", { message: error instanceof Error ? error.message : "unknown" });
+  }
+}
+
+async function clearFailedAttempts(admin: ReturnType<typeof createAdminClient>, key: string) {
+  try {
+    await admin.rpc("graficalc_clear_auth_failures", { p_key: key });
+  } catch (error) {
+    // A successful authentication remains valid even if the audit cleanup is unavailable.
+    console.error("graficalc_login_audit_cleanup_failure", { message: error instanceof Error ? error.message : "unknown" });
+  }
+}
+
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const parsed = loginSchema.safeParse({ email: formData.get("email"), password: formData.get("password") });
@@ -17,18 +35,34 @@ export async function POST(request: NextRequest) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const rateLimitKey = `${ip}:${parsed.data.email.toLowerCase()}`;
 
+  let admin: ReturnType<typeof createAdminClient>;
   try {
-    const admin = createAdminClient();
+    admin = createAdminClient();
+  } catch (error) {
+    console.error("graficalc_login_admin_client_failure", { message: error instanceof Error ? error.message : "unknown" });
+    return redirectToLogin(request, "configuracao-admin");
+  }
+
+  try {
     const { data: allowed, error: limitError } = await admin.rpc("graficalc_auth_attempt_allowed", { p_key: rateLimitKey });
-    if (limitError) return redirectToLogin(request, "rate-limit");
+    if (limitError) {
+      console.error("graficalc_login_rate_limit_failure", { message: limitError.message });
+      return redirectToLogin(request, "rate-limit");
+    }
     if (!allowed) return redirectToLogin(request, "limite");
+  } catch (error) {
+    console.error("graficalc_login_rate_limit_exception", { message: error instanceof Error ? error.message : "unknown" });
+    return redirectToLogin(request, "rate-limit");
+  }
 
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-    if (!url || !key) return redirectToLogin(request, "configuracao");
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) return redirectToLogin(request, "configuracao-publica");
 
-    const response = NextResponse.redirect(new URL("/workspace", request.url), { status: 303 });
-    const supabase = createServerClient(url, key, {
+  const response = NextResponse.redirect(new URL("/workspace", request.url), { status: 303 });
+  let supabase: ReturnType<typeof createServerClient>;
+  try {
+    supabase = createServerClient(url, key, {
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll(cookiesToSet) {
@@ -36,24 +70,29 @@ export async function POST(request: NextRequest) {
         },
       },
     });
-    const { data, error } = await supabase.auth.signInWithPassword({ email: parsed.data.email, password: parsed.data.password });
-
-    if (error || !data.user) {
-      await admin.rpc("graficalc_record_auth_failure", { p_key: rateLimitKey });
-      return redirectToLogin(request, "credenciais");
-    }
-    if (!data.user.email_confirmed_at) {
-      await admin.rpc("graficalc_record_auth_failure", { p_key: rateLimitKey });
-      await supabase.auth.signOut();
-      return redirectToLogin(request, "confirmacao");
-    }
-
-    await admin.rpc("graficalc_clear_auth_failures", { p_key: rateLimitKey });
-    return response;
   } catch (error) {
-    if (error instanceof Error && error.message.includes("administrativo")) {
-      return redirectToLogin(request, "configuracao");
-    }
-    return redirectToLogin(request, "autenticacao");
+    console.error("graficalc_login_public_client_failure", { message: error instanceof Error ? error.message : "unknown" });
+    return redirectToLogin(request, "cliente-supabase");
   }
+
+  let result: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>;
+  try {
+    result = await supabase.auth.signInWithPassword({ email: parsed.data.email, password: parsed.data.password });
+  } catch (error) {
+    console.error("graficalc_login_auth_request_failure", { message: error instanceof Error ? error.message : "unknown" });
+    return redirectToLogin(request, "conexao-supabase");
+  }
+
+  if (result.error || !result.data.user) {
+    await recordFailedAttempt(admin, rateLimitKey);
+    return redirectToLogin(request, "credenciais");
+  }
+  if (!result.data.user.email_confirmed_at) {
+    await recordFailedAttempt(admin, rateLimitKey);
+    await supabase.auth.signOut();
+    return redirectToLogin(request, "confirmacao");
+  }
+
+  await clearFailedAttempts(admin, rateLimitKey);
+  return response;
 }
