@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   try {
     const admin = createAdminClient();
     const { data: allowed, error: limitError } = await admin.rpc("graficalc_auth_attempt_allowed", { p_key: rateLimitKey });
-    if (limitError) return redirectToLogin(request, "seguranca");
+    if (limitError) return redirectToLogin(request, "rate-limit");
     if (!allowed) return redirectToLogin(request, "limite");
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -50,7 +50,10 @@ export async function POST(request: NextRequest) {
 
     await admin.rpc("graficalc_clear_auth_failures", { p_key: rateLimitKey });
     return response;
-  } catch {
-    return redirectToLogin(request, "seguranca");
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("administrativo")) {
+      return redirectToLogin(request, "configuracao");
+    }
+    return redirectToLogin(request, "autenticacao");
   }
 }

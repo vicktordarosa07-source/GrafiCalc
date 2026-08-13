@@ -7,7 +7,8 @@ const messages: Record<string, string> = {
   confirmacao: "Confirme seu e-mail antes de entrar.",
   limite: "Muitas tentativas. Aguarde 15 minutos antes de tentar novamente.",
   configuracao: "A autenticaÃ§Ã£o ainda nÃ£o estÃ¡ configurada corretamente.",
-  seguranca: "NÃ£o foi possÃ­vel validar a seguranÃ§a do acesso. Tente novamente em instantes.",
+  "rate-limit": "A proteÃ§Ã£o contra tentativas estÃ¡ indisponÃ­vel. Verifique a chave administrativa do Supabase na Vercel.",
+  autenticacao: "NÃ£o foi possÃ­vel concluir a autenticaÃ§Ã£o. Tente novamente em instantes.",
 };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ erro?: string }> }) {
