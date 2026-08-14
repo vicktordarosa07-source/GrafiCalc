@@ -9,7 +9,9 @@ function redirectToLogin(request: NextRequest, error: string) {
   return NextResponse.redirect(url, { status: 303 });
 }
 
-async function recordFailedAttempt(admin: ReturnType<typeof createAdminClient>, key: string) {
+async function recordFailedAttempt(admin: ReturnType<typeof createAdminClient> | null, key: string) {
+  if (!admin) return;
+
   try {
     await admin.rpc("graficalc_record_auth_failure", { p_key: key });
   } catch (error) {
@@ -18,7 +20,9 @@ async function recordFailedAttempt(admin: ReturnType<typeof createAdminClient>, 
   }
 }
 
-async function clearFailedAttempts(admin: ReturnType<typeof createAdminClient>, key: string) {
+async function clearFailedAttempts(admin: ReturnType<typeof createAdminClient> | null, key: string) {
+  if (!admin) return;
+
   try {
     await admin.rpc("graficalc_clear_auth_failures", { p_key: key });
   } catch (error) {
@@ -35,24 +39,24 @@ export async function POST(request: NextRequest) {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   const rateLimitKey = `${ip}:${parsed.data.email.toLowerCase()}`;
 
-  let admin: ReturnType<typeof createAdminClient>;
+  let admin: ReturnType<typeof createAdminClient> | null = null;
   try {
     admin = createAdminClient();
   } catch (error) {
     console.error("graficalc_login_admin_client_failure", { message: error instanceof Error ? error.message : "unknown" });
-    return redirectToLogin(request, "configuracao-admin");
   }
 
-  try {
-    const { data: allowed, error: limitError } = await admin.rpc("graficalc_auth_attempt_allowed", { p_key: rateLimitKey });
-    if (limitError) {
-      console.error("graficalc_login_rate_limit_failure", { message: limitError.message });
-      return redirectToLogin(request, "rate-limit");
+  if (admin) {
+    try {
+      const { data: allowed, error: limitError } = await admin.rpc("graficalc_auth_attempt_allowed", { p_key: rateLimitKey });
+      if (limitError) {
+        console.error("graficalc_login_rate_limit_failure", { message: limitError.message });
+      } else if (!allowed) {
+        return redirectToLogin(request, "limite");
+      }
+    } catch (error) {
+      console.error("graficalc_login_rate_limit_exception", { message: error instanceof Error ? error.message : "unknown" });
     }
-    if (!allowed) return redirectToLogin(request, "limite");
-  } catch (error) {
-    console.error("graficalc_login_rate_limit_exception", { message: error instanceof Error ? error.message : "unknown" });
-    return redirectToLogin(request, "rate-limit");
   }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
