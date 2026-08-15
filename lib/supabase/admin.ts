@@ -1,11 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
+import { getSupabaseServerEnvironment } from "@/lib/supabase/env";
 
 export function createAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const secret = process.env.SUPABASE_SECRET_KEY;
-  if (!url || !secret) throw new Error("Supabase administrativo não configurado.");
+  const { url, secretKey } = getSupabaseServerEnvironment();
+  if (!url || !secretKey) throw new Error("Supabase administrativo nao configurado.");
 
-  return createClient(url, secret, {
+  return createClient(url, secretKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

@@ -1,12 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getSupabaseServerEnvironment } from "@/lib/supabase/env";
 
 const PUBLIC_PATHS = ["/entrar", "/cadastro", "/recuperar-senha", "/confirmar-email", "/auth", "/api/auth/login", "/api/auth/health"];
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const { url, publishableKey: key } = getSupabaseServerEnvironment();
   const pathname = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 

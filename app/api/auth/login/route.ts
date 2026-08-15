@@ -1,7 +1,10 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getSupabaseServerEnvironment } from "@/lib/supabase/env";
 import { loginSchema } from "@/lib/validation/auth";
+
+export const dynamic = "force-dynamic";
 
 function redirectToLogin(request: NextRequest, error: string) {
   const url = new URL("/entrar", request.url);
@@ -73,8 +76,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const { url, publishableKey: key } = getSupabaseServerEnvironment();
   if (!url || !key) return redirectToLogin(request, "configuracao-publica");
 
   const response = NextResponse.redirect(new URL("/workspace", request.url), { status: 303 });
