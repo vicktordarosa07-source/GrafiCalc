@@ -14,7 +14,7 @@ function redirectToLogin(request: NextRequest, error: string) {
 
 function loginErrorCode(error: { message?: string; status?: number }) {
   const detail = error.message?.toLowerCase() || "";
-  if (/invalid api key|api key.*invalid|apikey/.test(detail)) return "configuracao-publica";
+  if (/invalid api key|api key.*invalid|apikey/.test(detail)) return "chave-publica-invalida";
   if (/captcha|turnstile|security check/.test(detail)) return "seguranca";
   if (/email not confirmed|email.*confirm/.test(detail)) return "confirmacao";
   if (/rate limit|too many|over.*limit/.test(detail)) return "limite";
