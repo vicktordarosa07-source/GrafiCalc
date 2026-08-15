@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServerEnvironment } from "@/lib/supabase/env";
+import { getSupabaseServerEnvironment, getSupabaseServerEnvironmentStatus } from "@/lib/supabase/env";
 
 export const dynamic = "force-dynamic";
 
 // Exposes only public configuration state to diagnose a mismatched Vercel setup.
 export async function GET() {
   const { url: supabaseUrl, publishableKey, secretKey } = getSupabaseServerEnvironment();
+  const environmentStatus = getSupabaseServerEnvironmentStatus();
   let projectRef: string | null = null;
 
   try {
@@ -19,6 +20,7 @@ export async function GET() {
     supabaseProject: projectRef,
     publicKeyConfigured: Boolean(publishableKey),
     adminKeyConfigured: Boolean(secretKey),
+    ...environmentStatus,
   }, {
     headers: { "Cache-Control": "no-store" },
   });
