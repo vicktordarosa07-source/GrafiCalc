@@ -17,6 +17,38 @@ function fields(formData: FormData) {
   };
 }
 
+function sanitizedOrigin(value: string | null | undefined) {
+  if (!value) return null;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+async function authRedirectOrigin() {
+  const configuredOrigin = sanitizedOrigin(process.env.NEXT_PUBLIC_SITE_URL);
+  if (configuredOrigin) return configuredOrigin;
+
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
+  if (host) {
+    const protocol = requestHeaders.get("x-forwarded-proto") || (host.startsWith("localhost") ? "http" : "https");
+    return `${protocol}://${host}`;
+  }
+
+  return "http://localhost:3210";
+}
+
+function knownSignupErrorMessage(error: { message: string }) {
+  const detail = error.message.toLowerCase();
+  if (/already|registered|unique|duplicate/.test(detail)) return "Já existe um cadastro com este e-mail ou documento.";
+  if (/captcha|turnstile|security check/.test(detail)) return "Conclua a verificação de segurança antes de criar sua conta.";
+  if (/redirect|url.*allow|not allowed/.test(detail)) return "O retorno de confirmação ainda não está autorizado no Supabase.";
+  if (/database|saving new user|trigger|profile/.test(detail)) return "Não foi possível preparar o seu perfil. Tente novamente em instantes.";
+  return null;
+}
+
 async function requestIdentity() {
   const requestHeaders = await headers();
   const ip = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
@@ -82,7 +114,7 @@ export async function signupAction(_: ActionState, formData: FormData): Promise<
   if (!parsed.success) return { ok: false, message: "Revise os campos do cadastro.", fieldErrors: parsed.error.flatten().fieldErrors };
 
   const supabase = await createClient();
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3210";
+  const siteUrl = await authRedirectOrigin();
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
@@ -99,6 +131,12 @@ export async function signupAction(_: ActionState, formData: FormData): Promise<
   });
 
   if (error) {
+    console.error("graficalc_signup_failure", { message: error.message, status: error.status });
+    const knownMessage = knownSignupErrorMessage(error);
+    if (knownMessage) return { ok: false, message: knownMessage };
+  }
+
+  if (error) {
     const duplicate = /already|registered|unique/i.test(error.message);
     return { ok: false, message: duplicate ? "Já existe um cadastro com esses dados." : "Não foi possível concluir o cadastro." };
   }
@@ -111,7 +149,7 @@ export async function requestPasswordResetAction(_: ActionState, formData: FormD
   const captchaToken = String(formData.get("cf-turnstile-response") || formData.get("captchaToken") || "");
   if (!/^\S+@\S+\.\S+$/.test(email)) return { ok: false, message: "Informe um e-mail válido." };
   const supabase = await createClient();
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3210";
+  const siteUrl = await authRedirectOrigin();
   await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${siteUrl}/auth/confirm?next=/alterar-senha`,
     captchaToken: captchaToken || undefined,
@@ -124,7 +162,7 @@ export async function resendConfirmationAction(_: ActionState, formData: FormDat
   const captchaToken = String(formData.get("cf-turnstile-response") || formData.get("captchaToken") || "");
   if (!/^\S+@\S+\.\S+$/.test(email)) return { ok: false, message: "Informe o e-mail usado no cadastro." };
   const supabase = await createClient();
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3210";
+  const siteUrl = await authRedirectOrigin();
   const { error } = await supabase.auth.resend({
     type: "signup",
     email,
