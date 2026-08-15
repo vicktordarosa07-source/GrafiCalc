@@ -49,6 +49,14 @@ function knownSignupErrorMessage(error: { message: string }) {
   return null;
 }
 
+function passwordResetErrorMessage(error: { message: string }) {
+  const detail = error.message.toLowerCase();
+  if (/captcha|turnstile|security check/.test(detail)) return "Conclua a verificação de segurança antes de solicitar a recuperação.";
+  if (/redirect|url.*allow|not allowed/.test(detail)) return "O retorno da recuperação ainda não está autorizado no Supabase.";
+  if (/rate limit|too many|over.*limit/.test(detail)) return "Aguarde alguns minutos antes de solicitar outro e-mail.";
+  return "Não foi possível solicitar o e-mail de recuperação agora. Tente novamente em instantes.";
+}
+
 async function requestIdentity() {
   const requestHeaders = await headers();
   const ip = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
@@ -150,10 +158,14 @@ export async function requestPasswordResetAction(_: ActionState, formData: FormD
   if (!/^\S+@\S+\.\S+$/.test(email)) return { ok: false, message: "Informe um e-mail válido." };
   const supabase = await createClient();
   const siteUrl = await authRedirectOrigin();
-  await supabase.auth.resetPasswordForEmail(email, {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${siteUrl}/auth/confirm?next=/alterar-senha`,
     captchaToken: captchaToken || undefined,
   });
+  if (error) {
+    console.error("graficalc_password_reset_failure", { message: error.message, status: error.status });
+    return { ok: false, message: passwordResetErrorMessage(error) };
+  }
   return { ok: true, message: "Se o e-mail estiver cadastrado, enviaremos as instruções de recuperação." };
 }
 
