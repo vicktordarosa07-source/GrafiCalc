@@ -9,6 +9,15 @@ function redirectToLogin(request: NextRequest, error: string) {
   return NextResponse.redirect(url, { status: 303 });
 }
 
+function loginErrorCode(error: { message?: string; status?: number }) {
+  const detail = error.message?.toLowerCase() || "";
+  if (/captcha|turnstile|security check/.test(detail)) return "seguranca";
+  if (/email not confirmed|email.*confirm/.test(detail)) return "confirmacao";
+  if (/rate limit|too many|over.*limit/.test(detail)) return "limite";
+  if (/network|fetch|timeout|connection/.test(detail) || error.status === 0) return "conexao-supabase";
+  return "credenciais";
+}
+
 async function recordFailedAttempt(admin: ReturnType<typeof createAdminClient> | null, key: string) {
   if (!admin) return;
 
@@ -33,7 +42,11 @@ async function clearFailedAttempts(admin: ReturnType<typeof createAdminClient> |
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
-  const parsed = loginSchema.safeParse({ email: formData.get("email"), password: formData.get("password") });
+  const parsed = loginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
+    captchaToken: formData.get("cf-turnstile-response") || formData.get("captchaToken") || undefined,
+  });
   if (!parsed.success) return redirectToLogin(request, "campos");
 
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
@@ -81,7 +94,11 @@ export async function POST(request: NextRequest) {
 
   let result: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>;
   try {
-    result = await supabase.auth.signInWithPassword({ email: parsed.data.email, password: parsed.data.password });
+    result = await supabase.auth.signInWithPassword({
+      email: parsed.data.email,
+      password: parsed.data.password,
+      options: parsed.data.captchaToken ? { captchaToken: parsed.data.captchaToken } : undefined,
+    });
   } catch (error) {
     console.error("graficalc_login_auth_request_failure", { message: error instanceof Error ? error.message : "unknown" });
     return redirectToLogin(request, "conexao-supabase");
@@ -89,7 +106,10 @@ export async function POST(request: NextRequest) {
 
   if (result.error || !result.data.user) {
     await recordFailedAttempt(admin, rateLimitKey);
-    return redirectToLogin(request, "credenciais");
+    if (result.error) {
+      console.error("graficalc_login_rejected", { message: result.error.message, status: result.error.status });
+    }
+    return redirectToLogin(request, loginErrorCode(result.error || {}));
   }
   if (!result.data.user.email_confirmed_at) {
     await recordFailedAttempt(admin, rateLimitKey);

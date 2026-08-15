@@ -2,6 +2,7 @@ import { LoginBrowserForm } from "@/components/auth/login-browser-form";
 import { AuthShell } from "@/components/layout/auth-shell";
 
 const messages: Record<string, string> = {
+  seguranca: "Conclua a verificacao de seguranca antes de entrar.",
   campos: "Informe um e-mail e uma senha válidos.",
   credenciais: "E-mail ou senha inválidos.",
   confirmacao: "Confirme seu e-mail antes de entrar.",

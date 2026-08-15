@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Turnstile } from "./turnstile";
 
 export function LoginBrowserForm({ message }: { message?: string }) {
   const router = useRouter();
@@ -15,6 +16,7 @@ export function LoginBrowserForm({ message }: { message?: string }) {
     <form className="auth-form" action="/api/auth/login" method="post" onInput={clearPreviousError}>
       <label className="field"><span>E-mail</span><input type="email" name="email" autoComplete="email" required /></label>
       <label className="field"><span>Senha</span><input type="password" name="password" autoComplete="current-password" required /></label>
+      <Turnstile />
       {message && <p className="form-message error" role="alert">{message}</p>}
       <button className="button button-primary" type="submit">Entrar</button>
       <div className="form-links"><Link href="/recuperar-senha">Esqueci minha senha</Link><Link href="/cadastro">Criar cadastro</Link></div>
