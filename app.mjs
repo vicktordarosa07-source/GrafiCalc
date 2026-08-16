@@ -1156,6 +1156,9 @@ function createDefaultState() {
       name: "",
       contact: "",
       cnpj: "",
+      personType: "legal",
+      email: "",
+      whatsapp: false,
     },
     company: {
       name: "GrafiCalc",
@@ -1595,18 +1598,32 @@ function mergeState(candidate, configCandidate = null) {
   state.m2CalcMode = OPTIONS.m2CalcModes.includes(candidate.m2CalcMode) ? candidate.m2CalcMode : state.m2CalcMode;
   state.presets = { ...state.presets, ...(candidate.presets || {}) };
   state.client = { ...state.client, ...(candidate.client || {}) };
+  state.client.personType = state.client.personType === "individual" || onlyDigits(state.client.cnpj).length === 11 ? "individual" : "legal";
+  state.client.email = typeof state.client.email === "string" ? state.client.email : "";
+  state.client.whatsapp = Boolean(state.client.whatsapp);
   state.company = { ...state.company, ...(candidate.company || {}) };
   state.clients = Array.isArray(candidate.clients)
     ? candidate.clients
         .filter((client) => client && typeof client === "object")
-        .map((client, index) => ({
-          id: client.id || `client-${index + 1}`,
-          name: typeof client.name === "string" ? client.name : "",
-          contact: typeof client.contact === "string" ? client.contact : "",
-          cnpj: typeof client.cnpj === "string" ? client.cnpj : "",
-          notes: typeof client.notes === "string" ? client.notes : "",
-          createdAt: typeof client.createdAt === "string" ? client.createdAt : new Date().toISOString(),
-        }))
+        .map((client, index) => {
+          const document = typeof client.document === "string" ? client.document : typeof client.cnpj === "string" ? client.cnpj : "";
+          const personType = client.personType === "individual" || (client.personType !== "legal" && onlyDigits(document).length === 11)
+            ? "individual"
+            : "legal";
+          return {
+            id: client.id || `client-${index + 1}`,
+            name: typeof client.name === "string" ? client.name : "",
+            contact: typeof client.contact === "string" ? client.contact : "",
+            document,
+            cnpj: personType === "legal" ? document : "",
+            cpf: personType === "individual" ? document : "",
+            personType,
+            email: typeof client.email === "string" ? client.email : "",
+            whatsapp: Boolean(client.whatsapp),
+            notes: typeof client.notes === "string" ? client.notes : "",
+            createdAt: typeof client.createdAt === "string" ? client.createdAt : new Date().toISOString(),
+          };
+        })
     : state.clients;
   state.quoteHistory = Array.isArray(candidate.quoteHistory)
     ? candidate.quoteHistory
@@ -2482,6 +2499,29 @@ function validateBrazilianDocument(document) {
     return validateCnpj(digits) ? "" : "O CNPJ informado parece invalido. Revise os numeros digitados.";
   }
   return "Digite um CPF com 11 numeros ou um CNPJ com 14 numeros.";
+}
+
+function formatClientDocument(value, personType = "individual") {
+  const digits = onlyDigits(value).slice(0, personType === "legal" ? 14 : 11);
+  if (personType === "legal") {
+    return digits
+      .replace(/^(\d{2})(\d)/, "$1.$2")
+      .replace(/^(\d{2}\.\d{3})(\d)/, "$1.$2")
+      .replace(/\.(\d{3})(\d)/, ".$1/$2")
+      .replace(/(\d{4})(\d)/, "$1-$2");
+  }
+  return digits
+    .replace(/^(\d{3})(\d)/, "$1.$2")
+    .replace(/^(\d{3}\.\d{3})(\d)/, "$1.$2")
+    .replace(/\.(\d{3})(\d)/, ".$1-$2");
+}
+
+function formatBrazilianPhone(value) {
+  const digits = onlyDigits(value).slice(0, 11);
+  if (digits.length <= 2) return digits ? `(${digits}` : "";
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
 function generateVerificationCode(length = 6) {
@@ -7134,7 +7174,7 @@ function createQuoteHtml(state, workbook, colorWorkbook, credentialWorkbook, m2W
           <h3>Cliente</h3>
           <p class="quote-muted">Nome / Razão social: ${escapeHtml(state.client.name || "-")}</p>
           <p class="quote-muted">Contato: ${escapeHtml(state.client.contact || "-")}</p>
-          <p class="quote-muted">CNPJ: ${escapeHtml(state.client.cnpj || "-")}</p>
+          <p class="quote-muted">${escapeHtml(state.client.personType === "individual" ? "CPF" : "CNPJ")}: ${escapeHtml(state.client.cnpj || "-")}</p>
         </div>
         <div class="quote-box">
           <h3>Pagamento</h3>
@@ -7170,7 +7210,7 @@ function createQuoteText(state, workbook, colorWorkbook, credentialWorkbook, m2W
     "",
     `Cliente: ${state.client.name || "-"}`,
     `Contato: ${state.client.contact || "-"}`,
-    `CNPJ cliente: ${state.client.cnpj || "-"}`,
+    `${state.client.personType === "individual" ? "CPF" : "CNPJ"} cliente: ${state.client.cnpj || "-"}`,
     `Pagamento: ${state.paymentTerms || "-"}`,
     "",
     "Itens:",
@@ -7271,6 +7311,7 @@ async function initApp() {
   let lastSharedSnapshot = "";
   let sharedRefreshHandle = null;
   let editingClientId = "";
+  let editingClientPersonType = "individual";
   let selectedDeveloperUserId = "";
   let serverSecuritySession = {
     developerLoggedIn: false,
@@ -7327,7 +7368,11 @@ async function initApp() {
   const osList = document.getElementById("os-list");
   const clientsEditorName = document.getElementById("clients-editor-name");
   const clientsEditorContact = document.getElementById("clients-editor-contact");
-  const clientsEditorCnpj = document.getElementById("clients-editor-cnpj");
+  const clientsEditorDocument = document.getElementById("clients-editor-document");
+  const clientsEditorEmail = document.getElementById("clients-editor-email");
+  const clientsEditorWhatsapp = document.getElementById("clients-editor-whatsapp");
+  const clientsEditorNameLabel = document.getElementById("clients-editor-name-label");
+  const clientsEditorDocumentLabel = document.getElementById("clients-editor-document-label");
   const clientsEditorNotes = document.getElementById("clients-editor-notes");
   const clientsEditorStatus = document.getElementById("clients-editor-status");
   const m2RowsTableBody = document.getElementById("m2-rows-table-body");
@@ -8658,11 +8703,35 @@ async function initApp() {
     focusEditableField(nextDescriptor);
   }
 
+  function setClientEditorPersonType(personType = "individual") {
+    editingClientPersonType = personType === "legal" ? "legal" : "individual";
+    document.querySelectorAll("[data-client-person-type]").forEach((button) => {
+      const isSelected = button.dataset.clientPersonType === editingClientPersonType;
+      button.classList.toggle("is-active", isSelected);
+      button.setAttribute("aria-pressed", String(isSelected));
+    });
+    if (clientsEditorNameLabel) clientsEditorNameLabel.textContent = editingClientPersonType === "legal" ? "Razão social" : "Nome";
+    if (clientsEditorDocumentLabel) clientsEditorDocumentLabel.textContent = editingClientPersonType === "legal" ? "CNPJ" : "CPF";
+    if (clientsEditorName) clientsEditorName.autocomplete = editingClientPersonType === "legal" ? "organization" : "name";
+    if (clientsEditorDocument) clientsEditorDocument.value = formatClientDocument(clientsEditorDocument.value, editingClientPersonType);
+  }
+
+  function getClientDocumentLabel(client) {
+    return client?.personType === "individual" ? "CPF" : "CNPJ";
+  }
+
+  function getClientDocument(client) {
+    return client?.document || client?.cpf || client?.cnpj || "";
+  }
+
   function resetClientEditor(message = "Selecione um cliente da lista para editar ou preencha os campos acima para criar um novo cadastro.", tone = "neutral") {
     editingClientId = "";
+    setClientEditorPersonType("individual");
     if (clientsEditorName) clientsEditorName.value = "";
     if (clientsEditorContact) clientsEditorContact.value = "";
-    if (clientsEditorCnpj) clientsEditorCnpj.value = "";
+    if (clientsEditorDocument) clientsEditorDocument.value = "";
+    if (clientsEditorEmail) clientsEditorEmail.value = "";
+    if (clientsEditorWhatsapp) clientsEditorWhatsapp.checked = false;
     if (clientsEditorNotes) clientsEditorNotes.value = "";
     setStatusMessage(clientsEditorStatus, message, tone);
   }
@@ -8673,9 +8742,12 @@ async function initApp() {
       return;
     }
     editingClientId = client.id || "";
+    setClientEditorPersonType(client.personType);
     if (clientsEditorName) clientsEditorName.value = client.name || "";
-    if (clientsEditorContact) clientsEditorContact.value = client.contact || "";
-    if (clientsEditorCnpj) clientsEditorCnpj.value = client.cnpj || "";
+    if (clientsEditorContact) clientsEditorContact.value = formatBrazilianPhone(client.contact || "");
+    if (clientsEditorDocument) clientsEditorDocument.value = formatClientDocument(getClientDocument(client), editingClientPersonType);
+    if (clientsEditorEmail) clientsEditorEmail.value = client.email || "";
+    if (clientsEditorWhatsapp) clientsEditorWhatsapp.checked = Boolean(client.whatsapp);
     if (clientsEditorNotes) clientsEditorNotes.value = client.notes || "";
     setStatusMessage(clientsEditorStatus, message, tone);
   }
@@ -9694,8 +9766,9 @@ async function initApp() {
               <article class="list-card" data-client-id="${escapeHtml(client.id)}">
                 <div>
                   <h3>${escapeHtml(client.name || "Sem nome")}</h3>
-                  <p>${escapeHtml(client.contact || "Sem contato")}</p>
-                  <p class="list-meta">${escapeHtml(client.cnpj || "Sem CNPJ")}</p>
+                  <p>${escapeHtml(client.contact || "Sem celular")}${client.whatsapp ? " · WhatsApp" : ""}</p>
+                  <p class="list-meta">${escapeHtml(getClientDocumentLabel(client))}: ${escapeHtml(getClientDocument(client) || "não informado")}</p>
+                  <p class="list-meta">${escapeHtml(client.email || "Sem e-mail cadastrado")}</p>
                   ${client.notes ? `<p class="list-notes">${escapeHtml(client.notes)}</p>` : ""}
                   <p class="list-meta">Criado em ${escapeHtml(formatDateTime(client.createdAt) || "data indisponível")}</p>
                 </div>
@@ -13962,6 +14035,21 @@ async function initApp() {
     });
   });
 
+  document.querySelectorAll("[data-client-person-type]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setClientEditorPersonType(button.dataset.clientPersonType);
+      clientsEditorDocument?.focus();
+    });
+  });
+
+  clientsEditorDocument?.addEventListener("input", () => {
+    clientsEditorDocument.value = formatClientDocument(clientsEditorDocument.value, editingClientPersonType);
+  });
+
+  clientsEditorContact?.addEventListener("input", () => {
+    clientsEditorContact.value = formatBrazilianPhone(clientsEditorContact.value);
+  });
+
   document.getElementById("company-logo-input").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -14009,11 +14097,18 @@ async function initApp() {
     }
 
     const existingIndex = state.clients.findIndex((client) => client.name.trim().toLowerCase() === clientName.toLowerCase());
+    const documentValue = state.client.cnpj.trim();
+    const personType = state.client.personType === "individual" || onlyDigits(documentValue).length === 11 ? "individual" : "legal";
     const payload = {
       id: existingIndex >= 0 ? state.clients[existingIndex].id : `client-${Date.now()}`,
       name: state.client.name.trim(),
       contact: state.client.contact.trim(),
-      cnpj: state.client.cnpj.trim(),
+      document: documentValue,
+      cnpj: personType === "legal" ? documentValue : "",
+      cpf: personType === "individual" ? documentValue : "",
+      personType,
+      email: state.client.email || "",
+      whatsapp: Boolean(state.client.whatsapp),
       notes: state.quoteNotes.trim(),
       createdAt: existingIndex >= 0 ? state.clients[existingIndex].createdAt : new Date().toISOString(),
     };
@@ -14031,17 +14126,38 @@ async function initApp() {
 
   document.getElementById("save-client-record-button").addEventListener("click", () => {
     const name = clientsEditorName?.value.trim() || "";
+    const documentValue = clientsEditorDocument?.value.trim() || "";
+    const email = clientsEditorEmail?.value.trim() || "";
     if (!name) {
       setStatusMessage(clientsEditorStatus, "Digite o nome do cliente para salvar o cadastro.", "warning");
       clientsEditorName?.focus();
+      return;
+    }
+    const documentError = editingClientPersonType === "individual"
+      ? (validateCpf(documentValue) ? "" : "Informe um CPF válido para salvar o cliente.")
+      : (validateCnpj(documentValue) ? "" : "Informe um CNPJ válido para salvar o cliente.");
+    if (documentError) {
+      setStatusMessage(clientsEditorStatus, documentError, "warning");
+      clientsEditorDocument?.focus();
+      return;
+    }
+    const emailError = email ? validateEmailAddress(email) : "";
+    if (emailError) {
+      setStatusMessage(clientsEditorStatus, "Informe um e-mail válido ou deixe o campo vazio.", "warning");
+      clientsEditorEmail?.focus();
       return;
     }
 
     const payload = {
       id: editingClientId || `client-${Date.now()}`,
       name,
-      contact: clientsEditorContact?.value.trim() || "",
-      cnpj: clientsEditorCnpj?.value.trim() || "",
+      contact: formatBrazilianPhone(clientsEditorContact?.value || ""),
+      document: formatClientDocument(documentValue, editingClientPersonType),
+      cnpj: editingClientPersonType === "legal" ? formatClientDocument(documentValue, "legal") : "",
+      cpf: editingClientPersonType === "individual" ? formatClientDocument(documentValue, "individual") : "",
+      personType: editingClientPersonType,
+      email,
+      whatsapp: Boolean(clientsEditorWhatsapp?.checked),
       notes: clientsEditorNotes?.value.trim() || "",
       createdAt: editingClientId
         ? state.clients.find((client) => client.id === editingClientId)?.createdAt || new Date().toISOString()
@@ -14119,7 +14235,10 @@ async function initApp() {
     if (button.dataset.clientAction === "load") {
       state.client.name = client.name;
       state.client.contact = client.contact;
-      state.client.cnpj = client.cnpj;
+      state.client.cnpj = getClientDocument(client);
+      state.client.personType = client.personType || "legal";
+      state.client.email = client.email || "";
+      state.client.whatsapp = Boolean(client.whatsapp);
       state.quoteNotes = client.notes || state.quoteNotes;
       persist();
       renderAll();

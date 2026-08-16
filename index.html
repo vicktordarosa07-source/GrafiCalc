@@ -1391,18 +1391,31 @@
               </div>
             </div>
 
+            <div class="client-type-selector" role="group" aria-label="Tipo de cliente">
+              <button class="client-type-button is-active" type="button" data-client-person-type="individual" aria-pressed="true">Pessoa física</button>
+              <button class="client-type-button" type="button" data-client-person-type="legal" aria-pressed="false">Pessoa jurídica</button>
+            </div>
+
             <div class="quote-form-grid client-editor-grid">
               <label>
-                <span>Nome / Razão social</span>
-                <input id="clients-editor-name" type="text">
+                <span id="clients-editor-name-label">Nome</span>
+                <input id="clients-editor-name" type="text" autocomplete="name">
               </label>
               <label>
-                <span>Contato</span>
-                <input id="clients-editor-contact" type="text">
+                <span id="clients-editor-document-label">CPF</span>
+                <input id="clients-editor-document" type="text" inputmode="numeric" autocomplete="off">
               </label>
               <label>
-                <span>CNPJ</span>
-                <input id="clients-editor-cnpj" type="text">
+                <span>E-mail</span>
+                <input id="clients-editor-email" type="email" autocomplete="email">
+              </label>
+              <label>
+                <span>Celular</span>
+                <input id="clients-editor-contact" type="tel" inputmode="tel" autocomplete="tel">
+              </label>
+              <label class="client-whatsapp-option">
+                <input id="clients-editor-whatsapp" type="checkbox">
+                <span>Este celular é WhatsApp</span>
               </label>
               <label class="full-width">
                 <span>Observações</span>
@@ -1732,7 +1745,7 @@
                 <input id="client-contact" type="text">
               </label>
               <label>
-                <span>CNPJ</span>
+                <span>CPF / CNPJ</span>
                 <input id="client-cnpj" type="text">
               </label>
               <label>
