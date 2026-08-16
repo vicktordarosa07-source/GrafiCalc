@@ -12955,13 +12955,13 @@ async function initApp() {
       }
 
       if (field === "format") {
-        const options = getBlockSelectOptions(config, tab, row);
+        const options = getBlockSelectOptions(config, getBlockPaperKey(row, tab), row);
         row.format = options.selectedFormat;
         row.vias = options.selectedVias;
         row.quantity = options.selectedQuantity;
       }
       if (field === "vias") {
-        const options = getBlockSelectOptions(config, tab, row);
+        const options = getBlockSelectOptions(config, getBlockPaperKey(row, tab), row);
         row.vias = options.selectedVias;
         row.quantity = options.selectedQuantity;
       }
