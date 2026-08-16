@@ -11512,6 +11512,11 @@ async function initApp() {
     if (menuSettingsPopover && !menuSettingsPopover.hidden && !menuSettingsPopover.contains(event.target) && !menuSettingsToggle?.contains(event.target)) {
       closeSettingsPopover();
     }
+    document.querySelectorAll("details.inline-popover[open]").forEach((popover) => {
+      if (!popover.contains(event.target)) {
+        popover.removeAttribute("open");
+      }
+    });
     if (isDesktopSidebarMode() || !appMenuPanel || appMenuPanel.hidden || !appMenuShell) {
       return;
     }

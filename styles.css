@@ -7873,3 +7873,79 @@ body::before {
     max-width: 100% !important;
   }
 }
+
+/* Compact menus inside vertical calculation cards must not change card height. */
+.calculation-vertical-table details.inline-popover {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+
+.calculation-vertical-table details.inline-popover[open] {
+  z-index: 40;
+}
+
+.calculation-vertical-table tbody tr:has(details.inline-popover[open]) {
+  position: relative;
+  z-index: 30;
+  overflow: visible;
+}
+
+.calculation-vertical-table details.inline-popover > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.calculation-vertical-table details.inline-popover > summary::-webkit-details-marker {
+  display: none;
+}
+
+.calculation-vertical-table .inline-floating-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 50;
+  display: grid;
+  gap: 6px;
+  width: max-content;
+  min-width: 190px;
+  max-width: min(320px, calc(100vw - 48px));
+  max-height: min(320px, calc(100vh - 80px));
+  padding: 10px;
+  overflow-y: auto;
+  border: 1px solid rgba(18, 135, 111, 0.2);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 20px 44px rgba(16, 78, 74, 0.2);
+  backdrop-filter: blur(16px);
+}
+
+.calculation-vertical-table .inline-floating-menu .popover-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: #29464b;
+  cursor: pointer;
+}
+
+.calculation-vertical-table .inline-floating-menu .popover-option:hover {
+  background: rgba(19, 167, 125, 0.1);
+}
+
+.calculation-vertical-table .inline-floating-menu .helper-text {
+  display: block;
+  padding: 5px 10px 2px;
+}
+
+@media (max-width: 700px) {
+  .calculation-vertical-table .inline-floating-menu {
+    width: min(300px, calc(100vw - 42px));
+    min-width: 0;
+  }
+}
