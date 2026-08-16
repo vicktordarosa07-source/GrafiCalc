@@ -7923,6 +7923,60 @@ body::before {
   backdrop-filter: blur(16px);
 }
 
+.calculation-vertical-table .inline-floating-menu {
+  gap: 0;
+  min-width: min(310px, calc(100vw - 48px));
+  padding: 0;
+  overflow: hidden auto;
+}
+
+.calculation-vertical-table .inline-popover-header {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid rgba(23, 107, 107, 0.1);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.78), rgba(231, 251, 244, 0.78)),
+    rgba(255, 255, 255, 0.82);
+}
+
+.calculation-vertical-table .inline-popover-title {
+  display: grid;
+  gap: 4px;
+}
+
+.calculation-vertical-table .inline-popover-title strong {
+  color: #173f42;
+  font-size: 0.96rem;
+  letter-spacing: -0.01em;
+}
+
+.calculation-vertical-table .inline-popover-title span {
+  color: #688086;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.calculation-vertical-table .inline-popover-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(280px, calc(100vh - 180px));
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.calculation-vertical-table .inline-popover-footer {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(23, 107, 107, 0.1);
+  background: rgba(246, 253, 250, 0.84);
+}
+
+.calculation-vertical-table .inline-popover-option {
+  min-height: 48px;
+  margin: 0;
+}
+
 .calculation-vertical-table .inline-floating-menu .popover-option {
   display: flex;
   align-items: center;

@@ -10443,9 +10443,9 @@ async function initApp() {
       const viasOptions = options.viasOptions.map((value) => `<option value="${escapeHtml(value)}"${Number(value) === Number(options.selectedVias) ? " selected" : ""}>${escapeHtml(value)}</option>`).join("");
       const quantityOptions = options.quantityOptions.map((value) => `<option value="${escapeHtml(value)}"${Number(value) === Number(options.selectedQuantity) ? " selected" : ""}>${escapeHtml(value)}</option>`).join("");
       const finishMarkup = getBlockFinishes(config).map((finish) => `
-        <label class="popover-option finish-option">
+        <label class="finish-picker-option inline-popover-option">
           <input type="checkbox" data-block-finish-id="${escapeHtml(finish.id)}"${row.finishIds?.includes(finish.id) ? " checked" : ""}>
-          <span>${escapeHtml(finish.label)}${toMoneyNumber(finish.value) > 0 ? ` (${formatCurrency(finish.value)} / bloco)` : ""}</span>
+          <span class="finish-option-label">${escapeHtml(finish.label)}${toMoneyNumber(finish.value) > 0 ? ` (${formatCurrency(finish.value)} / bloco)` : ""}</span>
         </label>
       `).join("");
       return `
@@ -10456,8 +10456,11 @@ async function initApp() {
             <details class="inline-popover">
               <summary class="button button-small">${escapeHtml(row.paperLabel || getBlockPaperLabel(paperType))}</summary>
               <div class="floating-menu inline-floating-menu">
-                <label class="popover-option finish-option"><input type="radio" name="block-paper-${index}" data-block-paper-type="sulfite"${paperType === "sulfite" ? " checked" : ""}><span>Sulfite 75g</span></label>
-                <label class="popover-option finish-option"><input type="radio" name="block-paper-${index}" data-block-paper-type="autocopiativo"${paperType === "autocopiativo" ? " checked" : ""}><span>Autocopiativo</span></label>
+                <div class="inline-popover-header"><div class="inline-popover-title"><strong>Papel do bloco</strong><span>Define formatos, vias e tabela de preços.</span></div></div>
+                <div class="inline-popover-list">
+                  <label class="finish-picker-option inline-popover-option"><input type="radio" name="block-paper-${index}" data-block-paper-type="sulfite"${paperType === "sulfite" ? " checked" : ""}><span class="finish-option-label">Sulfite 75g</span></label>
+                  <label class="finish-picker-option inline-popover-option"><input type="radio" name="block-paper-${index}" data-block-paper-type="autocopiativo"${paperType === "autocopiativo" ? " checked" : ""}><span class="finish-option-label">Autocopiativo</span></label>
+                </div>
               </div>
             </details>
           </td>
@@ -10465,8 +10468,11 @@ async function initApp() {
             <details class="inline-popover">
               <summary class="button button-small">${escapeHtml(row.printLabel || getBlockPrintLabel(row.printType))}</summary>
               <div class="floating-menu inline-floating-menu">
-                <label class="popover-option finish-option"><input type="radio" name="block-print-${index}" data-block-print-type="preto-e-branco"${row.printType !== "colorido" ? " checked" : ""}><span>Preto e branco</span></label>
-                <label class="popover-option finish-option"><input type="radio" name="block-print-${index}" data-block-print-type="colorido"${row.printType === "colorido" ? " checked" : ""}><span>Colorido (+${formatMeasure(config.blockColorMarkupPercent || 0)}%)</span></label>
+                <div class="inline-popover-header"><div class="inline-popover-title"><strong>Tipo de impressão</strong><span>Colorido aplica o acréscimo configurado à tabela.</span></div></div>
+                <div class="inline-popover-list">
+                  <label class="finish-picker-option inline-popover-option"><input type="radio" name="block-print-${index}" data-block-print-type="preto-e-branco"${row.printType !== "colorido" ? " checked" : ""}><span class="finish-option-label">Preto e branco</span></label>
+                  <label class="finish-picker-option inline-popover-option"><input type="radio" name="block-print-${index}" data-block-print-type="colorido"${row.printType === "colorido" ? " checked" : ""}><span class="finish-option-label">Colorido (+${formatMeasure(config.blockColorMarkupPercent || 0)}%)</span></label>
+                </div>
               </div>
             </details>
           </td>
@@ -10479,8 +10485,9 @@ async function initApp() {
             <details class="inline-popover">
               <summary class="button button-small">${escapeHtml(row.finishSummary || "Sem acabamento")}</summary>
               <div class="floating-menu inline-floating-menu">
-                ${finishMarkup}
-                <small class="helper-text">Os valores são aplicados por bloco.</small>
+                <div class="inline-popover-header"><div class="inline-popover-title"><strong>Acabamentos</strong><span>Selecione todos os adicionais deste bloco.</span></div></div>
+                <div class="inline-popover-list">${finishMarkup}</div>
+                <div class="inline-popover-footer"><span class="finish-popover-summary">Valores aplicados por bloco</span></div>
               </div>
             </details>
           </td>
@@ -10519,9 +10526,9 @@ async function initApp() {
       const finishMarkup = finishes.map((finish) => {
         const checked = row.finishIds?.includes(finish.id);
         return `
-          <label class="popover-option finish-option">
+          <label class="finish-picker-option inline-popover-option">
             <input type="checkbox" data-card-finish-id="${escapeHtml(finish.id)}"${checked ? " checked" : ""}>
-            <span>${escapeHtml(finish.label)}${finish.holeSizeMm > 0 ? ` (${formatMeasure(finish.holeSizeMm)}mm)` : ""}</span>
+            <span class="finish-option-label">${escapeHtml(finish.label)}${finish.holeSizeMm > 0 ? ` (${formatMeasure(finish.holeSizeMm)}mm)` : ""}</span>
           </label>
         `;
       }).join("");
@@ -10539,8 +10546,9 @@ async function initApp() {
             <details class="inline-popover">
               <summary class="button button-small">${row.finishSummary || "Sem acabamento"}</summary>
               <div class="floating-menu inline-floating-menu">
-                ${finishMarkup}
-                <small class="helper-text">Valores calculados automaticamente pela quantidade.</small>
+                <div class="inline-popover-header"><div class="inline-popover-title"><strong>Acabamentos do cartão</strong><span>Valores calculados automaticamente pela quantidade.</span></div></div>
+                <div class="inline-popover-list">${finishMarkup}</div>
+                <div class="inline-popover-footer"><span class="finish-popover-summary">Acabamentos por quantidade</span></div>
               </div>
             </details>
           </td>
