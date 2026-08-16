@@ -87,6 +87,29 @@ async function clearLoginFailures(identifier: string) {
   await admin.rpc("graficalc_clear_auth_failures", { p_key: await authRateLimitKey(identifier) });
 }
 
+async function isDocumentAlreadyRegistered(document: string) {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("cpf_cnpj", document)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("graficalc_document_lookup_failure", { message: error.message });
+      return false;
+    }
+
+    return Boolean(data);
+  } catch (error) {
+    // The database constraint remains the final protection if the pre-check is unavailable.
+    console.error("graficalc_document_lookup_unavailable", error);
+    return false;
+  }
+}
+
 export async function loginAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = loginSchema.safeParse(fields(formData));
   if (!parsed.success) return { ok: false, message: "Revise os campos informados.", fieldErrors: parsed.error.flatten().fieldErrors };
@@ -121,6 +144,11 @@ export async function signupAction(_: ActionState, formData: FormData): Promise<
   const parsed = signupSchema.safeParse(fields(formData));
   if (!parsed.success) return { ok: false, message: "Revise os campos do cadastro.", fieldErrors: parsed.error.flatten().fieldErrors };
 
+  const document = onlyDigits(parsed.data.cpfCnpj);
+  if (await isDocumentAlreadyRegistered(document)) {
+    return { ok: false, message: "Este CPF/CNPJ já está vinculado a uma conta. Entre com o e-mail cadastrado ou use outro documento." };
+  }
+
   const supabase = await createClient();
   const siteUrl = await authRedirectOrigin();
   const { error } = await supabase.auth.signUp({
@@ -132,7 +160,7 @@ export async function signupAction(_: ActionState, formData: FormData): Promise<
       data: {
         nome: parsed.data.nome,
         empresa: parsed.data.empresa,
-        cpf_cnpj: onlyDigits(parsed.data.cpfCnpj),
+        cpf_cnpj: document,
         telefone: onlyDigits(parsed.data.telefone),
       },
     },
