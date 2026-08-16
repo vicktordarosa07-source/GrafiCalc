@@ -9,5 +9,21 @@ for (const file of ["app.mjs", "styles.css", "catalogo-loja.seed.js", "catalogo-
 }
 await cp(path.join(root, "assets"), path.join(target, "assets"), { recursive: true, force: true });
 const sourceHtml = await readFile(path.join(root, "index.html"), "utf8");
-const html = sourceHtml.replace(/<script\s+type="module"\s+src="\.\/app\.mjs[^>]*><\/script>/i, '<script type="module" src="./legacy-auth-bridge.mjs"></script>\n    <script type="module" src="./app.mjs"></script>');
+const legacyBootstrap = `<script defer src="./legacy-auth-bridge.mjs?v=20260815-supabase-session"></script>
+  <script>
+    window.addEventListener("DOMContentLoaded", async () => {
+      try {
+        await window.grafiCalcLegacyAuthReady;
+        const appScript = document.createElement("script");
+        appScript.src = "./app.mjs?v=20260815-supabase-session";
+        document.body.appendChild(appScript);
+      } catch (error) {
+        console.error("Nao foi possivel preparar a sessao do GrafiCalc.", error);
+      }
+    });
+  </script>`;
+const html = sourceHtml.replace(
+  /<script(?:\s+type="module")?\s+(?:defer\s+)?src="\.\/app\.mjs[^>]*><\/script>/i,
+  legacyBootstrap
+);
 await writeFile(path.join(target, "index.html"), html, "utf8");
