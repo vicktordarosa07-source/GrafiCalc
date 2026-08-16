@@ -8,6 +8,28 @@
   <link rel="stylesheet" href="./styles.css?v=20260809-mobile-menu-fix">
 </head>
 <body>
+  <svg class="navigation-icon-sprite" aria-hidden="true" focusable="false">
+    <symbol id="nav-home" viewBox="0 0 24 24"><path d="m4 11 8-6 8 6v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M9 20v-5h6v5"/></symbol>
+    <symbol id="nav-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.3"/><path d="M5.5 20c.8-3.5 3-5.2 6.5-5.2s5.7 1.7 6.5 5.2"/></symbol>
+    <symbol id="nav-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.2 13.5a7.8 7.8 0 0 0 0-3l2-1.2-2-3.4-2.1 1a8 8 0 0 0-2.6-1.5L14.2 3h-4.1l-.4 2.4A8 8 0 0 0 7.1 7l-2.1-1-2 3.4 2 1.2a7.8 7.8 0 0 0 0 3L3 14.8l2 3.4 2.1-1a8 8 0 0 0 2.6 1.5l.4 2.3h4.1l.4-2.3a8 8 0 0 0 2.6-1.5l2.1 1 2-3.4z"/></symbol>
+    <symbol id="nav-team" viewBox="0 0 24 24"><circle cx="9" cy="9" r="2.7"/><circle cx="16.5" cy="10.5" r="2.1"/><path d="M4.5 19c.7-3 2.2-4.6 4.5-4.6s3.8 1.6 4.5 4.6"/><path d="M14.1 15.2c2.3.1 3.8 1.4 4.4 3.8"/></symbol>
+    <symbol id="nav-code" viewBox="0 0 24 24"><path d="m8 8-4 4 4 4M16 8l4 4-4 4M14 5l-4 14"/></symbol>
+    <symbol id="nav-customers" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="13" rx="2"/><circle cx="9" cy="11.2" r="1.8"/><path d="M6.8 16c.5-1.5 1.3-2.2 2.2-2.2s1.7.7 2.2 2.2M13.5 10h3.5M13.5 13.5h3.5"/></symbol>
+    <symbol id="nav-history" viewBox="0 0 24 24"><path d="M4.5 8.5V4.8M4.5 4.8h3.7"/><path d="M5 5.5A8 8 0 1 1 4 13"/><path d="M12 8v4.3l2.8 1.7"/></symbol>
+    <symbol id="nav-quote" viewBox="0 0 24 24"><path d="M7 4.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V6A1.5 1.5 0 0 1 7.5 4.5Z"/><path d="M14 4.5V9h4M9 13h6M9 16h4"/></symbol>
+    <symbol id="nav-os" viewBox="0 0 24 24"><rect x="6" y="4.5" width="12" height="16" rx="2"/><path d="M9 4.5h6v3H9zM9 12h5M9 16l1.7 1.7L15 13.5"/></symbol>
+    <symbol id="nav-report" viewBox="0 0 24 24"><path d="M4.5 19.5h15"/><path d="M7.5 17v-5M12 17V7M16.5 17v-8"/><path d="m6.5 8 4-3 3 2 4-3"/></symbol>
+    <symbol id="nav-book" viewBox="0 0 24 24"><path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v16H7.5A2.5 2.5 0 0 0 5 21z"/><path d="M5 5.5V21M9 7h6M9 10h6"/></symbol>
+    <symbol id="nav-blocks" viewBox="0 0 24 24"><path d="M6 5h11l2 2v11H6z"/><path d="M4 8v11h12M9 9h6M9 12h6M9 15h4"/></symbol>
+    <symbol id="nav-card" viewBox="0 0 24 24"><rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M7 10h4M7 14h7M16 10h1"/></symbol>
+    <symbol id="nav-badge" viewBox="0 0 24 24"><path d="M7 4.5h10v15H7z"/><circle cx="12" cy="10" r="2.2"/><path d="M9 16c.6-1.7 1.6-2.5 3-2.5s2.4.8 3 2.5"/></symbol>
+    <symbol id="nav-print" viewBox="0 0 24 24"><path d="M7 8V4.5h10V8M6 17.5H4.5v-7h15v7H18"/><path d="M7 14h10v5.5H7zM16.5 11.8h.1"/></symbol>
+    <symbol id="nav-ruler" viewBox="0 0 24 24"><path d="m5 19 14-14 2 2L7 21z"/><path d="m12 8 2 2M9 11l2 2M6 14l2 2"/></symbol>
+    <symbol id="nav-box" viewBox="0 0 24 24"><path d="m4 8 8-4 8 4-8 4zM4 8v8l8 4 8-4V8M12 12v8"/></symbol>
+    <symbol id="nav-flyer" viewBox="0 0 24 24"><path d="M6 4.5h12v15H6z"/><path d="M9 8h6M9 11h6M9 14h4"/><path d="m18 15.5 2.2 1.2"/></symbol>
+    <symbol id="nav-resin" viewBox="0 0 24 24"><path d="M12 4.5s5 5.2 5 9a5 5 0 0 1-10 0c0-3.8 5-9 5-9Z"/><path d="m18 5 .6 1.4L20 7l-1.4.6L18 9l-.6-1.4L16 7l1.4-.6z"/></symbol>
+    <symbol id="nav-login" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M12 8v8M9 11l3-3 3 3M9 13l3 3 3-3"/></symbol>
+  </svg>
   <div class="page-shell is-booting" id="app-shell">
     <header class="hero">
       <img class="hero-logo" src="./assets/logo-graficalc-login.png" alt="GrafiCalc">
@@ -38,29 +60,29 @@
             <strong>Sair</strong>
           </button>
         </div>
-        <button class="tab-button is-active" data-tab-target="login">Login</button>
+        <button class="tab-button is-active" data-tab-target="login"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-login"></use></svg><span class="tab-button-label">Login</span></button>
         <div class="tab-menu-section-label">Configuradores</div>
-        <button class="tab-button" data-tab-target="conta" title="Minha conta" data-tooltip="Minha conta">Minha conta</button>
-        <button class="tab-button" data-tab-target="configuracao" title="Configuração do sistema" data-tooltip="Configuração do sistema">Configuração</button>
-        <button class="tab-button" data-tab-target="equipe" data-dev-only hidden title="Equipe" data-tooltip="Equipe">Equipe</button>
-        <button class="tab-button developer-tab-button" data-tab-target="desenvolvedor" data-dev-only hidden title="Área do desenvolvedor" data-tooltip="Área do desenvolvedor">Dev</button>
+        <button class="tab-button" data-tab-target="conta" title="Minha conta" data-tooltip="Minha conta"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-user"></use></svg><span class="tab-button-label">Minha conta</span></button>
+        <button class="tab-button" data-tab-target="configuracao" title="Configuração do sistema" data-tooltip="Configuração do sistema"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-settings"></use></svg><span class="tab-button-label">Configuração</span></button>
+        <button class="tab-button" data-tab-target="equipe" data-dev-only hidden title="Equipe" data-tooltip="Equipe"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-team"></use></svg><span class="tab-button-label">Equipe</span></button>
+        <button class="tab-button developer-tab-button" data-tab-target="desenvolvedor" data-dev-only hidden title="Área do desenvolvedor" data-tooltip="Área do desenvolvedor"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-code"></use></svg><span class="tab-button-label">Dev</span></button>
         <div class="tab-menu-section-label">Comercial</div>
-        <button class="tab-button" data-tab-target="home" title="Home" data-tooltip="Home">Home</button>
-        <button class="tab-button" data-tab-target="clientes" title="Clientes" data-tooltip="Clientes">Clientes</button>
-        <button class="tab-button" data-tab-target="historico" title="Histórico" data-tooltip="Histórico">Histórico</button>
-        <button class="tab-button" data-tab-target="orcamento" title="Orçamentos" data-tooltip="Orçamentos">Orçamentos</button>
-        <button class="tab-button" data-tab-target="os" title="Ordens de serviço" data-tooltip="Ordens de serviço">OS</button>
-        <button class="tab-button" data-tab-target="relatorios" title="Relatórios" data-tooltip="Relatórios">Relatórios</button>
+        <button class="tab-button" data-tab-target="home" title="Home" data-tooltip="Home"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-home"></use></svg><span class="tab-button-label">Home</span></button>
+        <button class="tab-button" data-tab-target="clientes" title="Clientes" data-tooltip="Clientes"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-customers"></use></svg><span class="tab-button-label">Clientes</span></button>
+        <button class="tab-button" data-tab-target="historico" title="Histórico" data-tooltip="Histórico"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-history"></use></svg><span class="tab-button-label">Histórico</span></button>
+        <button class="tab-button" data-tab-target="orcamento" title="Orçamentos" data-tooltip="Orçamentos"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-quote"></use></svg><span class="tab-button-label">Orçamentos</span></button>
+        <button class="tab-button" data-tab-target="os" title="Ordens de serviço" data-tooltip="Ordens de serviço"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-os"></use></svg><span class="tab-button-label">OS</span></button>
+        <button class="tab-button" data-tab-target="relatorios" title="Relatórios" data-tooltip="Relatórios"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-report"></use></svg><span class="tab-button-label">Relatórios</span></button>
         <div class="tab-menu-section-label">Cálculo</div>
-        <button class="tab-button" data-tab-target="calculo" title="Cálculo de apostila" data-tooltip="Cálculo de apostila">Apostilas</button>
-        <button class="tab-button" data-tab-target="blocosSulfite" title="Blocos" data-tooltip="Blocos">Blocos</button>
-        <button class="tab-button" data-tab-target="cartoes" title="Cartões de visita" data-tooltip="Cartões de visita">Cartões</button>
-        <button class="tab-button" data-tab-target="credenciais" title="Credenciais" data-tooltip="Credenciais">Credenciais</button>
-        <button class="tab-button" data-tab-target="impressos" title="Impressos coloridos" data-tooltip="Impressos coloridos">Impressos</button>
-        <button class="tab-button" data-tab-target="m2" title="Cálculo de m²" data-tooltip="Cálculo de m²">Cálculo m²</button>
-        <button class="tab-button" data-tab-target="prontos" title="Materiais prontos" data-tooltip="Materiais prontos">Materiais</button>
-        <button class="tab-button" data-tab-target="panfletos" title="Panfletos e folders" data-tooltip="Panfletos e folders">Panfletos</button>
-        <button class="tab-button" data-tab-target="resinados" title="Resinados" data-tooltip="Resinados">Resinados</button>
+        <button class="tab-button" data-tab-target="calculo" title="Cálculo de apostila" data-tooltip="Cálculo de apostila"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-book"></use></svg><span class="tab-button-label">Apostilas</span></button>
+        <button class="tab-button" data-tab-target="blocosSulfite" title="Blocos" data-tooltip="Blocos"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-blocks"></use></svg><span class="tab-button-label">Blocos</span></button>
+        <button class="tab-button" data-tab-target="cartoes" title="Cartões de visita" data-tooltip="Cartões de visita"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-card"></use></svg><span class="tab-button-label">Cartões</span></button>
+        <button class="tab-button" data-tab-target="credenciais" title="Credenciais" data-tooltip="Credenciais"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-badge"></use></svg><span class="tab-button-label">Credenciais</span></button>
+        <button class="tab-button" data-tab-target="impressos" title="Impressos coloridos" data-tooltip="Impressos coloridos"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-print"></use></svg><span class="tab-button-label">Impressos</span></button>
+        <button class="tab-button" data-tab-target="m2" title="Cálculo de m²" data-tooltip="Cálculo de m²"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-ruler"></use></svg><span class="tab-button-label">Cálculo m²</span></button>
+        <button class="tab-button" data-tab-target="prontos" title="Materiais prontos" data-tooltip="Materiais prontos"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-box"></use></svg><span class="tab-button-label">Materiais</span></button>
+        <button class="tab-button" data-tab-target="panfletos" title="Panfletos e folders" data-tooltip="Panfletos e folders"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-flyer"></use></svg><span class="tab-button-label">Panfletos</span></button>
+        <button class="tab-button" data-tab-target="resinados" title="Resinados" data-tooltip="Resinados"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-resin"></use></svg><span class="tab-button-label">Resinados</span></button>
       </nav>
     </div>
 

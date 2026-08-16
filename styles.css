@@ -8172,3 +8172,56 @@ body::before {
     justify-items: start;
   }
 }
+
+/* Navegação: uma única família de ícones SVG para evitar símbolos genéricos ou ausentes. */
+.navigation-icon-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.page-shell:not(.is-auth-mode) .tab-bar.tab-bar--v3 .tab-button::before,
+.page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-bar.tab-bar--v3 .tab-button::before {
+  display: none !important;
+  content: none !important;
+}
+
+.page-shell:not(.is-auth-mode) .tab-bar.tab-bar--v3 .tab-nav-icon,
+.page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-bar.tab-bar--v3 .tab-nav-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  padding: 7px;
+  overflow: visible;
+  border: 1px solid rgba(159, 218, 199, 0.48);
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(234, 251, 246, 0.9));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94), 0 7px 16px rgba(16, 89, 85, 0.08);
+  color: #0f866f;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.page-shell:not(.is-auth-mode) .tab-bar.tab-bar--v3 .tab-nav-icon *,
+.page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-bar.tab-bar--v3 .tab-nav-icon * {
+  vector-effect: non-scaling-stroke;
+}
+
+.page-shell:not(.is-auth-mode) .tab-bar.tab-bar--v3 .tab-button.is-active .tab-nav-icon,
+.page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-bar.tab-bar--v3 .tab-button.is-active .tab-nav-icon {
+  color: #087b63;
+  border-color: rgba(18, 201, 140, 0.38);
+  background: linear-gradient(145deg, rgba(190, 248, 226, 0.94), rgba(255, 255, 255, 0.98));
+  box-shadow: 0 9px 20px rgba(31, 182, 132, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.page-shell:not(.is-auth-mode) .tab-bar.tab-bar--v3 .tab-button-label,
+.page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-bar.tab-bar--v3 .tab-button-label {
+  min-width: 0;
+}
