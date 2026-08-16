@@ -26,16 +26,25 @@ function sanitizedOrigin(value: string | null | undefined) {
   }
 }
 
-async function authRedirectOrigin() {
-  const configuredOrigin = sanitizedOrigin(process.env.NEXT_PUBLIC_SITE_URL);
-  if (configuredOrigin) return configuredOrigin;
+function isLocalOrigin(origin: string | null) {
+  if (!origin) return false;
+  const hostname = new URL(origin).hostname;
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
 
+async function authRedirectOrigin() {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
   if (host) {
     const protocol = requestHeaders.get("x-forwarded-proto") || (host.startsWith("localhost") ? "http" : "https");
-    return `${protocol}://${host}`;
+    const requestOrigin = sanitizedOrigin(`${protocol}://${host}`);
+    // On Vercel, the current public host is the only reliable callback target.
+    // A stale NEXT_PUBLIC_SITE_URL must never send a customer back to localhost.
+    if (requestOrigin && !isLocalOrigin(requestOrigin)) return requestOrigin;
   }
+
+  const configuredOrigin = sanitizedOrigin(process.env.NEXT_PUBLIC_SITE_URL);
+  if (configuredOrigin) return configuredOrigin;
 
   return "http://localhost:3210";
 }
