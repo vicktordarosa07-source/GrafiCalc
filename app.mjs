@@ -10173,6 +10173,10 @@ async function initApp() {
       : currentUser?.role === "employee"
         ? "Equipe comercial"
         : "Painel comercial";
+    const activationList = document.getElementById("home-activation-list");
+    const activationPanel = document.getElementById("home-activation-panel");
+    const activationProgress = document.getElementById("home-activation-progress");
+    const followupList = document.getElementById("home-followup-list");
     const percentTrend = (current, previous) => {
       if (!previous && !current) {
         return "0% vs. mês anterior";
@@ -10204,6 +10208,95 @@ async function initApp() {
     document.getElementById("home-min-quote-label").textContent = quoteCount ? `${formatInteger(quoteCount)} orçamentos no mês` : "Sem dados no mês";
     document.getElementById("home-max-quote-label").textContent = monthlyWorkOrders.length ? `${formatInteger(monthlyWorkOrders.length)} OSs neste mês` : "Sem dados no mês";
     document.getElementById("home-active-month").textContent = activeMonth;
+
+    if (activationList && activationPanel && activationProgress) {
+      const activationSteps = [
+        {
+          id: "company",
+          label: "Revise os dados da gráfica",
+          description: "Deixe a empresa identificada em cada operação e documento.",
+          tab: "conta",
+          action: "Abrir minha conta",
+          complete: Boolean(String(currentUser?.company || "").trim()),
+        },
+        {
+          id: "client",
+          label: "Cadastre o primeiro cliente",
+          description: "Monte uma base de contatos reutilizável para atender mais rápido.",
+          tab: "clientes",
+          action: "Cadastrar cliente",
+          complete: state.clients.length > 0,
+        },
+        {
+          id: "quote",
+          label: "Salve o primeiro orçamento",
+          description: "Use uma calculadora e salve o fechamento para acompanhar a conversão.",
+          tab: "calculo",
+          action: "Criar orcamento",
+          complete: state.quoteHistory.length > 0,
+        },
+      ];
+      const completedSteps = activationSteps.filter((step) => step.complete).length;
+      activationProgress.textContent = `${completedSteps} de ${activationSteps.length}`;
+      activationPanel.hidden = completedSteps === activationSteps.length;
+      activationList.innerHTML = activationSteps
+        .filter((step) => !step.complete)
+        .map((step, index) => `
+          <article class="home-activation-step">
+            <span class="home-activation-index">0${index + 1}</span>
+            <div>
+              <strong>${escapeHtml(step.label)}</strong>
+              <span>${escapeHtml(step.description)}</span>
+            </div>
+            <button class="button button-small home-activation-button" type="button" data-home-tab="${escapeHtml(step.tab)}">${escapeHtml(step.action)}</button>
+          </article>
+        `).join("") || "";
+    }
+
+    if (followupList) {
+      const followupStatusPriority = { negotiation: 0, sent: 1, pending: 2 };
+      const followups = state.quoteHistory
+        .filter((item) => Object.prototype.hasOwnProperty.call(followupStatusPriority, normalizeQuoteStatus(item.status)))
+        .map((item) => {
+          const updatedAt = new Date(item.updatedAt || item.createdAt || 0);
+          const ageInDays = Number.isFinite(updatedAt.getTime())
+            ? Math.max(0, Math.floor((Date.now() - updatedAt.getTime()) / 86400000))
+            : 0;
+          return { ...item, followupAge: ageInDays };
+        })
+        .sort((left, right) => {
+          const statusDifference = followupStatusPriority[normalizeQuoteStatus(left.status)] - followupStatusPriority[normalizeQuoteStatus(right.status)];
+          return statusDifference || right.followupAge - left.followupAge || Number(right.total || 0) - Number(left.total || 0);
+        })
+        .slice(0, 4);
+
+      followupList.innerHTML = followups.length
+        ? followups.map((item) => {
+          const status = getQuoteStatusMeta(item.status);
+          const ageLabel = item.followupAge === 0 ? "Atualizado hoje" : `${item.followupAge} dia${item.followupAge === 1 ? "" : "s"} sem atualização`;
+          return `
+            <article class="home-followup-item">
+              <div class="home-followup-status home-followup-status-${escapeHtml(status.tone || "neutral")}"></div>
+              <div class="home-followup-main">
+                <strong>${escapeHtml(item.title || item.clientName || "Orçamento sem título")}</strong>
+                <span>${escapeHtml(item.clientName || "Cliente não informado")} | ${escapeHtml(ageLabel)}</span>
+              </div>
+              <div class="home-followup-value">
+                <span>${escapeHtml(status.label)}</span>
+                <strong>${escapeHtml(formatCurrency(Number(item.total || 0)))}</strong>
+              </div>
+              <button class="button button-small home-followup-open" type="button" data-home-tab="historico">Abrir</button>
+            </article>
+          `;
+        }).join("")
+        : `
+          <div class="empty-state empty-state-dashboard home-followup-empty">
+            <div class="empty-state-dashboard-icon" aria-hidden="true"></div>
+            <strong>Nenhum orçamento precisando de retorno</strong>
+            <span>Ao salvar como pendente, enviado ou em negociação, os itens aparecem aqui para acompanhamento.</span>
+          </div>
+        `;
+    }
 
     if (statusChart) {
       statusChart.closest(".panel")?.toggleAttribute("hidden", !dashboardPermissions.statusChart);
@@ -11427,6 +11520,18 @@ async function initApp() {
       closeAppMenu();
       collapseDesktopMenuAfterNavigation();
     });
+  });
+
+  document.querySelector('[data-tab-panel="home"]')?.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-home-tab]");
+    if (!action) {
+      return;
+    }
+    const tabName = action.dataset.homeTab;
+    if (!tabName) {
+      return;
+    }
+    selectTab(tabName);
   });
 
   menuShortcutButtons.forEach((button) => {
