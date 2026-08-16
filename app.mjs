@@ -7383,6 +7383,9 @@ async function initApp() {
   const flyerRowsTableBody = document.getElementById("flyers-rows-table-body");
   const flyerWarningList = document.getElementById("flyers-warning-list");
   const quotePreview = document.getElementById("quote-preview");
+  const quoteClientSearch = document.getElementById("quote-client-search");
+  const quoteClientSearchInput = document.getElementById("quote-client-search-input");
+  const quoteClientSearchResults = document.getElementById("quote-client-search-results");
   const feedback = document.getElementById("import-feedback");
   const colorFeedback = document.getElementById("color-feedback");
   const credentialFeedback = document.getElementById("credential-feedback");
@@ -9564,6 +9567,41 @@ async function initApp() {
     if (companyCnpj) companyCnpj.value = state.company.cnpj;
     if (companyContact) companyContact.value = state.company.contact;
     if (companyAddress) companyAddress.value = state.company.address;
+  }
+
+  function applySavedClientToQuote(client) {
+    if (!client) return;
+    state.client.name = client.name || "";
+    state.client.contact = client.contact || "";
+    state.client.cnpj = getClientDocument(client);
+    state.client.personType = client.personType || "legal";
+    state.client.email = client.email || "";
+    state.client.whatsapp = Boolean(client.whatsapp);
+    state.quoteNotes = client.notes || state.quoteNotes;
+    persist();
+    renderClientFields();
+    renderRowsAndSummary();
+  }
+
+  function renderQuoteClientSearch(query = "") {
+    if (!quoteClientSearchResults) return;
+    const normalizedQuery = String(query || "").trim().toLocaleLowerCase("pt-BR");
+    if (!normalizedQuery) {
+      quoteClientSearchResults.innerHTML = "";
+      return;
+    }
+    const matches = state.clients
+      .filter((client) => client.name?.toLocaleLowerCase("pt-BR").includes(normalizedQuery))
+      .slice(0, 6);
+    quoteClientSearchResults.innerHTML = matches.length
+      ? matches.map((client) => `
+          <button class="quote-client-result" type="button" role="option" data-quote-client-id="${escapeHtml(client.id)}">
+            <strong>${escapeHtml(client.name || "Sem nome")}</strong>
+            <span>${escapeHtml(client.personType === "individual" ? "Pessoa física" : "Pessoa jurídica")}</span>
+            <small>${escapeHtml(client.contact || "Sem celular")} · ${escapeHtml(getClientDocumentLabel(client))}: ${escapeHtml(getClientDocument(client) || "não informado")}</small>
+          </button>
+        `).join("")
+      : `<p class="helper-text">Nenhum cliente cadastrado foi encontrado com esse nome.</p>`;
   }
 
   function renderConfig() {
@@ -14050,6 +14088,36 @@ async function initApp() {
     clientsEditorContact.value = formatBrazilianPhone(clientsEditorContact.value);
   });
 
+  document.getElementById("toggle-client-search-button")?.addEventListener("click", () => {
+    if (!quoteClientSearch) return;
+    const willOpen = quoteClientSearch.hidden;
+    quoteClientSearch.hidden = !willOpen;
+    document.getElementById("toggle-client-search-button")?.setAttribute("aria-expanded", String(willOpen));
+    if (willOpen) {
+      quoteClientSearchInput?.focus();
+    } else if (quoteClientSearchInput) {
+      quoteClientSearchInput.value = "";
+      renderQuoteClientSearch("");
+    }
+  });
+
+  quoteClientSearchInput?.addEventListener("input", () => {
+    renderQuoteClientSearch(quoteClientSearchInput.value);
+  });
+
+  quoteClientSearchResults?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-quote-client-id]");
+    if (!button) return;
+    const client = state.clients.find((item) => item.id === button.dataset.quoteClientId);
+    if (!client) return;
+    applySavedClientToQuote(client);
+    if (quoteClientSearch) quoteClientSearch.hidden = true;
+    document.getElementById("toggle-client-search-button")?.setAttribute("aria-expanded", "false");
+    if (quoteClientSearchInput) quoteClientSearchInput.value = "";
+    renderQuoteClientSearch("");
+    setMainFeedback(`Cliente ${client.name || "selecionado"} carregado no orçamento.`, "success");
+  });
+
   document.getElementById("company-logo-input").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -14087,6 +14155,23 @@ async function initApp() {
   document.getElementById("print-quote-button").addEventListener("click", () => {
     selectTab("orcamento");
     window.print();
+  });
+
+  document.getElementById("export-quote-pdf-button")?.addEventListener("click", () => {
+    selectTab("orcamento");
+    setMainFeedback("No diálogo que será aberto, selecione ‘Salvar como PDF’ para exportar o orçamento.", "success");
+    window.print();
+  });
+
+  document.getElementById("save-quote-history-button")?.addEventListener("click", () => {
+    const isEditingExistingQuote = Boolean(editingQuoteId);
+    saveQuoteRecord(buildQuoteRecordFromCurrentState());
+    persist();
+    renderHistoryTab();
+    renderOrdersTab();
+    renderHomeTab();
+    renderEmployeesTab();
+    setMainFeedback(isEditingExistingQuote ? "Orçamento atualizado no histórico." : "Orçamento salvo no histórico.", "success");
   });
 
   document.getElementById("save-client-button").addEventListener("click", () => {

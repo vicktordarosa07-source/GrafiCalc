@@ -1733,6 +1733,17 @@
                 <h2>Dados do cliente</h2>
                 <p class="panel-copy">Essas informações entram no resumo para envio.</p>
               </div>
+              <button id="toggle-client-search-button" class="button button-compact" type="button" aria-expanded="false" aria-controls="quote-client-search">
+                Pesquisar clientes salvos
+              </button>
+            </div>
+
+            <div id="quote-client-search" class="quote-client-search" hidden>
+              <label>
+                <span>Buscar por nome ou razão social</span>
+                <input id="quote-client-search-input" type="search" placeholder="Comece a digitar o nome do cliente" autocomplete="off">
+              </label>
+              <div id="quote-client-search-results" class="quote-client-search-results" role="listbox" aria-label="Clientes encontrados"></div>
             </div>
 
             <div class="quote-form-grid">
@@ -1801,8 +1812,10 @@
           </div>
 
           <div class="toolbar">
+            <button id="save-quote-history-button" class="button button-primary" type="button">Salvar no histórico</button>
             <button id="copy-quote-button" class="button" type="button">Copiar resumo</button>
-            <button id="print-quote-button" class="button button-primary button-spotlight" type="button">Imprimir / Salvar em PDF</button>
+            <button id="print-quote-button" class="button" type="button">Imprimir</button>
+            <button id="export-quote-pdf-button" class="button button-primary button-spotlight" type="button">Exportar em PDF</button>
           </div>
 
           <div class="quote-preview" id="quote-preview"></div>
