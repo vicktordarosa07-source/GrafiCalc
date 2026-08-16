@@ -53,8 +53,7 @@
         <button class="tab-button" data-tab-target="relatorios" title="Relatórios" data-tooltip="Relatórios">Relatórios</button>
         <div class="tab-menu-section-label">Cálculo</div>
         <button class="tab-button" data-tab-target="calculo" title="Cálculo de apostila" data-tooltip="Cálculo de apostila">Apostilas</button>
-        <button class="tab-button" data-tab-target="blocosSulfite" title="Blocos sulfite 75g" data-tooltip="Blocos sulfite 75g">Blocos 75g</button>
-        <button class="tab-button" data-tab-target="blocosAutocopiativo" title="Blocos autocopiativo" data-tooltip="Blocos autocopiativo">Blocos A/C</button>
+        <button class="tab-button" data-tab-target="blocosSulfite" title="Blocos" data-tooltip="Blocos">Blocos</button>
         <button class="tab-button" data-tab-target="cartoes" title="Cartões de visita" data-tooltip="Cartões de visita">Cartões</button>
         <button class="tab-button" data-tab-target="credenciais" title="Credenciais" data-tooltip="Credenciais">Credenciais</button>
         <button class="tab-button" data-tab-target="impressos" title="Impressos coloridos" data-tooltip="Impressos coloridos">Impressos</button>
@@ -1218,8 +1217,8 @@
         <article class="panel panel-table">
           <div class="panel-heading">
             <div>
-              <h2>Blocos em papel sulfite 75g</h2>
-              <p class="panel-copy">Selecione formato, vias e quantidade para puxar o preço da tabela de blocos.</p>
+              <h2>Blocos</h2>
+              <p class="panel-copy">Selecione papel, impressão, formato, vias e quantidade. As opções se ajustam à tabela do material escolhido.</p>
             </div>
           </div>
 
@@ -1234,11 +1233,14 @@
                 <tr>
                   <th>Item</th>
                   <th>Descrição</th>
+                  <th>Papel</th>
+                  <th>Impressão</th>
                   <th>Formato</th>
                   <th>Vias</th>
                   <th>Quantidade</th>
                   <th>Medida</th>
                   <th>Tabela</th>
+                  <th>Acabamentos</th>
                   <th>Arte</th>
                   <th>Tipo desc.</th>
                   <th>Desconto</th>
@@ -1251,65 +1253,6 @@
           </div>
 
           <div class="warning-list" id="blocks-sulfite-warning-list"></div>
-        </article>
-      </section>
-
-      <section class="tab-panel" data-tab-panel="blocosAutocopiativo">
-        <div class="summary-grid">
-          <article class="summary-card">
-            <span class="summary-label">Itens ativos</span>
-            <strong id="blocks-autocopiativo-summary-active">0</strong>
-          </article>
-          <article class="summary-card">
-            <span class="summary-label">Blocos</span>
-            <strong id="blocks-autocopiativo-summary-quantity">0</strong>
-          </article>
-          <article class="summary-card">
-            <span class="summary-label">Total geral</span>
-            <strong id="blocks-autocopiativo-summary-total">R$ 0,00</strong>
-          </article>
-          <article class="summary-card">
-            <span class="summary-label">Valor médio</span>
-            <strong id="blocks-autocopiativo-summary-average">R$ 0,00</strong>
-          </article>
-        </div>
-
-        <article class="panel panel-table">
-          <div class="panel-heading">
-            <div>
-              <h2>Blocos papel autocopiativo</h2>
-              <p class="panel-copy">Use a mesma lógica dos blocos em sulfite, com tabela separada para autocopiativo.</p>
-            </div>
-          </div>
-
-          <div class="toolbar">
-            <button id="add-block-autocopiativo-row-button" class="button button-primary" type="button">Adicionar linha</button>
-            <button id="clear-block-autocopiativo-rows-button" class="button button-danger" type="button">Limpar linhas</button>
-          </div>
-
-          <div class="table-shell">
-            <table class="budget-table blocks-budget-table calculation-vertical-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Descrição</th>
-                  <th>Formato</th>
-                  <th>Vias</th>
-                  <th>Quantidade</th>
-                  <th>Medida</th>
-                  <th>Tabela</th>
-                  <th>Arte</th>
-                  <th>Tipo desc.</th>
-                  <th>Desconto</th>
-                  <th>Total item</th>
-                  <th>Valor un.</th>
-                </tr>
-              </thead>
-              <tbody id="blocks-autocopiativo-rows-table-body"></tbody>
-            </table>
-          </div>
-
-          <div class="warning-list" id="blocks-autocopiativo-warning-list"></div>
         </article>
       </section>
 

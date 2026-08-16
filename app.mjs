@@ -54,8 +54,7 @@ const APP_TAB_LABELS = [
   { id: "resinados", label: "Resinados" },
   { id: "cartoes", label: "Cartões de visita" },
   { id: "panfletos", label: "Panfletos e folders" },
-  { id: "blocosSulfite", label: "Blocos sulfite 75g" },
-  { id: "blocosAutocopiativo", label: "Blocos autocopiativo" },
+  { id: "blocosSulfite", label: "Blocos" },
   { id: "configuracao", label: "Configuração" },
   { id: "clientes", label: "Clientes" },
   { id: "os", label: "OS" },
@@ -76,7 +75,6 @@ const EMPLOYEE_OPERATION_TABS = new Set([
   "cartoes",
   "panfletos",
   "blocosSulfite",
-  "blocosAutocopiativo",
   "orcamento",
 ]);
 
@@ -116,7 +114,7 @@ const OPTIONS = {
   m2CalcModes: ["Independente", "Somar materiais iguais"],
 };
 
-const CONFIG_SECTIONS = ["calculo", "impressos", "credenciais", "m2", "prontos", "resinados", "cartoes", "panfletos"];
+const CONFIG_SECTIONS = ["calculo", "impressos", "credenciais", "m2", "prontos", "resinados", "cartoes", "panfletos", "blocos"];
 const QUOTE_STATUS_META = {
   pending: { label: "Pendente", tone: "pending" },
   sent: { label: "Enviado", tone: "info" },
@@ -369,19 +367,19 @@ const RESIN_MATERIAL_OPTIONS = [
 const BLOCK_TAB_DEFS = {
   sulfite: {
     appTab: "blocosSulfite",
-    label: "Blocos em papel sulfite 75g",
+    label: "Blocos",
     bodyId: "blocks-sulfite-rows-table-body",
     warningId: "blocks-sulfite-warning-list",
     summaryPrefix: "blocks-sulfite",
   },
-  autocopiativo: {
-    appTab: "blocosAutocopiativo",
-    label: "Blocos papel autocopiativo",
-    bodyId: "blocks-autocopiativo-rows-table-body",
-    warningId: "blocks-autocopiativo-warning-list",
-    summaryPrefix: "blocks-autocopiativo",
-  },
 };
+const DEFAULT_BLOCK_FINISHES = [
+  { id: "capa-colorida", label: "Capa colorida", value: 0 },
+  { id: "numeracao", label: "Numeração", value: 0 },
+  { id: "serrilha", label: "Serrilha", value: 0 },
+  { id: "cola", label: "Cola", value: 0 },
+  { id: "grampo", label: "Grampo", value: 0 },
+];
 const HIDDEN_IMPRESSOS_SEED_PRODUCT_IDS = new Set([
   "adesivo-vinil-laser-sem-corte",
   "adesivo-vinil-laser-com-semicorte",
@@ -714,6 +712,8 @@ function createDefaultConfig() {
       },
     },
     blockCatalog: getDefaultBlockCatalog(),
+    blockColorMarkupPercent: 30,
+    blockFinishes: deepClone(DEFAULT_BLOCK_FINISHES),
     printPricing: {
       blackWhite: [
         { min: 1, value: 2.0, mode: "fixed" },
@@ -1080,6 +1080,9 @@ function createDefaultBlockRow(tab, index) {
     format: first.format || "A4",
     vias: first.vias || 1,
     quantity: first.quantity || 1,
+    paperType: tab === "autocopiativo" ? "autocopiativo" : "sulfite",
+    printType: "preto-e-branco",
+    finishIds: [],
     artCreationFee: 0,
     discountType: "R$",
     discountValue: 0,
@@ -1147,7 +1150,7 @@ function createDefaultState() {
     flyerItems: Array.from({ length: 5 }, (_, index) => createDefaultFlyerRow(index)),
     blockItems: {
       sulfite: Array.from({ length: 5 }, (_, index) => createDefaultBlockRow("sulfite", index)),
-      autocopiativo: Array.from({ length: 5 }, (_, index) => createDefaultBlockRow("autocopiativo", index)),
+      autocopiativo: [],
     },
     client: {
       name: "",
@@ -1389,6 +1392,28 @@ function normalizeFlyerFinishes(candidateFinishes, defaultFinishes = DEFAULT_FLY
   return Array.from(finishById.values());
 }
 
+function normalizeBlockFinishes(candidateFinishes, defaultFinishes = DEFAULT_BLOCK_FINISHES) {
+  const finishById = new Map();
+  const addRows = (rows) => {
+    if (!Array.isArray(rows)) {
+      return;
+    }
+    rows
+      .filter((item) => item && typeof item === "object")
+      .forEach((item, index) => {
+        const id = item.id || `block-finish-${index + 1}`;
+        finishById.set(id, {
+          id,
+          label: typeof item.label === "string" && item.label.trim() ? item.label.trim() : "Novo acabamento",
+          value: toMoneyNumber(item.value),
+        });
+      });
+  };
+  addRows(defaultFinishes);
+  addRows(candidateFinishes);
+  return Array.from(finishById.values());
+}
+
 function mergeConfig(candidate) {
   const defaults = createDefaultConfig();
   if (!candidate || typeof candidate !== "object") {
@@ -1397,6 +1422,8 @@ function mergeConfig(candidate) {
 
   const merged = deepClone(defaults);
   merged.blockCatalog = normalizeBlockCatalog(candidate.blockCatalog);
+  merged.blockColorMarkupPercent = Math.max(0, toDecimalNumber(candidate.blockColorMarkupPercent ?? defaults.blockColorMarkupPercent));
+  merged.blockFinishes = normalizeBlockFinishes(candidate.blockFinishes, defaults.blockFinishes);
 
   if (candidate.security && typeof candidate.security === "object") {
     const configAccess = candidate.security.configAccess && typeof candidate.security.configAccess === "object"
@@ -4098,8 +4125,36 @@ function calculateResinWorkbook(state, config) {
   };
 }
 
+function getBlockPaperKey(row, fallback = "sulfite") {
+  return row?.paperType === "autocopiativo" ? "autocopiativo" : fallback === "autocopiativo" ? "autocopiativo" : "sulfite";
+}
+
+function getBlockPaperLabel(paperKey) {
+  return paperKey === "autocopiativo" ? "Autocopiativo" : "Sulfite 75g";
+}
+
+function getBlockPrintLabel(printType) {
+  return printType === "colorido" ? "Colorido" : "Preto e branco";
+}
+
 function getBlockCatalogForTab(config, tab) {
   return normalizeBlockCatalog(config.blockCatalog).filter((item) => item.tab === tab);
+}
+
+function getBlockSelectOptions(config, tab, row) {
+  const entries = getBlockCatalogForTab(config, tab);
+  const formats = [...new Set(entries.map((item) => item.format))];
+  const selectedFormat = formats.includes(row?.format) ? row.format : formats[0] || row?.format || "A4";
+  const formatEntries = entries.filter((item) => item.format === selectedFormat);
+  const viasOptions = [...new Set(formatEntries.map((item) => item.vias))];
+  const selectedVias = viasOptions.includes(Number(row?.vias)) ? Number(row.vias) : viasOptions[0] || Number(row?.vias) || 1;
+  const quantityOptions = [...new Set(formatEntries
+    .filter((item) => Number(item.vias) === Number(selectedVias))
+    .map((item) => item.quantity))];
+  const selectedQuantity = quantityOptions.includes(Number(row?.quantity))
+    ? Number(row.quantity)
+    : quantityOptions[0] || Number(row?.quantity) || 1;
+  return { formats, selectedFormat, viasOptions, selectedVias, quantityOptions, selectedQuantity };
 }
 
 function getBlockFormats(config, tab) {
@@ -4114,6 +4169,10 @@ function findBlockPrice(config, tab, row) {
   ) || null;
 }
 
+function getBlockFinishes(config) {
+  return normalizeBlockFinishes(config.blockFinishes, DEFAULT_BLOCK_FINISHES);
+}
+
 function isBlockRowActive(row) {
   return Boolean(
     row?.touched
@@ -4121,6 +4180,7 @@ function isBlockRowActive(row) {
     row?.description?.trim()
     || Number(row?.artCreationFee) > 0
     || Number(row?.discountValue) > 0
+    || (Array.isArray(row?.finishIds) && row.finishIds.length > 0)
   );
 }
 
@@ -4128,28 +4188,54 @@ function calculateBlockWorkbook(state, config, tab) {
   const rows = Array.isArray(state.blockItems?.[tab]) ? state.blockItems[tab] : [];
   const warnings = [];
   const computedRows = rows.map((row, index) => {
-    const active = isBlockRowActive(row);
-    const priceItem = findBlockPrice(config, tab, row);
-    const tablePrice = toMoneyNumber(priceItem?.price);
-    const artCreationFee = toMoneyNumber(row.artCreationFee);
-    const totalBeforeDiscount = tablePrice + artCreationFee;
-    const discount = calculateDiscount(totalBeforeDiscount, row);
+    const paperType = getBlockPaperKey(row, tab);
+    const options = getBlockSelectOptions(config, paperType, row);
+    const normalizedRow = {
+      ...row,
+      paperType,
+      printType: row?.printType === "colorido" ? "colorido" : "preto-e-branco",
+      format: options.selectedFormat,
+      vias: options.selectedVias,
+      quantity: options.selectedQuantity,
+      finishIds: Array.isArray(row?.finishIds) ? row.finishIds : [],
+    };
+    const active = isBlockRowActive(normalizedRow);
+    const priceItem = findBlockPrice(config, paperType, normalizedRow);
+    const baseTablePrice = toMoneyNumber(priceItem?.price);
+    const colorMarkup = Math.max(0, toDecimalNumber(config.blockColorMarkupPercent)) / 100;
+    const tablePrice = normalizedRow.printType === "colorido"
+      ? baseTablePrice * (1 + colorMarkup)
+      : baseTablePrice;
+    const selectedFinishes = getBlockFinishes(config)
+      .filter((finish) => normalizedRow.finishIds.includes(finish.id));
+    const finishesTotal = selectedFinishes.reduce(
+      (sum, finish) => sum + toMoneyNumber(finish.value) * Math.max(0, toWholeNumber(normalizedRow.quantity)),
+      0
+    );
+    const artCreationFee = toMoneyNumber(normalizedRow.artCreationFee);
+    const totalBeforeDiscount = tablePrice + finishesTotal + artCreationFee;
+    const discount = calculateDiscount(totalBeforeDiscount, normalizedRow);
     const total = discount.totalAfterDiscount;
-    const quantity = Math.max(0, toWholeNumber(row.quantity));
+    const quantity = Math.max(0, toWholeNumber(normalizedRow.quantity));
 
     if (active && !priceItem) {
-      warnings.push(`${BLOCK_TAB_DEFS[tab].label} ${index + 1}: não encontramos preço para formato, vias e quantidade selecionados.`);
+      warnings.push(`${BLOCK_TAB_DEFS[tab]?.label || "Blocos"} ${index + 1}: não encontramos preço para formato, vias e quantidade selecionados.`);
     } else if (active && priceItem && tablePrice <= 0) {
-      warnings.push(`${BLOCK_TAB_DEFS[tab].label} ${index + 1}: este preço está zerado na tabela e precisa ser configurado.`);
+      warnings.push(`${BLOCK_TAB_DEFS[tab]?.label || "Blocos"} ${index + 1}: este preço está zerado na tabela e precisa ser configurado.`);
     }
 
     return {
-      ...row,
+      ...normalizedRow,
       tab,
       active,
       priceItem,
       measure: priceItem?.measure || "",
+      paperLabel: getBlockPaperLabel(paperType),
+      printLabel: getBlockPrintLabel(normalizedRow.printType),
+      baseTablePrice,
       tablePrice,
+      finishesTotal,
+      finishSummary: selectedFinishes.map((finish) => finish.label).join(", "),
       artCreationFee,
       totalBeforeDiscount,
       discountType: discount.discountType,
@@ -4754,6 +4840,7 @@ function createConfigSectionTabsMarkup(activeSection = "calculo") {
     { id: "resinados", label: "Resinados", helper: "Mínimo, resina e valores por A3." },
     { id: "cartoes", label: "Cartões de visita", helper: "Laser, offset, papéis e acabamentos." },
     { id: "panfletos", label: "Panfletos e folders", helper: "Laser, offset, papéis, tamanhos e cores." },
+    { id: "blocos", label: "Blocos", helper: "Papéis, impressão, tabelas e acabamentos." },
   ];
 
   return `
@@ -5721,6 +5808,31 @@ function createConfigSectionsMarkup(config, viewMode = "basic", activeSection = 
     ),
   ];
 
+  const blockCards = [
+    createConfigCardMarkup(
+      "Acabamentos e impressão colorida",
+      "Os acabamentos são cobrados por bloco. A impressão colorida aplica o acréscimo configurado sobre a tabela do papel selecionado.",
+      createBlocksFinishesConfigMarkup(config)
+    ),
+    createConfigCardMarkup(
+      "Tabela de preços dos blocos",
+      "A mesma tabela atende sulfite 75g e autocopiativo. Para editar valores e faixas, use a tabela avançada abaixo.",
+      createTableMarkup(
+        ["Papel", "Formato", "Medida", "Vias", "Quantidade", "Valor"],
+        normalizeBlockCatalog(config.blockCatalog),
+        "block-pricing",
+        [
+          { key: "tab", type: "text" },
+          { key: "format", type: "text" },
+          { key: "measure", type: "text" },
+          { key: "vias", type: "number", step: "1" },
+          { key: "quantity", type: "number", step: "1" },
+          { key: "price", type: "number", step: "0.01" },
+        ]
+      )
+    ),
+  ];
+
   const safeSection = CONFIG_SECTIONS.includes(activeSection) ? activeSection : "calculo";
   const configGroups = {
     calculo: createConfigGroupMarkup(
@@ -5770,6 +5882,12 @@ function createConfigSectionsMarkup(config, viewMode = "basic", activeSection = 
       "Aba: Panfletos e folders",
       "Aqui ficam as tabelas de impressão laser e offset, papéis, tamanhos, cores e quantidades.",
       flyerCards
+    ),
+    blocos: createConfigGroupMarkup(
+      "blocos",
+      "Aba: Blocos",
+      "Configure a tabela de sulfite e autocopiativo, o acréscimo do colorido e os acabamentos usados no orçamento.",
+      blockCards
     ),
   };
 
@@ -6668,6 +6786,27 @@ function createFlyersFinishesConfigMarkup(rows) {
   `;
 }
 
+function createBlocksFinishesConfigMarkup(config) {
+  return `
+    <div class="config-inline-grid">
+      <label>
+        <span>Acréscimo para impressão colorida (%)</span>
+        <input data-block-color-markup type="number" min="0" step="0.01" value="${escapeHtml(config.blockColorMarkupPercent ?? 30)}">
+      </label>
+    </div>
+    <p class="helper-text">O valor colorido é calculado sobre a mesma tabela de blocos, com este acréscimo.</p>
+    ${createTableMarkup(
+      ["Acabamento", "Valor por bloco"],
+      getBlockFinishes(config),
+      "block-finish",
+      [
+        { key: "label", type: "text" },
+        { key: "value", type: "number", step: "0.01" },
+      ]
+    )}
+  `;
+}
+
 function getConfigArrayByPrefix(config, prefix) {
   if (prefix === "bw") return config.printPricing.blackWhite;
   if (prefix === "inkjet") return config.printPricing.inkjet;
@@ -6685,6 +6824,8 @@ function getConfigArrayByPrefix(config, prefix) {
   if (prefix === "card-finish") return config.cardFinishes;
   if (prefix === "flyer-pricing") return config.flyerPricing;
   if (prefix === "flyer-finish") return config.flyerFinishes;
+  if (prefix === "block-finish") return config.blockFinishes;
+  if (prefix === "block-pricing") return config.blockCatalog;
   if (prefix === "credential-lanyard-printed") return config.credentialLanyardPricing.printed;
   if (prefix.startsWith("m2-")) return config.m2Pricing[prefix.slice(3)];
   if (prefix.startsWith("ready-")) return config.readyProductPricing[prefix.slice(6)];
@@ -6900,9 +7041,9 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
       total: row.total,
     })),
     ...blockSulfiteWorkbook.activeRows.map((row) => ({
-      kind: "Blocos sulfite 75g",
-      description: row.description || "Bloco sulfite 75g",
-      detail: `${formatInteger(row.quantity)} blocos | ${row.format} | ${formatInteger(row.vias)} vias | ${row.measure || "medida não informada"}${row.artCreationFee > 0 ? ` | Arte: ${formatCurrency(row.artCreationFee)}` : ""}`,
+      kind: "Blocos",
+      description: row.description || `Bloco ${String(row.paperLabel || "").toLowerCase()}`.trim(),
+      detail: `${formatInteger(row.quantity)} blocos | ${row.paperLabel} | ${row.printLabel} | ${row.format} | ${formatInteger(row.vias)} vias | ${row.measure || "medida não informada"}${row.finishSummary ? ` | Acabamentos: ${row.finishSummary}` : ""}${row.artCreationFee > 0 ? ` | Arte: ${formatCurrency(row.artCreationFee)}` : ""}`,
       extraDetail: getDiscountQuoteDetail(row),
       total: row.total,
     })),
@@ -7065,7 +7206,7 @@ function createQuoteText(state, workbook, colorWorkbook, credentialWorkbook, m2W
       text: `- ${row.description || `Panfleto/folder ${index + 1}`} | ${row.quantity} unidades | ${row.printType === "offset" ? "Offset" : "Laser"} | ${row.paper} | ${row.size} | ${row.colorMode}${row.finishId !== "sem-acabamento" ? ` | ${row.finishLabel}` : ""}${row.artCreationFee > 0 ? ` | Arte: ${formatCurrency(row.artCreationFee)}` : ""}${getDiscountQuoteDetail(row) ? ` | ${getDiscountQuoteDetail(row)}` : ""} | ${formatCurrency(row.total)}`,
     })),
     ...blockSulfiteWorkbook.activeRows.map((row, index) => ({
-      text: `- ${row.description || `Bloco sulfite ${index + 1}`} | ${row.quantity} blocos | ${row.format} | ${row.vias} vias | ${row.measure || "medida não informada"}${row.artCreationFee > 0 ? ` | Arte: ${formatCurrency(row.artCreationFee)}` : ""}${getDiscountQuoteDetail(row) ? ` | ${getDiscountQuoteDetail(row)}` : ""} | ${formatCurrency(row.total)}`,
+      text: `- ${row.description || `Bloco ${row.paperLabel || ""} ${index + 1}`.trim()} | ${row.quantity} blocos | ${row.paperLabel} | ${row.printLabel} | ${row.format} | ${row.vias} vias | ${row.measure || "medida não informada"}${row.finishSummary ? ` | Acabamentos: ${row.finishSummary}` : ""}${row.artCreationFee > 0 ? ` | Arte: ${formatCurrency(row.artCreationFee)}` : ""}${getDiscountQuoteDetail(row) ? ` | ${getDiscountQuoteDetail(row)}` : ""} | ${formatCurrency(row.total)}`,
     })),
     ...blockAutocopiativoWorkbook.activeRows.map((row, index) => ({
       text: `- ${row.description || `Bloco autocopiativo ${index + 1}`} | ${row.quantity} blocos | ${row.format} | ${row.vias} vias | ${row.measure || "medida não informada"}${row.artCreationFee > 0 ? ` | Arte: ${formatCurrency(row.artCreationFee)}` : ""}${getDiscountQuoteDetail(row) ? ` | ${getDiscountQuoteDetail(row)}` : ""} | ${formatCurrency(row.total)}`,
@@ -7253,11 +7394,9 @@ async function initApp() {
   const employeesPerformanceList = document.getElementById("employees-performance-list");
   const blockTableBodies = {
     sulfite: document.getElementById("blocks-sulfite-rows-table-body"),
-    autocopiativo: document.getElementById("blocks-autocopiativo-rows-table-body"),
   };
   const blockWarningLists = {
     sulfite: document.getElementById("blocks-sulfite-warning-list"),
-    autocopiativo: document.getElementById("blocks-autocopiativo-warning-list"),
   };
 
   let historyFilters = {
@@ -9236,8 +9375,21 @@ async function initApp() {
         setConfigStatus("Digite a senha para acessar a configuração.", "warning");
         focusConfigPasswordField();
       }
-    } else if (CONFIG_SECTIONS.includes(tabName)) {
-      lastConfigSourceTab = tabName;
+    } else {
+      const configSectionByTab = {
+        calculo: "calculo",
+        impressos: "impressos",
+        credenciais: "credenciais",
+        m2: "m2",
+        prontos: "prontos",
+        resinados: "resinados",
+        cartoes: "cartoes",
+        panfletos: "panfletos",
+        blocosSulfite: "blocos",
+      };
+      if (configSectionByTab[tabName]) {
+        lastConfigSourceTab = configSectionByTab[tabName];
+      }
     }
   }
 
@@ -10285,19 +10437,53 @@ async function initApp() {
     document.getElementById(`${def.summaryPrefix}-summary-average`).textContent = formatCurrency(blockWorkbook.totals.averageValue);
 
     body.innerHTML = blockWorkbook.rows.map((row, index) => {
-      const options = getBlockSelectOptions(config, tab, row);
+      const paperType = getBlockPaperKey(row, tab);
+      const options = getBlockSelectOptions(config, paperType, row);
       const formatOptions = options.formats.map((value) => `<option value="${escapeHtml(value)}"${value === options.selectedFormat ? " selected" : ""}>${escapeHtml(value)}</option>`).join("");
       const viasOptions = options.viasOptions.map((value) => `<option value="${escapeHtml(value)}"${Number(value) === Number(options.selectedVias) ? " selected" : ""}>${escapeHtml(value)}</option>`).join("");
       const quantityOptions = options.quantityOptions.map((value) => `<option value="${escapeHtml(value)}"${Number(value) === Number(options.selectedQuantity) ? " selected" : ""}>${escapeHtml(value)}</option>`).join("");
+      const finishMarkup = getBlockFinishes(config).map((finish) => `
+        <label class="popover-option finish-option">
+          <input type="checkbox" data-block-finish-id="${escapeHtml(finish.id)}"${row.finishIds?.includes(finish.id) ? " checked" : ""}>
+          <span>${escapeHtml(finish.label)}${toMoneyNumber(finish.value) > 0 ? ` (${formatCurrency(finish.value)} / bloco)` : ""}</span>
+        </label>
+      `).join("");
       return `
         <tr class="${row.active ? "" : "is-empty"}" data-block-tab="${escapeHtml(tab)}" data-block-row-index="${index}">
           <td><strong>${String(index + 1).padStart(2, "0")}</strong></td>
           <td><input class="cell-input description" name="description" value="${escapeHtml(row.description)}" placeholder="${escapeHtml(def.label)}"></td>
+          <td>
+            <details class="inline-popover">
+              <summary class="button button-small">${escapeHtml(row.paperLabel || getBlockPaperLabel(paperType))}</summary>
+              <div class="floating-menu inline-floating-menu">
+                <label class="popover-option finish-option"><input type="radio" name="block-paper-${index}" data-block-paper-type="sulfite"${paperType === "sulfite" ? " checked" : ""}><span>Sulfite 75g</span></label>
+                <label class="popover-option finish-option"><input type="radio" name="block-paper-${index}" data-block-paper-type="autocopiativo"${paperType === "autocopiativo" ? " checked" : ""}><span>Autocopiativo</span></label>
+              </div>
+            </details>
+          </td>
+          <td>
+            <details class="inline-popover">
+              <summary class="button button-small">${escapeHtml(row.printLabel || getBlockPrintLabel(row.printType))}</summary>
+              <div class="floating-menu inline-floating-menu">
+                <label class="popover-option finish-option"><input type="radio" name="block-print-${index}" data-block-print-type="preto-e-branco"${row.printType !== "colorido" ? " checked" : ""}><span>Preto e branco</span></label>
+                <label class="popover-option finish-option"><input type="radio" name="block-print-${index}" data-block-print-type="colorido"${row.printType === "colorido" ? " checked" : ""}><span>Colorido (+${formatMeasure(config.blockColorMarkupPercent || 0)}%)</span></label>
+              </div>
+            </details>
+          </td>
           <td><select class="cell-select" name="format">${formatOptions}</select></td>
           <td><select class="cell-select compact-select" name="vias">${viasOptions}</select></td>
           <td><select class="cell-select compact-select" name="quantity">${quantityOptions}</select></td>
           <td><span class="readonly-value subtle">${escapeHtml(row.measure || "-")}</span></td>
           <td><span class="readonly-value subtle">${formatCurrency(row.tablePrice)}</span></td>
+          <td>
+            <details class="inline-popover">
+              <summary class="button button-small">${escapeHtml(row.finishSummary || "Sem acabamento")}</summary>
+              <div class="floating-menu inline-floating-menu">
+                ${finishMarkup}
+                <small class="helper-text">Os valores são aplicados por bloco.</small>
+              </div>
+            </details>
+          </td>
           <td><input class="cell-input compact-money" name="artCreationFee" type="number" min="0" step="0.01" value="${escapeHtml(row.artCreationFee)}"></td>
           <td>${createDiscountTypeSelect(row)}</td>
           <td>${createDiscountValueInput(row)}</td>
@@ -10466,7 +10652,6 @@ async function initApp() {
     document.getElementById("resin-summary-average").textContent = formatCurrency(resinWorkbook.totals.averageValue);
 
     renderBlockTab("sulfite", blockSulfiteWorkbook);
-    renderBlockTab("autocopiativo", blockAutocopiativoWorkbook);
     renderCardRows(cardWorkbook);
     renderFlyerRows(flyerWorkbook);
 
@@ -12038,12 +12223,6 @@ async function initApp() {
     renderRowsAndSummary();
   });
 
-  document.getElementById("add-block-autocopiativo-row-button")?.addEventListener("click", () => {
-    state.blockItems.autocopiativo.push(createDefaultBlockRow("autocopiativo", state.blockItems.autocopiativo.length));
-    persist();
-    renderRowsAndSummary();
-  });
-
   document.getElementById("clear-all-button").addEventListener("click", async () => {
     if (!(await confirmAppAction({
       kicker: "Limpeza",
@@ -12182,29 +12361,14 @@ async function initApp() {
   document.getElementById("clear-block-sulfite-rows-button")?.addEventListener("click", async () => {
     if (!(await confirmAppAction({
       kicker: "Limpeza",
-      title: "Limpar blocos sulfite",
-      message: "Deseja realmente limpar todas as linhas da aba de blocos sulfite 75g?",
+      title: "Limpar blocos",
+      message: "Deseja realmente limpar todas as linhas da aba de blocos?",
       confirmLabel: "Limpar",
       danger: true,
     }))) {
       return;
     }
     state.blockItems.sulfite = Array.from({ length: 5 }, (_, index) => createDefaultBlockRow("sulfite", index));
-    persist();
-    renderRowsAndSummary();
-  });
-
-  document.getElementById("clear-block-autocopiativo-rows-button")?.addEventListener("click", async () => {
-    if (!(await confirmAppAction({
-      kicker: "Limpeza",
-      title: "Limpar blocos autocopiativo",
-      message: "Deseja realmente limpar todas as linhas da aba de blocos papel autocopiativo?",
-      confirmLabel: "Limpar",
-      danger: true,
-    }))) {
-      return;
-    }
-    state.blockItems.autocopiativo = Array.from({ length: 5 }, (_, index) => createDefaultBlockRow("autocopiativo", index));
     persist();
     renderRowsAndSummary();
   });
@@ -12737,6 +12901,41 @@ async function initApp() {
       }
 
       const row = state.blockItems?.[tab]?.[Number(rowElement.dataset.blockRowIndex)];
+      const paperTarget = target.closest("[data-block-paper-type]");
+      const printTarget = target.closest("[data-block-print-type]");
+      const finishTarget = target.closest("[data-block-finish-id]");
+      if (paperTarget && row) {
+        row.touched = true;
+        row.paperType = paperTarget.dataset.blockPaperType === "autocopiativo" ? "autocopiativo" : "sulfite";
+        const options = getBlockSelectOptions(config, row.paperType, row);
+        row.format = options.selectedFormat;
+        row.vias = options.selectedVias;
+        row.quantity = options.selectedQuantity;
+        persist();
+        renderRowsAndSummary();
+        return;
+      }
+      if (printTarget && row) {
+        row.touched = true;
+        row.printType = printTarget.dataset.blockPrintType === "colorido" ? "colorido" : "preto-e-branco";
+        persist();
+        renderRowsAndSummary();
+        return;
+      }
+      if (finishTarget && row) {
+        row.touched = true;
+        const finishId = finishTarget.dataset.blockFinishId;
+        const selected = new Set(Array.isArray(row.finishIds) ? row.finishIds : []);
+        if (finishTarget.checked) {
+          selected.add(finishId);
+        } else {
+          selected.delete(finishId);
+        }
+        row.finishIds = Array.from(selected);
+        persist();
+        renderRowsAndSummary();
+        return;
+      }
       const field = target.name;
       if (!field || !row) {
         return;
@@ -12900,6 +13099,13 @@ async function initApp() {
     const serviceIndex = Number(target.dataset.serviceIndex);
     const serviceKey = target.dataset.serviceKey;
     if (!prefix || !key) {
+      if (target.dataset.blockColorMarkup !== undefined) {
+        config.blockColorMarkupPercent = Math.max(0, toDecimalNumber(target.value));
+        persist();
+        renderRowsAndSummary();
+        setConfigStatus("Acréscimo da impressão colorida atualizado.", "success");
+        return;
+      }
       if (resinConfigKey) {
         config.resinPricing[resinConfigKey] = resinConfigKey === "spacingMm"
           ? Math.max(0, toDecimalNumber(target.value))
@@ -13056,6 +13262,22 @@ async function initApp() {
         array[rowIndex][key] = Math.max(1, toWholeNumber(target.value));
       } else if (["minimumPrice", "pricePerHundred", "thousandPrice"].includes(key)) {
         array[rowIndex][key] = toMoneyNumber(target.value);
+      } else {
+        array[rowIndex][key] = target.value;
+      }
+    } else if (prefix === "block-finish") {
+      if (key === "value") {
+        array[rowIndex][key] = toMoneyNumber(target.value);
+      } else {
+        array[rowIndex][key] = target.value;
+      }
+    } else if (prefix === "block-pricing") {
+      if (key === "price") {
+        array[rowIndex][key] = toMoneyNumber(target.value);
+      } else if (key === "vias" || key === "quantity") {
+        array[rowIndex][key] = Math.max(1, toWholeNumber(target.value));
+      } else if (key === "tab") {
+        array[rowIndex][key] = target.value === "autocopiativo" ? "autocopiativo" : "sulfite";
       } else {
         array[rowIndex][key] = target.value;
       }
