@@ -44,7 +44,16 @@ async function authRedirectOrigin() {
   }
 
   const configuredOrigin = sanitizedOrigin(process.env.NEXT_PUBLIC_SITE_URL);
-  if (configuredOrigin) return configuredOrigin;
+  if (configuredOrigin && !isLocalOrigin(configuredOrigin)) return configuredOrigin;
+
+  const vercelOrigin = sanitizedOrigin(
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+  );
+  if (vercelOrigin) return vercelOrigin;
+
+  // Vercel Server Actions can expose localhost in forwarded headers when a
+  // project still carries a development URL. Never let that reach customer e-mails.
+  if (process.env.VERCEL === "1") return "https://grafi-calc.vercel.app";
 
   return "http://localhost:3210";
 }
