@@ -32,6 +32,11 @@ function isLocalOrigin(origin: string | null) {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
 
+function confirmationCallbackUrl(siteUrl: string, email: string, next = "/workspace") {
+  const params = new URLSearchParams({ next, email });
+  return `${siteUrl}/auth/confirm?${params.toString()}`;
+}
+
 async function authRedirectOrigin() {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
@@ -173,7 +178,7 @@ export async function signupAction(_: ActionState, formData: FormData): Promise<
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
-      emailRedirectTo: `${siteUrl}/auth/confirm?next=/workspace`,
+      emailRedirectTo: confirmationCallbackUrl(siteUrl, parsed.data.email),
       captchaToken: parsed.data.captchaToken || undefined,
       data: {
         nome: parsed.data.nome,
@@ -224,7 +229,7 @@ export async function resendConfirmationAction(_: ActionState, formData: FormDat
   const { error } = await supabase.auth.resend({
     type: "signup",
     email,
-    options: { emailRedirectTo: `${siteUrl}/auth/confirm?next=/workspace`, captchaToken: captchaToken || undefined },
+    options: { emailRedirectTo: confirmationCallbackUrl(siteUrl, email), captchaToken: captchaToken || undefined },
   });
   if (error) return { ok: false, message: "Aguarde um minuto antes de solicitar outro e-mail." };
   return { ok: true, message: "Novo e-mail de confirmação enviado." };

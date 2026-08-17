@@ -7,6 +7,7 @@ export async function GET(request: Request) {
   const tokenHash = url.searchParams.get("token_hash");
   const type = url.searchParams.get("type") as EmailOtpType | null;
   const code = url.searchParams.get("code");
+  const email = url.searchParams.get("email");
   const requestedNext = url.searchParams.get("next") || "/workspace";
   const next = requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/workspace";
   const supabase = await createClient();
@@ -20,5 +21,7 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) return NextResponse.redirect(new URL(next, url.origin));
   }
-  return NextResponse.redirect(new URL("/confirmar-email?erro=link", url.origin));
+  const retryUrl = new URL("/confirmar-email?erro=link", url.origin);
+  if (email) retryUrl.searchParams.set("email", email);
+  return NextResponse.redirect(retryUrl);
 }
