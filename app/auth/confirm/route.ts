@@ -1,27 +1,16 @@
-import { type EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const tokenHash = url.searchParams.get("token_hash");
-  const type = url.searchParams.get("type") as EmailOtpType | null;
-  const code = url.searchParams.get("code");
-  const email = url.searchParams.get("email");
-  const requestedNext = url.searchParams.get("next") || "/workspace";
-  const next = requestedNext.startsWith("/") && !requestedNext.startsWith("//") ? requestedNext : "/workspace";
-  const supabase = await createClient();
+  const sourceUrl = new URL(request.url);
+  const confirmationUrl = new URL("/confirmar-email", sourceUrl.origin);
 
-  if (tokenHash && type) {
-    const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
-    if (!error) return NextResponse.redirect(new URL(next, url.origin));
+  // E-mail clients and security scanners commonly prefetch links with GET.
+  // Do not consume Supabase's one-time token until the user explicitly submits
+  // the confirmation form on the destination page.
+  for (const key of ["token_hash", "type", "code", "email", "next"]) {
+    const value = sourceUrl.searchParams.get(key);
+    if (value) confirmationUrl.searchParams.set(key, value);
   }
 
-  if (code) {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) return NextResponse.redirect(new URL(next, url.origin));
-  }
-  const retryUrl = new URL("/confirmar-email?erro=link", url.origin);
-  if (email) retryUrl.searchParams.set("email", email);
-  return NextResponse.redirect(retryUrl);
+  return NextResponse.redirect(confirmationUrl);
 }

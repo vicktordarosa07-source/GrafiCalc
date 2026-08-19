@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { type EmailOtpType } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { loginSchema, signupSchema, passwordSchema, profileSchema } from "@/lib/validation/auth";
@@ -35,6 +36,15 @@ function isLocalOrigin(origin: string | null) {
 function confirmationCallbackUrl(siteUrl: string, email: string, next = "/workspace") {
   const params = new URLSearchParams({ next, email });
   return `${siteUrl}/auth/confirm?${params.toString()}`;
+}
+
+function safeInternalRedirect(value: string | null, fallback = "/workspace") {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return fallback;
+  return value;
+}
+
+function isSupportedConfirmationType(value: string): value is EmailOtpType {
+  return value === "signup" || value === "recovery";
 }
 
 async function authRedirectOrigin() {
@@ -233,6 +243,28 @@ export async function resendConfirmationAction(_: ActionState, formData: FormDat
   });
   if (error) return { ok: false, message: "Aguarde um minuto antes de solicitar outro e-mail." };
   return { ok: true, message: "Novo e-mail de confirmação enviado." };
+}
+
+export async function confirmSupabaseLinkAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const tokenHash = String(formData.get("token_hash") || "").trim();
+  const type = String(formData.get("type") || "").trim();
+  const code = String(formData.get("code") || "").trim();
+  const next = safeInternalRedirect(String(formData.get("next") || ""), "/workspace");
+
+  if ((!tokenHash || !isSupportedConfirmationType(type)) && !code) {
+    return { ok: false, message: "Este link de acesso é inválido. Solicite um novo e-mail." };
+  }
+
+  const supabase = await createClient();
+  const result = tokenHash && isSupportedConfirmationType(type)
+    ? await supabase.auth.verifyOtp({ type, token_hash: tokenHash })
+    : await supabase.auth.exchangeCodeForSession(code);
+
+  if (result.error) {
+    return { ok: false, message: "Este link já foi usado ou expirou. Solicite um novo e-mail." };
+  }
+
+  redirect(next);
 }
 
 export async function updatePasswordAction(_: ActionState, formData: FormData): Promise<ActionState> {
