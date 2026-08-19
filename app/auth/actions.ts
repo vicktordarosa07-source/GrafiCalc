@@ -47,6 +47,10 @@ function isSupportedConfirmationType(value: string): value is EmailOtpType {
   return value === "signup" || value === "recovery";
 }
 
+function isValidOtp(value: string) {
+  return /^\d{6,8}$/.test(value);
+}
+
 async function authRedirectOrigin() {
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
@@ -220,7 +224,7 @@ export async function requestPasswordResetAction(_: ActionState, formData: FormD
   const supabase = await createClient();
   const siteUrl = await authRedirectOrigin();
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${siteUrl}/auth/confirm?next=/alterar-senha`,
+    redirectTo: confirmationCallbackUrl(siteUrl, email, "/alterar-senha"),
     captchaToken: captchaToken || undefined,
   });
   if (error) {
@@ -262,6 +266,25 @@ export async function confirmSupabaseLinkAction(_: ActionState, formData: FormDa
 
   if (result.error) {
     return { ok: false, message: "Este link já foi usado ou expirou. Solicite um novo e-mail." };
+  }
+
+  redirect(next);
+}
+
+export async function verifyEmailOtpAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const email = String(formData.get("email") || "").trim().toLowerCase();
+  const token = String(formData.get("token") || "").replace(/\s/g, "");
+  const next = safeInternalRedirect(String(formData.get("next") || ""), "/workspace");
+  const type: EmailOtpType = next === "/alterar-senha" ? "recovery" : "signup";
+
+  if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254 || !isValidOtp(token)) {
+    return { ok: false, message: "Informe o e-mail e o código recebido corretamente." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.verifyOtp({ email, token, type });
+  if (error) {
+    return { ok: false, message: "Código inválido ou expirado. Solicite um novo e-mail e tente novamente." };
   }
 
   redirect(next);
