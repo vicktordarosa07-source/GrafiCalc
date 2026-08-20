@@ -59,6 +59,56 @@ const SHARED_BACKEND_MODE = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? "supabas
 const SESSION_COOKIE_NAME = "graficalc_session";
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
+// Security response headers applied to every response.
+// ponytail: CSP keeps 'unsafe-inline' for style-src while inline <style>/style="" attrs exist in index.html;
+// tighten to nonces once inline styles are removed.
+const SECURITY_HEADERS = {
+  "Content-Security-Policy": [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data: blob:",
+    "connect-src 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ].join("; "),
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains",
+};
+
+// In-memory brute-force guard. ponytail: per-instance Map; enough for single-node `node server.js`.
+// On multi-instance/serverless, back this with Supabase (same store as sessions) if abuse appears.
+const RATE_LIMIT_BUCKETS = new Map();
+function checkRateLimit(key, maxAttempts, windowMs) {
+  const now = Date.now();
+  const bucket = RATE_LIMIT_BUCKETS.get(key);
+  if (!bucket || now >= bucket.resetAt) {
+    RATE_LIMIT_BUCKETS.set(key, { count: 1, resetAt: now + windowMs });
+    return { allowed: true, retryAfterMs: 0 };
+  }
+  bucket.count += 1;
+  if (bucket.count > maxAttempts) {
+    return { allowed: false, retryAfterMs: bucket.resetAt - now };
+  }
+  return { allowed: true, retryAfterMs: 0 };
+}
+
+// Constant-time secret comparison. Hashes both sides so differing lengths don't leak via timing/throw.
+function safeEqual(a, b) {
+  const ha = crypto.createHash("sha256").update(String(a ?? "")).digest();
+  const hb = crypto.createHash("sha256").update(String(b ?? "")).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+function clientIp(request) {
+  const forwarded = String(request.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return forwarded || request.socket?.remoteAddress || "unknown";
+}
+
 function getEmailRuntimeStatus() {
   return {
     mode: EMAIL_PROVIDER_MODE,
@@ -104,6 +154,7 @@ function buildCookieHeader(name, value, maxAgeSeconds) {
     `${name}=${encodeURIComponent(value)}`,
     "Path=/",
     "HttpOnly",
+    "Secure",
     "SameSite=Lax",
   ];
   if (Number.isFinite(maxAgeSeconds)) {
@@ -432,6 +483,7 @@ function appendLocalEmailOutbox(entry) {
 function sendJson(response, statusCode, body) {
   const content = JSON.stringify(body);
   response.writeHead(statusCode, {
+    ...SECURITY_HEADERS,
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "Content-Length": Buffer.byteLength(content),
@@ -441,6 +493,7 @@ function sendJson(response, statusCode, body) {
 
 function sendText(response, statusCode, body) {
   response.writeHead(statusCode, {
+    ...SECURITY_HEADERS,
     "Content-Type": "text/plain; charset=utf-8",
     "Cache-Control": "no-store",
   });
@@ -477,6 +530,7 @@ function getSafeFilePath(requestPath) {
 function serveResolvedFile(filePath, response) {
   const extension = path.extname(filePath).toLowerCase();
   response.writeHead(200, {
+    ...SECURITY_HEADERS,
     "Content-Type": MIME_TYPES[extension] || "application/octet-stream",
     "Cache-Control": "no-store",
   });
@@ -666,6 +720,12 @@ async function handleRequest(request, response) {
       sendJson(response, 405, { error: "method-not-allowed" });
       return;
     }
+    const rl = checkRateLimit(`dev-login:${clientIp(request)}`, 5, 15 * 60 * 1000);
+    if (!rl.allowed) {
+      response.setHeader("Retry-After", Math.ceil(rl.retryAfterMs / 1000));
+      sendJson(response, 429, { ok: false, error: "too-many-attempts" });
+      return;
+    }
     try {
       const body = getJsonBodyOrNull(await readRequestBody(request));
       if (!DEVELOPER_USERNAME || !DEVELOPER_PASSWORD) {
@@ -681,7 +741,7 @@ async function handleRequest(request, response) {
         sendJson(response, 400, { ok: false, error: "missing-credentials" });
         return;
       }
-      if (username.toLowerCase() !== DEVELOPER_USERNAME.toLowerCase() || password !== DEVELOPER_PASSWORD) {
+      if (username.toLowerCase() !== DEVELOPER_USERNAME.toLowerCase() || !safeEqual(password, DEVELOPER_PASSWORD)) {
         sendJson(response, 401, { ok: false, error: "invalid-credentials" });
         return;
       }
@@ -726,6 +786,12 @@ async function handleRequest(request, response) {
       sendJson(response, 405, { error: "method-not-allowed" });
       return;
     }
+    const unlockRl = checkRateLimit(`config-unlock:${clientIp(request)}`, 5, 15 * 60 * 1000);
+    if (!unlockRl.allowed) {
+      response.setHeader("Retry-After", Math.ceil(unlockRl.retryAfterMs / 1000));
+      sendJson(response, 429, { ok: false, error: "too-many-attempts" });
+      return;
+    }
     const entry = getSecuritySession(request);
     if (!entry || entry.session.role !== "developer") {
       sendJson(response, 401, { ok: false, error: "developer-session-required" });
@@ -742,7 +808,7 @@ async function handleRequest(request, response) {
         sendJson(response, 400, { ok: false, error: "missing-password" });
         return;
       }
-      if (password !== CONFIG_ACCESS_PASSWORD) {
+      if (!safeEqual(password, CONFIG_ACCESS_PASSWORD)) {
         sendJson(response, 403, { ok: false, error: "invalid-password" });
         return;
       }

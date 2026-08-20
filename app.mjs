@@ -4793,6 +4793,12 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+// Escape a value for use inside a double-quoted HTML attribute (e.g. <img src="...">).
+// Also escapes single quotes so it is safe in single-quoted attributes too.
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll("'", "&#39;");
+}
+
 function countPdfPagesFromText(text) {
   const countMatches = [...text.matchAll(/\/Count\s+(\d+)/g)].map((match) => Number(match[1]));
   const validCounts = countMatches.filter((value) => Number.isFinite(value) && value > 0);
