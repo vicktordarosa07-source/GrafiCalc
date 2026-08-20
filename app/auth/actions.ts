@@ -231,7 +231,7 @@ export async function requestPasswordResetAction(_: ActionState, formData: FormD
     console.error("graficalc_password_reset_failure", { message: error.message, status: error.status });
     return { ok: false, message: passwordResetErrorMessage(error) };
   }
-  return { ok: true, message: "Se o e-mail estiver cadastrado, enviaremos as instruções de recuperação." };
+  return { ok: true, message: "Se o e-mail estiver cadastrado, enviaremos um código de recuperação." };
 }
 
 export async function resendConfirmationAction(_: ActionState, formData: FormData): Promise<ActionState> {

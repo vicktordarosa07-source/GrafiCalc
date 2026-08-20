@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { confirmSupabaseLinkAction, resendConfirmationAction, verifyEmailOtpAction } from "@/app/auth/actions";
+import { confirmSupabaseLinkAction, requestPasswordResetAction, resendConfirmationAction, verifyEmailOtpAction } from "@/app/auth/actions";
 import { ActionForm } from "@/components/auth/action-form";
 import { Turnstile } from "@/components/auth/turnstile";
 import { AuthShell } from "@/components/layout/auth-shell";
@@ -10,6 +10,8 @@ export default async function ConfirmEmailPage({ searchParams }: { searchParams:
   const isPasswordRecovery = next === "/alterar-senha";
   const title = isPasswordRecovery ? "Redefinir sua senha" : "Confirmar seu e-mail";
   const actionLabel = isPasswordRecovery ? "Continuar para nova senha" : "Confirmar e-mail";
+  const resendAction = isPasswordRecovery ? requestPasswordResetAction : resendConfirmationAction;
+  const resendLabel = isPasswordRecovery ? "Reenviar código de recuperação" : "Reenviar confirmação";
 
   return <AuthShell eyebrow="Verificação" title={title} description="Use o código enviado por e-mail para concluir esta ação com segurança.">
     {hasPendingLink && <>
@@ -31,10 +33,10 @@ export default async function ConfirmEmailPage({ searchParams }: { searchParams:
       <label className="field"><span>E-mail cadastrado</span><input name="email" type="email" defaultValue={email} autoComplete="email" required /></label>
       <label className="field"><span>Código de confirmação</span><input name="token" inputMode="numeric" pattern="[0-9]{6,8}" autoComplete="one-time-code" maxLength={8} required /></label>
     </ActionForm>
-    {!isPasswordRecovery && <ActionForm action={resendConfirmationAction} buttonLabel="Reenviar confirmação" pendingLabel="Reenviando...">
+    <ActionForm action={resendAction} buttonLabel={resendLabel} pendingLabel="Reenviando...">
       <label className="field"><span>Não recebeu o código? Informe seu e-mail</span><input name="email" type="email" defaultValue={email} autoComplete="email" required /></label>
       <Turnstile />
-    </ActionForm>}
+    </ActionForm>
     <p className="form-footer"><Link href={isPasswordRecovery ? "/recuperar-senha" : "/entrar"}>Voltar</Link></p>
   </AuthShell>;
 }
