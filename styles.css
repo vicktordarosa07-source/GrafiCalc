@@ -8349,3 +8349,264 @@ body::before {
 .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .tab-bar.tab-bar--v3 .tab-button-label {
   min-width: 0;
 }
+
+/* Central de montagem: etapa paralela para a migração gradual dos editores. */
+.new-quote-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+  padding: clamp(20px, 3vw, 34px);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 92% 18%, rgba(47, 198, 148, 0.2), transparent 30%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(236, 252, 246, 0.82));
+}
+
+.new-quote-hero-copy {
+  max-width: 720px;
+}
+
+.new-quote-eyebrow {
+  display: inline-flex;
+  margin-bottom: 8px;
+  color: #07866f;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.new-quote-hero h2 {
+  margin: 0;
+  color: #102a32;
+  font-size: clamp(1.7rem, 3vw, 2.45rem);
+}
+
+.new-quote-hero p {
+  max-width: 650px;
+  margin: 8px 0 0;
+  color: #5b747b;
+  line-height: 1.55;
+}
+
+.new-quote-hero-actions,
+.new-quote-client-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.new-quote-workspace-grid {
+  grid-template-columns: minmax(300px, 0.85fr) minmax(420px, 1.15fr);
+  margin-bottom: 20px;
+}
+
+.new-quote-search-field {
+  display: grid;
+  gap: 7px;
+  margin: 14px 0 8px;
+  color: #35545b;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.new-quote-search-field input {
+  min-height: 46px;
+}
+
+.new-quote-client-results {
+  min-height: 0;
+  max-height: 190px;
+  margin-bottom: 12px;
+  overflow: auto;
+}
+
+.new-quote-client-form {
+  margin-top: 10px;
+}
+
+.new-quote-service-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-height: 430px;
+  padding: 2px;
+  overflow: auto;
+}
+
+.new-quote-service-card {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 82px;
+  padding: 12px;
+  border: 1px solid rgba(121, 198, 173, 0.34);
+  border-radius: 16px;
+  background: linear-gradient(145deg, #ffffff, #f2fcf8);
+  color: #173a40;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.new-quote-service-card:hover,
+.new-quote-service-card:focus-visible {
+  border-color: #15b587;
+  box-shadow: 0 10px 22px rgba(18, 143, 107, 0.14);
+  outline: none;
+  transform: translateY(-2px);
+}
+
+.new-quote-service-card strong,
+.new-quote-service-card small {
+  display: block;
+}
+
+.new-quote-service-card small {
+  margin-top: 3px;
+  color: #6c8388;
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.new-quote-service-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 12px;
+  background: #dff8ee;
+  color: #067c66;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.new-quote-service-action {
+  color: #087e68;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.new-quote-items-panel {
+  margin-bottom: 20px;
+}
+
+.new-quote-total {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border: 1px solid rgba(54, 189, 143, 0.35);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #e4faef, #ffffff);
+  color: #0a7562;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.45rem;
+  font-weight: 800;
+}
+
+.new-quote-items {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.new-quote-item {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 13px;
+  border: 1px solid rgba(107, 145, 146, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.new-quote-item-number {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 12px;
+  background: #e8f8f2;
+  color: #087b65;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.new-quote-item p,
+.new-quote-item small {
+  display: block;
+  margin: 3px 0 0;
+  color: #657d83;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.new-quote-item > strong {
+  color: #12383d;
+  white-space: nowrap;
+}
+
+.new-quote-empty {
+  display: grid;
+  gap: 4px;
+  min-height: 92px;
+  place-content: center;
+  border: 1px dashed rgba(34, 151, 119, 0.34);
+  border-radius: 14px;
+  color: #6a8287;
+  text-align: center;
+}
+
+.new-quote-empty strong {
+  color: #27464b;
+}
+
+@media (max-width: 940px) {
+  .new-quote-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .new-quote-hero,
+  .new-quote-hero-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .new-quote-hero-actions .button {
+    width: 100%;
+  }
+
+  .new-quote-service-results {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+
+  .new-quote-service-card {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .new-quote-service-action {
+    grid-column: 2;
+  }
+
+  .new-quote-item {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .new-quote-item > strong {
+    grid-column: 2;
+    white-space: normal;
+  }
+
+  .new-quote-total {
+    width: 100%;
+    text-align: center;
+  }
+}

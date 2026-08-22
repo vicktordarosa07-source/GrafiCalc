@@ -68,6 +68,7 @@
         <button class="tab-button developer-tab-button" data-tab-target="desenvolvedor" data-dev-only hidden title="Área do desenvolvedor" data-tooltip="Área do desenvolvedor"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-code"></use></svg><span class="tab-button-label">Dev</span></button>
         <div class="tab-menu-section-label">Comercial</div>
         <button class="tab-button" data-tab-target="home" title="Home" data-tooltip="Home"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-home"></use></svg><span class="tab-button-label">Home</span></button>
+        <button class="tab-button" data-tab-target="novoOrcamento" title="Novo orçamento" data-tooltip="Novo orçamento"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-quote"></use></svg><span class="tab-button-label">Novo orçamento</span></button>
         <button class="tab-button" data-tab-target="clientes" title="Clientes" data-tooltip="Clientes"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-customers"></use></svg><span class="tab-button-label">Clientes</span></button>
         <button class="tab-button" data-tab-target="historico" title="Histórico" data-tooltip="Histórico"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-history"></use></svg><span class="tab-button-label">Histórico</span></button>
         <button class="tab-button" data-tab-target="orcamento" title="Orçamentos" data-tooltip="Orçamentos"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-quote"></use></svg><span class="tab-button-label">Orçamentos</span></button>
@@ -1723,6 +1724,87 @@
             <div id="history-list" class="stack-list"></div>
           </article>
         </div>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="novoOrcamento">
+        <section class="new-quote-hero panel">
+          <div class="new-quote-hero-copy">
+            <span class="new-quote-eyebrow">Central de montagem</span>
+            <h2>Novo orçamento</h2>
+            <p>Escolha o cliente, pesquise o serviço e adicione itens ao mesmo orçamento. As calculadoras atuais seguem preservadas enquanto migramos cada editor para esta central.</p>
+          </div>
+          <div class="new-quote-hero-actions">
+            <button id="new-quote-open-preview" class="button" type="button">Ver orçamento</button>
+            <button id="new-quote-save-history" class="button button-primary" type="button">Salvar no histórico</button>
+          </div>
+        </section>
+
+        <div class="workspace-grid new-quote-workspace-grid">
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>1. Cliente</h2>
+                <p class="panel-copy">Busque um cadastro existente ou preencha os dados para salvar direto no orçamento.</p>
+              </div>
+            </div>
+            <label class="new-quote-search-field">
+              <span>Pesquisar cliente salvo</span>
+              <input id="new-quote-client-search" type="search" placeholder="Digite nome, razão social ou documento" autocomplete="off">
+            </label>
+            <div id="new-quote-client-results" class="quote-client-search-results new-quote-client-results" role="listbox" aria-label="Clientes encontrados"></div>
+            <div class="quote-form-grid new-quote-client-form">
+              <label>
+                <span>Nome / razão social</span>
+                <input id="new-quote-client-name" type="text" autocomplete="name">
+              </label>
+              <label>
+                <span>Celular / contato</span>
+                <input id="new-quote-client-contact" type="text" autocomplete="tel">
+              </label>
+              <label>
+                <span>CPF / CNPJ</span>
+                <input id="new-quote-client-document" type="text">
+              </label>
+              <label>
+                <span>Forma de pagamento</span>
+                <input id="new-quote-payment-terms" type="text">
+              </label>
+            </div>
+            <div class="toolbar new-quote-client-toolbar">
+              <button id="new-quote-save-client" class="button" type="button">Salvar cliente</button>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <h2>2. Adicionar item</h2>
+                <p class="panel-copy">Pesquise o que o cliente precisa. A central abre a calculadora certa já com uma nova linha pronta para preencher.</p>
+              </div>
+            </div>
+            <label class="new-quote-search-field">
+              <span>O que você quer orçar?</span>
+              <input id="new-quote-service-search" type="search" placeholder="Ex.: apostila, adesivo, credencial, cartão..." autocomplete="off">
+            </label>
+            <div id="new-quote-service-results" class="new-quote-service-results" aria-live="polite"></div>
+          </article>
+        </div>
+
+        <article class="panel new-quote-items-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>3. Itens deste orçamento</h2>
+              <p class="panel-copy">Os itens preenchidos nas calculadoras ficam reunidos aqui. Use “Novo item” para continuar a montagem.</p>
+            </div>
+            <div class="new-quote-total" id="new-quote-total">R$ 0,00</div>
+          </div>
+          <div id="new-quote-items" class="new-quote-items"></div>
+          <div class="toolbar">
+            <button id="new-quote-add-item" class="button button-primary" type="button">Novo item</button>
+            <button id="new-quote-print" class="button" type="button">Imprimir</button>
+            <button id="new-quote-export" class="button" type="button">Exportar em PDF</button>
+          </div>
+        </article>
       </section>
 
       <section class="tab-panel" data-tab-panel="orcamento">

@@ -23,7 +23,6 @@ const DEVELOPER_ACCOUNT = {
   groupId: "developer",
   emailVerification: {
     status: "verified",
-    code: "",
     sentAt: "",
     verifiedAt: new Date().toISOString(),
     expiresAt: "",
@@ -33,18 +32,18 @@ const DEVELOPER_ACCOUNT = {
 };
 const SHARED_API_PATH = "/api/shared-state";
 const AUTH_EMAIL_API_PATH = "/api/auth/send-verification-code";
+const AUTH_VERIFY_EMAIL_API_PATH = "/api/auth/verify-verification-code";
 const AUTH_USERS_API_PATH = "/api/auth/users";
 const AUTH_DEVELOPER_LOGIN_API_PATH = "/api/auth/developer-login";
 const AUTH_SESSION_API_PATH = "/api/auth/session";
 const AUTH_LOGOUT_API_PATH = "/api/auth/logout";
 const CONFIG_UNLOCK_API_PATH = "/api/config/unlock";
 const SHARED_SYNC_INTERVAL_MS = 20000;
-const EMAIL_VERIFICATION_CODE_LENGTH = 6;
 const EMAIL_VERIFICATION_COOLDOWN_MS = 60 * 1000;
-const EMAIL_VERIFICATION_EXPIRATION_MS = 15 * 60 * 1000;
 
 const APP_TAB_LABELS = [
   { id: "home", label: "Home" },
+  { id: "novoOrcamento", label: "Novo orçamento" },
   { id: "conta", label: "Minha conta" },
   { id: "calculo", label: "Cálculo de apostila" },
   { id: "impressos", label: "Impressos coloridos" },
@@ -75,6 +74,7 @@ const EMPLOYEE_OPERATION_TABS = new Set([
   "cartoes",
   "panfletos",
   "blocosSulfite",
+  "novoOrcamento",
   "orcamento",
 ]);
 
@@ -1170,6 +1170,10 @@ function createDefaultState() {
     clients: [],
     quoteHistory: [],
     workOrders: [],
+    quoteBuilder: {
+      serviceQuery: "",
+      clientQuery: "",
+    },
     paymentTerms: "",
     quoteNotes: "",
   };
@@ -1601,6 +1605,10 @@ function mergeState(candidate, configCandidate = null) {
   state.client.personType = state.client.personType === "individual" || onlyDigits(state.client.cnpj).length === 11 ? "individual" : "legal";
   state.client.email = typeof state.client.email === "string" ? state.client.email : "";
   state.client.whatsapp = Boolean(state.client.whatsapp);
+  state.quoteBuilder = {
+    serviceQuery: typeof candidate.quoteBuilder?.serviceQuery === "string" ? candidate.quoteBuilder.serviceQuery : "",
+    clientQuery: typeof candidate.quoteBuilder?.clientQuery === "string" ? candidate.quoteBuilder.clientQuery : "",
+  };
   state.company = { ...state.company, ...(candidate.company || {}) };
   state.clients = Array.isArray(candidate.clients)
     ? candidate.clients
@@ -2072,7 +2080,6 @@ function normalizeUserRecord(user, index = 0) {
       : (emailValue ? "pending" : "pending");
     return {
       status,
-      code: typeof candidate?.code === "string" ? candidate.code.trim() : "",
       sentAt: typeof candidate?.sentAt === "string" ? candidate.sentAt : "",
       verifiedAt: typeof candidate?.verifiedAt === "string" ? candidate.verifiedAt : "",
       expiresAt: typeof candidate?.expiresAt === "string" ? candidate.expiresAt : "",
@@ -2524,34 +2531,12 @@ function formatBrazilianPhone(value) {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
-function generateVerificationCode(length = 6) {
-  const digits = "0123456789";
-  let code = "";
-  while (code.length < length) {
-    code += digits[Math.floor(Math.random() * digits.length)];
-  }
-  return code;
-}
-
-function addMillisecondsToIso(dateLike, milliseconds) {
-  const baseTime = dateLike ? new Date(dateLike).getTime() : Date.now();
-  return new Date(baseTime + milliseconds).toISOString();
-}
-
 function getRemainingCooldownMs(user) {
   const availableAt = user?.emailVerification?.resendAvailableAt;
   if (!availableAt) {
     return 0;
   }
   return Math.max(0, new Date(availableAt).getTime() - Date.now());
-}
-
-function isEmailVerificationExpired(user) {
-  const expiresAt = user?.emailVerification?.expiresAt;
-  if (!expiresAt) {
-    return false;
-  }
-  return new Date(expiresAt).getTime() <= Date.now();
 }
 
 function normalizeBirthDate(value) {
@@ -2634,13 +2619,11 @@ async function requestVerificationCodeDelivery(user) {
   const payload = {
     email: String(user?.email || "").trim(),
     username: String(user?.username || "").trim(),
-    code: String(user?.emailVerification?.code || "").trim(),
     company: String(user?.company || "").trim(),
-    expiresAt: user?.emailVerification?.expiresAt || "",
   };
 
-  if (!payload.email || !payload.code) {
-    return { ok: false, mode: "manual", message: "Cadastro sem e-mail ou código disponível." };
+  if (!payload.email) {
+    return { ok: false, mode: "manual", message: "Cadastro sem e-mail disponível." };
   }
 
   try {
@@ -2653,12 +2636,21 @@ async function requestVerificationCodeDelivery(user) {
     });
     const result = await response.json();
     if (!response.ok || !result?.ok) {
-      throw new Error(result?.error || "delivery-failed");
+      return {
+        ok: false,
+        mode: "manual",
+        error: result?.error || "delivery-failed",
+        retryAfterSeconds: Number(response.headers.get("Retry-After") || 0),
+        message: "Não foi possível enviar um novo código agora.",
+      };
     }
     return {
       ok: true,
       mode: result.deliveryMode || "local-outbox",
       message: typeof result.message === "string" ? result.message : "",
+      sentAt: typeof result.sentAt === "string" ? result.sentAt : "",
+      expiresAt: typeof result.expiresAt === "string" ? result.expiresAt : "",
+      resendAvailableAt: typeof result.resendAvailableAt === "string" ? result.resendAvailableAt : "",
     };
   } catch {
     return {
@@ -2730,7 +2722,10 @@ async function requestSharedState(method = "GET", payload) {
 
   const response = await fetch(SHARED_API_PATH, {
     method,
-    headers: payload ? { "Content-Type": "application/json" } : undefined,
+    headers: {
+      "X-GrafiCalc-Request": "1",
+      ...(payload ? { "Content-Type": "application/json" } : {}),
+    },
     body: payload ? JSON.stringify(payload) : undefined,
     cache: "no-store",
   });
@@ -2749,7 +2744,10 @@ async function requestAuthUserSave(user, accessControl) {
 
   const response = await fetch(AUTH_USERS_API_PATH, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-GrafiCalc-Request": "1",
+    },
     body: JSON.stringify({
       user,
       accessControl,
@@ -4791,6 +4789,10 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll("'", "&#39;");
 }
 
 function countPdfPagesFromText(text) {
@@ -7386,6 +7388,12 @@ async function initApp() {
   const quoteClientSearch = document.getElementById("quote-client-search");
   const quoteClientSearchInput = document.getElementById("quote-client-search-input");
   const quoteClientSearchResults = document.getElementById("quote-client-search-results");
+  const newQuoteClientSearch = document.getElementById("new-quote-client-search");
+  const newQuoteClientResults = document.getElementById("new-quote-client-results");
+  const newQuoteServiceSearch = document.getElementById("new-quote-service-search");
+  const newQuoteServiceResults = document.getElementById("new-quote-service-results");
+  const newQuoteItems = document.getElementById("new-quote-items");
+  const newQuoteTotal = document.getElementById("new-quote-total");
   const feedback = document.getElementById("import-feedback");
   const colorFeedback = document.getElementById("color-feedback");
   const credentialFeedback = document.getElementById("credential-feedback");
@@ -8294,19 +8302,19 @@ async function initApp() {
       return false;
     }
 
-    const nowIso = new Date().toISOString();
-    user.emailVerification = {
-      ...user.emailVerification,
-      status: user.emailVerification?.status === "verified" ? "verified" : "pending",
-      code: generateVerificationCode(EMAIL_VERIFICATION_CODE_LENGTH),
-      sentAt: nowIso,
-      expiresAt: addMillisecondsToIso(nowIso, EMAIL_VERIFICATION_EXPIRATION_MS),
-      resendAvailableAt: addMillisecondsToIso(nowIso, EMAIL_VERIFICATION_COOLDOWN_MS),
-    };
-    user.updatedAt = nowIso;
-
     const delivery = await requestVerificationCodeDelivery(user);
-    user.emailVerification.lastDeliveryMode = delivery.mode || "manual";
+    const nowIso = new Date().toISOString();
+    if (delivery.ok) {
+      user.emailVerification = {
+        ...user.emailVerification,
+        status: user.emailVerification?.status === "verified" ? "verified" : "pending",
+        sentAt: delivery.sentAt || nowIso,
+        expiresAt: delivery.expiresAt || "",
+        resendAvailableAt: delivery.resendAvailableAt || new Date(Date.now() + EMAIL_VERIFICATION_COOLDOWN_MS).toISOString(),
+        lastDeliveryMode: delivery.mode || "manual",
+      };
+      user.updatedAt = nowIso;
+    }
     await saveSecuritySharedNow();
     renderDeveloperArea();
     if (rerenderPermissions) {
@@ -8318,8 +8326,10 @@ async function initApp() {
         ? "Código enviado automaticamente por e-mail."
         : delivery.mode === "smtp"
           ? "Código enviado automaticamente pelo servidor."
-          : `Modo local de teste ativo. Código salvo em work/email-outbox.local.json. Código atual: ${user.emailVerification.code}.`
-      : `Envio automático indisponível nesta máquina. Código gerado: ${user.emailVerification.code}.`;
+          : "Modo local de teste ativo. Código salvo na caixa de saída local do servidor."
+      : delivery.error === "too-many-requests"
+        ? `Aguarde ${Math.max(1, Math.ceil(delivery.retryAfterSeconds || 60))}s para pedir outro código.`
+        : "Envio automático indisponível nesta máquina. Tente novamente em instantes.";
 
     if (openedFromDeveloper) {
       setConfigStatus(`${deliveryLabel} Usuário: ${user.username}.`, delivery.ok ? "success" : "warning");
@@ -8355,6 +8365,9 @@ async function initApp() {
           configUnlocked: Boolean(result?.configUnlocked),
           username: typeof result?.username === "string" ? result.username : user.username,
         };
+        // The legacy shared-state API is protected by the developer session.
+        // Refresh only after that session cookie is accepted by the browser.
+        await refreshSharedState(false);
       } catch (error) {
         const message = String(error?.message || "");
         if (message.includes("developer-auth-not-configured")) {
@@ -8451,7 +8464,6 @@ async function initApp() {
       groupId: "profissional",
       emailVerification: {
         status: "pending",
-        code: "",
         sentAt: "",
         verifiedAt: "",
         expiresAt: "",
@@ -8493,19 +8505,30 @@ async function initApp() {
       setAuthStatus("Este e-mail já foi confirmado.", "success");
       return Boolean(currentUser);
     }
-    if (isEmailVerificationExpired(user)) {
-      setAuthStatus("Esse código expirou. Gere um novo código para continuar.", "warning");
-      openEmailVerificationStep(user, "Esse código expirou. Gere um novo código para continuar.", "warning");
-      return false;
-    }
-    if ((user.emailVerification?.code || "") !== normalizedCode) {
-      setAuthStatus("Código de verificação inválido.", "error");
+    let result;
+    try {
+      const response = await fetch(AUTH_VERIFY_EMAIL_API_PATH, {
+        method: "POST",
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+        body: JSON.stringify({ email: normalizedEmail, code: normalizedCode }),
+      });
+      result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.ok) {
+        if (response.status === 429) {
+          setAuthStatus(`Muitas tentativas. Aguarde ${response.headers.get("Retry-After") || "alguns"} segundos antes de tentar novamente.`, "warning");
+        } else {
+          setAuthStatus("Código inválido ou expirado. Solicite um novo código para continuar.", "error");
+        }
+        return false;
+      }
+    } catch {
+      setAuthStatus("Não foi possível validar o código agora. Tente novamente em instantes.", "error");
       return false;
     }
     user.emailVerification = {
       ...user.emailVerification,
       status: "verified",
-      verifiedAt: new Date().toISOString(),
+      verifiedAt: typeof result?.verifiedAt === "string" ? result.verifiedAt : new Date().toISOString(),
     };
     user.status = "active";
     user.updatedAt = new Date().toISOString();
@@ -9602,6 +9625,166 @@ async function initApp() {
           </button>
         `).join("")
       : `<p class="helper-text">Nenhum cliente cadastrado foi encontrado com esse nome.</p>`;
+  }
+
+  const NEW_QUOTE_SERVICES = [
+    { id: "apostila", label: "Apostila", description: "PDF, páginas, capa, impressão e encadernação", tab: "calculo", icon: "A" },
+    { id: "impresso", label: "Impresso colorido", description: "Tamanho, papel, impressão, corte e complementos", tab: "impressos", icon: "I" },
+    { id: "credencial", label: "Credencial", description: "Material, impressão, laminação e cordão", tab: "credenciais", icon: "C" },
+    { id: "m2", label: "Adesivo, banner e m²", description: "Medidas, produto, faixa de preço e acabamentos", tab: "m2", icon: "m²" },
+    { id: "pronto", label: "Material pronto", description: "Produtos de catálogo e serviços com tabela fixa", tab: "prontos", icon: "P" },
+    { id: "resinado", label: "Adesivo resinado", description: "Material, medida, espaçamento e quantidade", tab: "resinados", icon: "R" },
+    { id: "cartao", label: "Cartão de visita", description: "Laser ou offset, papel, lados e acabamentos", tab: "cartoes", icon: "CV" },
+    { id: "panfleto", label: "Panfleto e folder", description: "Laser ou offset, papel, tamanho, cores e dobra", tab: "panfletos", icon: "PF" },
+    { id: "bloco", label: "Bloco", description: "Sulfite ou autocopiativo, vias, impressão e acabamentos", tab: "blocosSulfite", icon: "B" },
+  ];
+
+  function getQuoteBuilderEntries() {
+    const workbook = calculateWorkbook(state, config);
+    const colorWorkbook = calculateColorPrintWorkbook(state, config);
+    const credentialWorkbook = calculateCredentialWorkbook(state, config);
+    const m2Workbook = calculateM2WorkbookFromConfig(state, config);
+    const readyWorkbook = calculateReadyWorkbook(state, config);
+    const resinWorkbook = calculateResinWorkbook(state, config);
+    const cardWorkbook = calculateCardWorkbook(state, config);
+    const flyerWorkbook = calculateFlyerWorkbook(state, config);
+    const blockSulfiteWorkbook = calculateBlockWorkbook(state, config, "sulfite");
+    const blockAutocopiativoWorkbook = calculateBlockWorkbook(state, config, "autocopiativo");
+    return createQuoteEntries(
+      state,
+      workbook,
+      colorWorkbook,
+      credentialWorkbook,
+      m2Workbook,
+      readyWorkbook,
+      resinWorkbook,
+      cardWorkbook,
+      flyerWorkbook,
+      blockSulfiteWorkbook,
+      blockAutocopiativoWorkbook
+    );
+  }
+
+  function renderNewQuoteClientResults(query = "") {
+    if (!newQuoteClientResults) return;
+    const normalizedQuery = String(query || "").trim().toLocaleLowerCase("pt-BR");
+    if (!normalizedQuery) {
+      newQuoteClientResults.innerHTML = "";
+      return;
+    }
+    const matches = state.clients
+      .filter((client) => [client.name, client.contact, getClientDocument(client)]
+        .some((value) => String(value || "").toLocaleLowerCase("pt-BR").includes(normalizedQuery)))
+      .slice(0, 6);
+    newQuoteClientResults.innerHTML = matches.length
+      ? matches.map((client) => `
+          <button class="quote-client-result" type="button" role="option" data-new-quote-client-id="${escapeAttribute(client.id)}">
+            <strong>${escapeHtml(client.name || "Sem nome")}</strong>
+            <span>${escapeHtml(client.personType === "individual" ? "Pessoa física" : "Pessoa jurídica")}</span>
+            <small>${escapeHtml(client.contact || "Sem celular")} · ${escapeHtml(getClientDocument(client) || "Documento não informado")}</small>
+          </button>
+        `).join("")
+      : `<p class="helper-text">Nenhum cliente encontrado.</p>`;
+  }
+
+  function renderNewQuoteBuilder() {
+    if (!newQuoteServiceResults || !newQuoteItems || !newQuoteTotal) return;
+    newQuoteServiceSearch && (newQuoteServiceSearch.value = state.quoteBuilder?.serviceQuery || "");
+    newQuoteClientSearch && (newQuoteClientSearch.value = state.quoteBuilder?.clientQuery || "");
+    const clientFields = {
+      name: document.getElementById("new-quote-client-name"),
+      contact: document.getElementById("new-quote-client-contact"),
+      document: document.getElementById("new-quote-client-document"),
+      paymentTerms: document.getElementById("new-quote-payment-terms"),
+    };
+    if (clientFields.name) clientFields.name.value = state.client.name || "";
+    if (clientFields.contact) clientFields.contact.value = state.client.contact || "";
+    if (clientFields.document) clientFields.document.value = state.client.cnpj || "";
+    if (clientFields.paymentTerms) clientFields.paymentTerms.value = state.paymentTerms || "";
+    renderNewQuoteServices();
+
+    const entries = getQuoteBuilderEntries();
+    const total = entries.reduce((sum, entry) => sum + Number(entry.total || 0), 0);
+    newQuoteTotal.textContent = formatCurrency(total);
+    newQuoteItems.innerHTML = entries.length
+      ? entries.map((entry, index) => `
+          <article class="new-quote-item">
+            <span class="new-quote-item-number">${String(index + 1).padStart(2, "0")}</span>
+            <div><strong>${escapeHtml(entry.description || entry.kind)}</strong><p>${escapeHtml(entry.kind)} · ${escapeHtml(entry.detail)}</p>${entry.extraDetail ? `<small>${escapeHtml(entry.extraDetail)}</small>` : ""}</div>
+            <strong>${formatCurrency(entry.total)}</strong>
+          </article>
+        `).join("")
+      : `<div class="new-quote-empty"><strong>Seu orçamento ainda não tem itens.</strong><span>Use a busca acima para adicionar o primeiro serviço.</span></div>`;
+    renderNewQuoteClientResults(state.quoteBuilder?.clientQuery || "");
+  }
+
+  function renderNewQuoteServices() {
+    if (!newQuoteServiceResults) return;
+    const query = String(state.quoteBuilder?.serviceQuery || "").trim().toLocaleLowerCase("pt-BR");
+    const services = NEW_QUOTE_SERVICES.filter((service) => !query || `${service.label} ${service.description}`.toLocaleLowerCase("pt-BR").includes(query));
+    newQuoteServiceResults.innerHTML = services.length
+      ? services.map((service) => `
+          <button class="new-quote-service-card" type="button" data-new-quote-service="${service.id}">
+            <span class="new-quote-service-icon" aria-hidden="true">${escapeHtml(service.icon)}</span>
+            <span><strong>${escapeHtml(service.label)}</strong><small>${escapeHtml(service.description)}</small></span>
+            <span class="new-quote-service-action">Adicionar</span>
+          </button>
+        `).join("")
+      : `<div class="new-quote-empty">Nenhum serviço encontrado. Tente “adesivo”, “cartão”, “apostila” ou “bloco”.</div>`;
+  }
+
+  function getNewQuoteTarget(serviceId) {
+    const service = NEW_QUOTE_SERVICES.find((item) => item.id === serviceId);
+    if (!service) return null;
+    const prepare = (list, createRow, isActive) => {
+      const index = list.findIndex((row) => !isActive(row));
+      if (index >= 0) {
+        list[index] = createRow(index);
+      } else {
+        list.push(createRow(list.length));
+      }
+    };
+    if (service.id === "apostila") prepare(state.rows, createDefaultRow, isRowActive);
+    if (service.id === "impresso") prepare(state.colorPrintItems, createDefaultColorPrintRow, isColorPrintRowActive);
+    if (service.id === "credencial") prepare(state.credentialItems, createDefaultCredentialRow, isCredentialRowActive);
+    if (service.id === "m2") prepare(state.m2Items, createDefaultM2Row, (row) => Boolean(row.description?.trim() || Number(row.quantity) > 0 || Number(row.widthMm) > 0 || Number(row.heightMm) > 0));
+    if (service.id === "pronto") prepare(state.readyItems, createDefaultReadyRow, isReadyRowActive);
+    if (service.id === "resinado") prepare(state.resinItems, createDefaultResinRow, isResinRowActive);
+    if (service.id === "cartao") prepare(state.cardItems, createDefaultCardRow, isCardRowActive);
+    if (service.id === "panfleto") prepare(state.flyerItems, createDefaultFlyerRow, isFlyerRowActive);
+    if (service.id === "bloco") prepare(state.blockItems.sulfite, (index) => createDefaultBlockRow("sulfite", index), isBlockRowActive);
+    return service;
+  }
+
+  function saveCurrentQuoteClient() {
+    const clientName = state.client.name.trim();
+    if (!clientName) {
+      setMainFeedback("Digite o nome do cliente antes de salvar.", "warning");
+      return false;
+    }
+    const existingIndex = state.clients.findIndex((client) => client.name.trim().toLowerCase() === clientName.toLowerCase());
+    const documentValue = state.client.cnpj.trim();
+    const personType = state.client.personType === "individual" || onlyDigits(documentValue).length === 11 ? "individual" : "legal";
+    const payload = {
+      id: existingIndex >= 0 ? state.clients[existingIndex].id : `client-${Date.now()}`,
+      name: clientName,
+      contact: state.client.contact.trim(),
+      document: documentValue,
+      cnpj: personType === "legal" ? documentValue : "",
+      cpf: personType === "individual" ? documentValue : "",
+      personType,
+      email: state.client.email || "",
+      whatsapp: Boolean(state.client.whatsapp),
+      notes: state.quoteNotes.trim(),
+      createdAt: existingIndex >= 0 ? state.clients[existingIndex].createdAt : new Date().toISOString(),
+    };
+    if (existingIndex >= 0) state.clients[existingIndex] = payload;
+    else state.clients.unshift(payload);
+    persist();
+    renderClientsTab();
+    renderNewQuoteBuilder();
+    setMainFeedback("Cliente salvo na base compartilhada com sucesso.", "success");
+    return true;
   }
 
   function renderConfig() {
@@ -11086,6 +11269,8 @@ async function initApp() {
       : `<div class="warning-item is-success">Informe medidas em milímetros para calcular automaticamente a resina, o aproveitamento e o total por A3.</div>`;
     refreshVerticalCalculationTables();
     quotePreview.innerHTML = createQuoteHtml(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook);
+    // The new flow orchestrates existing calculators and never recreates pricing rules.
+    renderNewQuoteBuilder();
     return { workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook };
   }
 
@@ -11988,7 +12173,6 @@ async function initApp() {
       groupId: "funcionarios",
       emailVerification: {
         status: "verified",
-        code: "",
         sentAt: "",
         verifiedAt: nowIso,
         expiresAt: "",
@@ -12651,7 +12835,7 @@ async function initApp() {
       company: userCompany,
       emailVerification: previousEmail === nextEmail
         ? currentUser.emailVerification
-        : { status: email ? "pending" : "pending", code: "", sentAt: "", verifiedAt: "", expiresAt: "", resendAvailableAt: "", lastDeliveryMode: "manual" },
+        : { status: email ? "pending" : "pending", sentAt: "", verifiedAt: "", expiresAt: "", resendAvailableAt: "", lastDeliveryMode: "manual" },
       updatedAt: new Date().toISOString(),
     });
 
@@ -14101,6 +14285,75 @@ async function initApp() {
     }
   });
 
+  newQuoteClientSearch?.addEventListener("input", () => {
+    state.quoteBuilder.clientQuery = newQuoteClientSearch.value;
+    renderNewQuoteClientResults(state.quoteBuilder.clientQuery);
+  });
+
+  newQuoteClientResults?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-new-quote-client-id]");
+    if (!button) return;
+    const client = state.clients.find((item) => item.id === button.dataset.newQuoteClientId);
+    if (!client) return;
+    state.quoteBuilder.clientQuery = client.name || "";
+    applySavedClientToQuote(client);
+    renderNewQuoteBuilder();
+    setMainFeedback(`Cliente ${client.name || "selecionado"} carregado no novo orçamento.`, "success");
+  });
+
+  newQuoteServiceSearch?.addEventListener("input", () => {
+    state.quoteBuilder.serviceQuery = newQuoteServiceSearch.value;
+    renderNewQuoteServices();
+  });
+
+  newQuoteServiceResults?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-new-quote-service]");
+    if (!button) return;
+    const service = getNewQuoteTarget(button.dataset.newQuoteService);
+    if (!service) return;
+    persist();
+    renderRowsAndSummary();
+    selectTab(service.tab);
+    setMainFeedback(`Nova linha de ${service.label} pronta para preencher.`, "success");
+  });
+
+  [
+    ["new-quote-client-name", "name"],
+    ["new-quote-client-contact", "contact"],
+    ["new-quote-client-document", "cnpj"],
+    ["new-quote-payment-terms", "paymentTerms"],
+  ].forEach(([id, key]) => {
+    document.getElementById(id)?.addEventListener("input", (event) => {
+      if (key === "paymentTerms") state.paymentTerms = event.target.value;
+      else state.client[key] = event.target.value;
+    });
+  });
+
+  document.getElementById("new-quote-save-client")?.addEventListener("click", () => {
+    saveCurrentQuoteClient();
+  });
+
+  document.getElementById("new-quote-add-item")?.addEventListener("click", () => {
+    selectTab("novoOrcamento");
+    newQuoteServiceSearch?.focus();
+  });
+
+  document.getElementById("new-quote-open-preview")?.addEventListener("click", () => {
+    selectTab("orcamento");
+  });
+
+  document.getElementById("new-quote-save-history")?.addEventListener("click", () => {
+    document.getElementById("save-quote-history-button")?.click();
+  });
+
+  document.getElementById("new-quote-print")?.addEventListener("click", () => {
+    document.getElementById("print-quote-button")?.click();
+  });
+
+  document.getElementById("new-quote-export")?.addEventListener("click", () => {
+    document.getElementById("export-quote-pdf-button")?.click();
+  });
+
   quoteClientSearchInput?.addEventListener("input", () => {
     renderQuoteClientSearch(quoteClientSearchInput.value);
   });
@@ -14175,38 +14428,7 @@ async function initApp() {
   });
 
   document.getElementById("save-client-button").addEventListener("click", () => {
-    const clientName = state.client.name.trim();
-    if (!clientName) {
-      setMainFeedback("Digite o nome do cliente antes de salvar na base compartilhada.", "warning");
-      return;
-    }
-
-    const existingIndex = state.clients.findIndex((client) => client.name.trim().toLowerCase() === clientName.toLowerCase());
-    const documentValue = state.client.cnpj.trim();
-    const personType = state.client.personType === "individual" || onlyDigits(documentValue).length === 11 ? "individual" : "legal";
-    const payload = {
-      id: existingIndex >= 0 ? state.clients[existingIndex].id : `client-${Date.now()}`,
-      name: state.client.name.trim(),
-      contact: state.client.contact.trim(),
-      document: documentValue,
-      cnpj: personType === "legal" ? documentValue : "",
-      cpf: personType === "individual" ? documentValue : "",
-      personType,
-      email: state.client.email || "",
-      whatsapp: Boolean(state.client.whatsapp),
-      notes: state.quoteNotes.trim(),
-      createdAt: existingIndex >= 0 ? state.clients[existingIndex].createdAt : new Date().toISOString(),
-    };
-
-    if (existingIndex >= 0) {
-      state.clients[existingIndex] = payload;
-    } else {
-      state.clients.unshift(payload);
-    }
-
-    persist();
-    renderClientsTab();
-    setMainFeedback("Cliente salvo na base compartilhada com sucesso.", "success");
+    saveCurrentQuoteClient();
   });
 
   document.getElementById("save-client-record-button").addEventListener("click", () => {

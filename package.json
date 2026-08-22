@@ -11,6 +11,10 @@
     "start": "next start --hostname 0.0.0.0 --port 3210",
     "legacy": "node server.js",
     "check:legacy": "node --check server.js && node --check app.mjs",
+    "test:security:stage3": "node scripts/security-stage3.test.cjs",
+    "test:security:stage4": "node scripts/security-stage4.test.cjs",
+    "test:security:stage5": "node scripts/security-stage5.test.cjs",
+    "test:security:stage-final": "node scripts/security-stage-final.test.cjs",
     "check": "npm run check:legacy && tsc --noEmit"
   },
   "dependencies": {
