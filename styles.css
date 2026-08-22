@@ -8546,9 +8546,37 @@ body::before {
   line-height: 1.4;
 }
 
-.new-quote-item > strong {
+.new-quote-item-value {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.new-quote-item-value > strong {
   color: #12383d;
   white-space: nowrap;
+}
+
+.new-quote-delete-item,
+.new-quote-clear-button {
+  border: 1px solid rgba(191, 72, 61, 0.35);
+  background: #fff6f4;
+  color: #a7332b;
+}
+
+.new-quote-delete-item {
+  padding: 6px 10px;
+  border-radius: 9px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.new-quote-delete-item:hover,
+.new-quote-clear-button:hover {
+  border-color: #b93d34;
+  background: #feeae6;
+  color: #82271f;
 }
 
 .new-quote-empty {
@@ -8600,9 +8628,9 @@ body::before {
     grid-template-columns: 38px minmax(0, 1fr);
   }
 
-  .new-quote-item > strong {
+  .new-quote-item-value {
     grid-column: 2;
-    white-space: normal;
+    justify-items: start;
   }
 
   .new-quote-total {

@@ -7026,6 +7026,8 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
       const coverDetail = buildApostilaCoverDetail(row);
       const discountDetail = getDiscountQuoteDetail(row);
       return {
+        source: "apostila",
+        sourceId: row.id,
         kind: "Apostila",
         description: row.description,
         detail: `${formatInteger(row.quantity)} apostilas | ${formatInteger(row.pages)} páginas | ${row.printType} | ${row.finishing}${row.bindingGroup ? ` | Grupo ${row.bindingGroup}` : ""}`,
@@ -7034,6 +7036,8 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
       };
     }),
     ...colorWorkbook.activeRows.map((row) => ({
+      source: "impresso",
+      sourceId: row.id,
       kind: "Impresso colorido",
       description: row.description || row.productLabel,
       detail: buildColorQuoteDetail(row),
@@ -7041,6 +7045,8 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
       total: row.total,
     })),
     ...credentialWorkbook.activeRows.map((row) => ({
+      source: "credencial",
+      sourceId: row.id,
       kind: "Credencial",
       description: row.description || "Credencial",
       detail: `${formatInteger(row.quantity)} unidades | ${formatMeasure(row.widthCm)} x ${formatMeasure(row.heightCm)} cm | ${row.materialLabel} | ${row.printMode}${row.lamination === "Com laminação" ? " | Com laminação" : ""}${row.lanyardType !== "none" ? ` | ${row.lanyardLabel}` : ""}`,
@@ -7048,6 +7054,8 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
       total: row.total,
     })),
     ...m2Workbook.activeRows.map((row) => ({
+      source: "m2",
+      sourceId: row.id,
       kind: "Cálculo de m²",
       description: row.description || row.productLabel,
       detail: `${formatInteger(row.quantity)} unidades | ${formatMeasure(row.widthMm)} x ${formatMeasure(row.heightMm)} ${row.measureUnit || "cm"} | ${formatAreaM2(row.areaM2)} m² | ${row.productLabel}${row.finishSummary ? ` | ${row.finishSummary}` : ""}${row.artCreationFee > 0 ? ` | Arte/edição: ${formatCurrency(row.artCreationFee)}` : ""}`,
@@ -7055,6 +7063,8 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
       total: row.total,
     })),
     ...readyWorkbook.activeRows.map((row) => ({
+      source: "pronto",
+      sourceId: row.id,
       kind: "Material pronto",
       description: row.description || row.productLabel,
       detail: `${formatInteger(row.effectiveQuantity || row.quantity)} ${row.unitLabel || "unidades"} | ${row.productLabel}${row.pricingLabel ? ` | ${row.pricingLabel}` : ""}${row.artCreationFee > 0 ? ` | Arte/edição: ${formatCurrency(row.artCreationFee)}` : ""}${row.extraCharge > 0 ? ` | Extra: ${formatCurrency(row.extraCharge)}` : ""}`,
@@ -7062,6 +7072,8 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
       total: row.total,
     })),
     ...resinWorkbook.activeRows.map((row) => ({
+      source: "resinado",
+      sourceId: row.id,
       kind: "Resinado",
       description: buildResinMaterialDescription(row),
       detail: `${formatInteger(row.quantity)} unidades | ${formatMeasure(row.widthMm)} x ${formatMeasure(row.heightMm)} mm${row.description ? ` | ${row.description}` : ""}`,
@@ -7069,6 +7081,8 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
       total: row.total,
     })),
     ...cardWorkbook.activeRows.map((row) => ({
+      source: "cartao",
+      sourceId: row.id,
       kind: "Cartão de visita",
       description: row.description || "Cartão de visita",
       detail: `${formatInteger(row.quantity)} cartões | ${row.printType === "offset" ? "Offset" : "Laser"} | ${row.paper} | ${row.side}${row.finishSummary ? ` | ${row.finishSummary}` : ""}${row.artCreationFee > 0 ? ` | Arte: ${formatCurrency(row.artCreationFee)}` : ""}`,
@@ -7076,6 +7090,8 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
       total: row.total,
     })),
     ...flyerWorkbook.activeRows.map((row) => ({
+      source: "panfleto",
+      sourceId: row.id,
       kind: "Panfleto/folder",
       description: row.description || "Panfleto/folder",
       detail: `${formatInteger(row.quantity)} unidades | ${row.printType === "offset" ? "Offset" : "Laser"} | ${row.paper} | ${row.size} | ${row.colorMode}${row.finishId !== "sem-acabamento" ? ` | ${row.finishLabel}` : ""}${row.artCreationFee > 0 ? ` | Arte: ${formatCurrency(row.artCreationFee)}` : ""}`,
@@ -7083,6 +7099,8 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
       total: row.total,
     })),
     ...blockSulfiteWorkbook.activeRows.map((row) => ({
+      source: "bloco-sulfite",
+      sourceId: row.id,
       kind: "Blocos",
       description: row.description || `Bloco ${String(row.paperLabel || "").toLowerCase()}`.trim(),
       detail: `${formatInteger(row.quantity)} blocos | ${row.paperLabel} | ${row.printLabel} | ${row.format} | ${formatInteger(row.vias)} vias | ${row.measure || "medida não informada"}${row.finishSummary ? ` | Acabamentos: ${row.finishSummary}` : ""}${row.artCreationFee > 0 ? ` | Arte: ${formatCurrency(row.artCreationFee)}` : ""}`,
@@ -7090,6 +7108,8 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
       total: row.total,
     })),
     ...blockAutocopiativoWorkbook.activeRows.map((row) => ({
+      source: "bloco-autocopiativo",
+      sourceId: row.id,
       kind: "Blocos autocopiativo",
       description: row.description || "Bloco autocopiativo",
       detail: `${formatInteger(row.quantity)} blocos | ${row.format} | ${formatInteger(row.vias)} vias | ${row.measure || "medida não informada"}${row.artCreationFee > 0 ? ` | Arte: ${formatCurrency(row.artCreationFee)}` : ""}`,
@@ -9665,6 +9685,41 @@ async function initApp() {
     );
   }
 
+  function replaceQuoteBuilderRow(source, sourceId) {
+    const collections = {
+      apostila: { rows: state.rows, create: createDefaultRow },
+      impresso: { rows: state.colorPrintItems, create: createDefaultColorPrintRow },
+      credencial: { rows: state.credentialItems, create: createDefaultCredentialRow },
+      m2: { rows: state.m2Items, create: createDefaultM2Row },
+      pronto: { rows: state.readyItems, create: createDefaultReadyRow },
+      resinado: { rows: state.resinItems, create: createDefaultResinRow },
+      cartao: { rows: state.cardItems, create: createDefaultCardRow },
+      panfleto: { rows: state.flyerItems, create: createDefaultFlyerRow },
+      "bloco-sulfite": { rows: state.blockItems.sulfite, create: (index) => createDefaultBlockRow("sulfite", index) },
+      "bloco-autocopiativo": { rows: state.blockItems.autocopiativo, create: (index) => createDefaultBlockRow("autocopiativo", index) },
+    };
+    const collection = collections[source];
+    if (!collection || !sourceId) return false;
+    const index = collection.rows.findIndex((row) => row.id === sourceId);
+    if (index < 0) return false;
+    collection.rows[index] = collection.create(index);
+    return true;
+  }
+
+  function clearQuoteBuilderItems() {
+    const resetRows = (rows, create) => Array.from({ length: Math.max(5, rows.length) }, (_, index) => create(index));
+    state.rows = resetRows(state.rows, createDefaultRow);
+    state.colorPrintItems = resetRows(state.colorPrintItems, createDefaultColorPrintRow);
+    state.credentialItems = resetRows(state.credentialItems, createDefaultCredentialRow);
+    state.m2Items = resetRows(state.m2Items, createDefaultM2Row);
+    state.readyItems = resetRows(state.readyItems, createDefaultReadyRow);
+    state.resinItems = resetRows(state.resinItems, createDefaultResinRow);
+    state.cardItems = resetRows(state.cardItems, createDefaultCardRow);
+    state.flyerItems = resetRows(state.flyerItems, createDefaultFlyerRow);
+    state.blockItems.sulfite = resetRows(state.blockItems.sulfite, (index) => createDefaultBlockRow("sulfite", index));
+    state.blockItems.autocopiativo = resetRows(state.blockItems.autocopiativo, (index) => createDefaultBlockRow("autocopiativo", index));
+  }
+
   function renderNewQuoteClientResults(query = "") {
     if (!newQuoteClientResults) return;
     const normalizedQuery = String(query || "").trim().toLocaleLowerCase("pt-BR");
@@ -9711,7 +9766,10 @@ async function initApp() {
           <article class="new-quote-item">
             <span class="new-quote-item-number">${String(index + 1).padStart(2, "0")}</span>
             <div><strong>${escapeHtml(entry.description || entry.kind)}</strong><p>${escapeHtml(entry.kind)} · ${escapeHtml(entry.detail)}</p>${entry.extraDetail ? `<small>${escapeHtml(entry.extraDetail)}</small>` : ""}</div>
-            <strong>${formatCurrency(entry.total)}</strong>
+            <div class="new-quote-item-value">
+              <strong>${formatCurrency(entry.total)}</strong>
+              <button class="new-quote-delete-item" type="button" data-new-quote-source="${escapeAttribute(entry.source || "")}" data-new-quote-source-id="${escapeAttribute(entry.sourceId || "")}">Excluir</button>
+            </div>
           </article>
         `).join("")
       : `<div class="new-quote-empty"><strong>Seu orçamento ainda não tem itens.</strong><span>Use a busca acima para adicionar o primeiro serviço.</span></div>`;
@@ -14336,6 +14394,45 @@ async function initApp() {
   document.getElementById("new-quote-add-item")?.addEventListener("click", () => {
     selectTab("novoOrcamento");
     newQuoteServiceSearch?.focus();
+  });
+
+  newQuoteItems?.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-new-quote-source]");
+    if (!button) return;
+    const source = button.dataset.newQuoteSource;
+    const sourceId = button.dataset.newQuoteSourceId;
+    if (!source || !sourceId) return;
+    const confirmed = await confirmAppAction({
+      kicker: "Excluir item",
+      title: "Excluir este item do orçamento?",
+      message: "O item deixará de fazer parte do orçamento atual. Os dados do cliente e o histórico já salvo não serão alterados.",
+      confirmLabel: "Excluir item",
+      danger: true,
+    });
+    if (!confirmed || !replaceQuoteBuilderRow(source, sourceId)) return;
+    persist();
+    renderRowsAndSummary();
+    setMainFeedback("Item removido do orçamento atual.", "success");
+  });
+
+  document.getElementById("new-quote-clear-items")?.addEventListener("click", async () => {
+    const entries = getQuoteBuilderEntries();
+    if (!entries.length) {
+      setMainFeedback("O orçamento já está sem itens.", "info");
+      return;
+    }
+    const confirmed = await confirmAppAction({
+      kicker: "Limpar orçamento",
+      title: "Limpar todos os itens deste orçamento?",
+      message: "Todos os itens em elaboração serão removidos. Os dados do cliente e os orçamentos salvos no histórico serão preservados.",
+      confirmLabel: "Limpar orçamento",
+      danger: true,
+    });
+    if (!confirmed) return;
+    clearQuoteBuilderItems();
+    persist();
+    renderRowsAndSummary();
+    setMainFeedback("Todos os itens foram removidos do orçamento atual.", "success");
   });
 
   document.getElementById("new-quote-open-preview")?.addEventListener("click", () => {
