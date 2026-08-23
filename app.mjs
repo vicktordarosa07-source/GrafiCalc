@@ -7415,7 +7415,9 @@ async function initApp() {
   const newQuoteItems = document.getElementById("new-quote-items");
   const newQuoteTotal = document.getElementById("new-quote-total");
   const newQuoteCardEditor = document.getElementById("new-quote-card-editor");
+  const newQuoteFlyerEditor = document.getElementById("new-quote-flyer-editor");
   let activeNewQuoteCardId = "";
+  let activeNewQuoteFlyerId = "";
   const feedback = document.getElementById("import-feedback");
   const colorFeedback = document.getElementById("color-feedback");
   const credentialFeedback = document.getElementById("credential-feedback");
@@ -9914,6 +9916,86 @@ async function initApp() {
       <div class="toolbar new-quote-card-editor-actions">
         <button class="button" type="button" data-new-quote-card-action="cancel">Descartar item</button>
         <button class="button button-primary" type="button" data-new-quote-card-action="confirm">Adicionar ao orçamento</button>
+      </div>
+    `;
+  }
+
+  function getNewQuoteFlyerDraft() {
+    return state.flyerItems.find((row) => row.id === activeNewQuoteFlyerId) || null;
+  }
+
+  function getNewQuoteFlyerDraftIndex() {
+    return state.flyerItems.findIndex((row) => row.id === activeNewQuoteFlyerId);
+  }
+
+  function openNewQuoteFlyerEditor() {
+    const inactiveIndex = state.flyerItems.findIndex((row) => !isFlyerRowActive(row));
+    const index = inactiveIndex >= 0 ? inactiveIndex : state.flyerItems.length;
+    state.flyerItems[index] = createDefaultFlyerRow(index);
+    activeNewQuoteFlyerId = state.flyerItems[index].id;
+    renderNewQuoteFlyerEditor();
+  }
+
+  function closeNewQuoteFlyerEditor(discardDraft = false) {
+    const index = getNewQuoteFlyerDraftIndex();
+    if (discardDraft && index >= 0) {
+      state.flyerItems[index] = createDefaultFlyerRow(index);
+    }
+    activeNewQuoteFlyerId = "";
+    if (newQuoteFlyerEditor) {
+      newQuoteFlyerEditor.hidden = true;
+      newQuoteFlyerEditor.innerHTML = "";
+    }
+  }
+
+  function renderNewQuoteFlyerEditor() {
+    if (!newQuoteFlyerEditor) return;
+    const draft = getNewQuoteFlyerDraft();
+    if (!draft) {
+      newQuoteFlyerEditor.hidden = true;
+      newQuoteFlyerEditor.innerHTML = "";
+      return;
+    }
+
+    const options = getFlyerSelectOptions(config, draft);
+    const workbook = calculateFlyerWorkbook(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id) || draft;
+    const finishes = getFlyerFinishes(config);
+    const selectOptions = (values, selected, label) => values.map((value) => `
+      <option value="${escapeAttribute(value)}"${String(value) === String(selected) ? " selected" : ""}>${escapeHtml(label ? label(value) : value)}</option>
+    `).join("");
+
+    newQuoteFlyerEditor.hidden = false;
+    newQuoteFlyerEditor.innerHTML = `
+      <div class="panel-heading new-quote-inline-heading">
+        <div>
+          <span class="new-quote-eyebrow">Editor integrado</span>
+          <h2>Panfleto e folder</h2>
+          <p class="panel-copy">Monte o item com a mesma tabela de laser, offset e dobras da aba de panfletos.</p>
+        </div>
+        <button class="button button-compact" type="button" data-new-quote-flyer-action="cancel">Cancelar</button>
+      </div>
+      <div class="new-quote-card-editor-grid">
+        <label><span>Descrição</span><input name="description" value="${escapeAttribute(draft.description)}" placeholder="Ex.: Panfleto promocional" autocomplete="off"></label>
+        <label><span>Impressão</span><select name="printType">${selectOptions(options.printTypes, options.selectedPrintType, (value) => value === "offset" ? "Offset" : "Laser")}</select></label>
+        <label><span>Papel</span><select name="paper">${selectOptions(options.papers, options.selectedPaper)}</select></label>
+        <label><span>Tamanho</span><select name="size">${selectOptions(options.sizes, options.selectedSize)}</select></label>
+        <label><span>Cores</span><select name="colorMode">${selectOptions(options.colorModes, options.selectedColorMode)}</select></label>
+        <label><span>Quantidade</span><select name="quantity">${selectOptions(options.quantities, options.selectedQuantity, formatInteger)}</select></label>
+        <label><span>Acabamento</span><select name="finishId">${finishes.map((finish) => `<option value="${escapeAttribute(finish.id)}"${finish.id === row.finishId ? " selected" : ""}>${escapeHtml(finish.label)}</option>`).join("")}</select></label>
+        <label><span>Valor de arte</span><input name="artCreationFee" type="number" min="0" step="0.01" value="${escapeAttribute(draft.artCreationFee)}" placeholder="0,00"></label>
+        <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, normalizeDiscountType(draft.discountType))}</select></label>
+        <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(normalizeDiscountValue(draft.discountValue))}" placeholder="0,00"></label>
+      </div>
+      <div class="new-quote-card-preview" aria-label="Resumo do panfleto ou folder">
+        <div><span>Tabela</span><strong>${formatCurrency(row.tablePrice)}</strong></div>
+        <div><span>Acabamento</span><strong>${formatCurrency(row.finishTotal)}</strong></div>
+        <div><span>Total do item</span><strong>${formatCurrency(row.total)}</strong></div>
+        <div><span>Valor unitário</span><strong>${formatCurrency(row.unitValue)}</strong></div>
+      </div>
+      <div class="toolbar new-quote-card-editor-actions">
+        <button class="button" type="button" data-new-quote-flyer-action="cancel">Descartar item</button>
+        <button class="button button-primary" type="button" data-new-quote-flyer-action="confirm">Adicionar ao orçamento</button>
       </div>
     `;
   }
@@ -14476,6 +14558,11 @@ async function initApp() {
       newQuoteCardEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
+    if (button.dataset.newQuoteService === "panfleto") {
+      openNewQuoteFlyerEditor();
+      newQuoteFlyerEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
     const service = getNewQuoteTarget(button.dataset.newQuoteService);
     if (!service) return;
     persist();
@@ -14547,6 +14634,66 @@ async function initApp() {
     persist();
     renderRowsAndSummary();
     setMainFeedback("Cartão de visita adicionado ao orçamento atual.", "success");
+  });
+
+  newQuoteFlyerEditor?.addEventListener("input", (event) => {
+    const draft = getNewQuoteFlyerDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement) || target.name !== "description") return;
+    draft.description = target.value;
+  });
+
+  newQuoteFlyerEditor?.addEventListener("change", (event) => {
+    const draft = getNewQuoteFlyerDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+
+    if (target.name === "quantity") {
+      draft.quantity = Math.max(1, toWholeNumber(target.value));
+    } else if (target.name === "artCreationFee") {
+      draft.artCreationFee = toMoneyNumber(target.value);
+    } else if (target.name === "discountType") {
+      draft.discountType = normalizeDiscountType(target.value);
+    } else if (target.name === "discountValue") {
+      draft.discountValue = normalizeDiscountValue(target.value);
+    } else if (target.name) {
+      draft[target.name] = target.value;
+    }
+
+    if (["printType", "paper", "size", "colorMode"].includes(target.name)) {
+      const options = getFlyerSelectOptions(config, draft);
+      draft.printType = options.selectedPrintType;
+      draft.paper = options.selectedPaper;
+      draft.size = options.selectedSize;
+      draft.colorMode = options.selectedColorMode;
+      draft.quantity = options.selectedQuantity;
+    }
+    renderNewQuoteFlyerEditor();
+  });
+
+  newQuoteFlyerEditor?.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-new-quote-flyer-action]")?.dataset.newQuoteFlyerAction;
+    if (!action) return;
+    if (action === "cancel") {
+      closeNewQuoteFlyerEditor(true);
+      return;
+    }
+    if (action !== "confirm") return;
+    const draft = getNewQuoteFlyerDraft();
+    if (!draft) return;
+    draft.description = draft.description.trim() || "Panfleto e folder";
+    draft.touched = true;
+    const workbook = calculateFlyerWorkbook(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id);
+    if (!row?.priceItem) {
+      setMainFeedback("Não foi possível localizar o preço deste item. Revise impressão, papel, tamanho, cores e quantidade.", "warning");
+      renderNewQuoteFlyerEditor();
+      return;
+    }
+    closeNewQuoteFlyerEditor(false);
+    persist();
+    renderRowsAndSummary();
+    setMainFeedback("Panfleto ou folder adicionado ao orçamento atual.", "success");
   });
 
   [
