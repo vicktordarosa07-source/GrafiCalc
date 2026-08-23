@@ -7414,6 +7414,8 @@ async function initApp() {
   const newQuoteServiceResults = document.getElementById("new-quote-service-results");
   const newQuoteItems = document.getElementById("new-quote-items");
   const newQuoteTotal = document.getElementById("new-quote-total");
+  const newQuoteCardEditor = document.getElementById("new-quote-card-editor");
+  let activeNewQuoteCardId = "";
   const feedback = document.getElementById("import-feedback");
   const colorFeedback = document.getElementById("color-feedback");
   const credentialFeedback = document.getElementById("credential-feedback");
@@ -9812,6 +9814,108 @@ async function initApp() {
     if (service.id === "panfleto") prepare(state.flyerItems, createDefaultFlyerRow, isFlyerRowActive);
     if (service.id === "bloco") prepare(state.blockItems.sulfite, (index) => createDefaultBlockRow("sulfite", index), isBlockRowActive);
     return service;
+  }
+
+  function getNewQuoteCardDraft() {
+    return state.cardItems.find((row) => row.id === activeNewQuoteCardId) || null;
+  }
+
+  function getNewQuoteCardDraftIndex() {
+    return state.cardItems.findIndex((row) => row.id === activeNewQuoteCardId);
+  }
+
+  function openNewQuoteCardEditor() {
+    const inactiveIndex = state.cardItems.findIndex((row) => !isCardRowActive(row));
+    const index = inactiveIndex >= 0 ? inactiveIndex : state.cardItems.length;
+    state.cardItems[index] = createDefaultCardRow(index);
+    activeNewQuoteCardId = state.cardItems[index].id;
+    renderNewQuoteCardEditor();
+  }
+
+  function closeNewQuoteCardEditor(discardDraft = false) {
+    const index = getNewQuoteCardDraftIndex();
+    if (discardDraft && index >= 0) {
+      state.cardItems[index] = createDefaultCardRow(index);
+    }
+    activeNewQuoteCardId = "";
+    if (newQuoteCardEditor) {
+      newQuoteCardEditor.hidden = true;
+      newQuoteCardEditor.innerHTML = "";
+    }
+  }
+
+  function renderNewQuoteCardEditor() {
+    if (!newQuoteCardEditor) return;
+    const draft = getNewQuoteCardDraft();
+    if (!draft) {
+      newQuoteCardEditor.hidden = true;
+      newQuoteCardEditor.innerHTML = "";
+      return;
+    }
+
+    const options = getCardSelectOptions(config, draft);
+    const workbook = calculateCardWorkbook(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id) || draft;
+    const finishes = getCardFinishes(config);
+    const selectOptions = (values, selected, label) => values.map((value) => `
+      <option value="${escapeAttribute(value)}"${String(value) === String(selected) ? " selected" : ""}>${escapeHtml(label ? label(value) : value)}</option>
+    `).join("");
+    const selectedFinishes = row.finishDetails || [];
+    const finishSummary = selectedFinishes.length
+      ? `${selectedFinishes.length} acabamento${selectedFinishes.length > 1 ? "s" : ""}`
+      : "Sem acabamento";
+    const finishMarkup = finishes.map((finish) => {
+      const checked = row.finishIds?.includes(finish.id);
+      const detail = finish.holeSizeMm > 0 ? ` (${formatMeasure(finish.holeSizeMm)} mm)` : "";
+      return `
+        <label class="new-quote-card-finish-option">
+          <input type="checkbox" data-new-quote-card-finish="${escapeAttribute(finish.id)}"${checked ? " checked" : ""}>
+          <span><strong>${escapeHtml(finish.label)}${detail}</strong><small>Calculado automaticamente pela quantidade.</small></span>
+        </label>
+      `;
+    }).join("");
+
+    newQuoteCardEditor.hidden = false;
+    newQuoteCardEditor.innerHTML = `
+      <div class="panel-heading new-quote-inline-heading">
+        <div>
+          <span class="new-quote-eyebrow">Editor integrado</span>
+          <h2>Cartão de visita</h2>
+          <p class="panel-copy">Configure o item aqui. Os preços e acabamentos usam a mesma tabela da aba de cartões.</p>
+        </div>
+        <button class="button button-compact" type="button" data-new-quote-card-action="cancel">Cancelar</button>
+      </div>
+      <div class="new-quote-card-editor-grid">
+        <label><span>Descrição</span><input name="description" value="${escapeAttribute(draft.description)}" placeholder="Ex.: Cartão de visita" autocomplete="off"></label>
+        <label><span>Impressão</span><select name="printType">${selectOptions(options.printTypes, options.selectedPrintType, (value) => value === "offset" ? "Offset" : "Laser")}</select></label>
+        <label><span>Papel</span><select name="paper">${selectOptions(options.papers, options.selectedPaper)}</select></label>
+        <label><span>Lados</span><select name="side">${selectOptions(options.sides, options.selectedSide)}</select></label>
+        <label><span>Quantidade</span><select name="quantity">${selectOptions(options.quantities, options.selectedQuantity, formatInteger)}</select></label>
+        <label><span>Valor de arte</span><input name="artCreationFee" type="number" min="0" step="0.01" value="${escapeAttribute(draft.artCreationFee)}" placeholder="0,00"></label>
+        <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, normalizeDiscountType(draft.discountType))}</select></label>
+        <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(normalizeDiscountValue(draft.discountValue))}" placeholder="0,00"></label>
+      </div>
+      <div class="new-quote-card-finishes">
+        <span>Acabamentos</span>
+        <details class="new-quote-card-finish-popover">
+          <summary>${escapeHtml(finishSummary)} <span aria-hidden="true">⌄</span></summary>
+          <div class="new-quote-card-finish-menu">
+            <div class="new-quote-card-finish-menu-header"><strong>Acabamentos do cartão</strong><span>Marque um ou mais adicionais.</span></div>
+            <div class="new-quote-card-finish-list">${finishMarkup}</div>
+          </div>
+        </details>
+      </div>
+      <div class="new-quote-card-preview" aria-label="Resumo do cartão">
+        <div><span>Tabela</span><strong>${formatCurrency(row.tablePrice)}</strong></div>
+        <div><span>Acabamentos</span><strong>${formatCurrency(row.finishesTotal)}</strong></div>
+        <div><span>Total do item</span><strong>${formatCurrency(row.total)}</strong></div>
+        <div><span>Valor unitário</span><strong>${formatCurrency(row.unitValue)}</strong></div>
+      </div>
+      <div class="toolbar new-quote-card-editor-actions">
+        <button class="button" type="button" data-new-quote-card-action="cancel">Descartar item</button>
+        <button class="button button-primary" type="button" data-new-quote-card-action="confirm">Adicionar ao orçamento</button>
+      </div>
+    `;
   }
 
   function saveCurrentQuoteClient() {
@@ -14367,12 +14471,82 @@ async function initApp() {
   newQuoteServiceResults?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-new-quote-service]");
     if (!button) return;
+    if (button.dataset.newQuoteService === "cartao") {
+      openNewQuoteCardEditor();
+      newQuoteCardEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
     const service = getNewQuoteTarget(button.dataset.newQuoteService);
     if (!service) return;
     persist();
     renderRowsAndSummary();
     selectTab(service.tab);
     setMainFeedback(`Nova linha de ${service.label} pronta para preencher.`, "success");
+  });
+
+  newQuoteCardEditor?.addEventListener("input", (event) => {
+    const draft = getNewQuoteCardDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement) || target.name !== "description") return;
+    draft.description = target.value;
+  });
+
+  newQuoteCardEditor?.addEventListener("change", (event) => {
+    const draft = getNewQuoteCardDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+
+    const finishId = target.dataset.newQuoteCardFinish;
+    if (finishId && target instanceof HTMLInputElement) {
+      const selected = new Set(Array.isArray(draft.finishIds) ? draft.finishIds : []);
+      if (target.checked) selected.add(finishId);
+      else selected.delete(finishId);
+      draft.finishIds = Array.from(selected);
+    } else if (target.name === "quantity") {
+      draft.quantity = Math.max(1, toWholeNumber(target.value));
+    } else if (target.name === "artCreationFee") {
+      draft.artCreationFee = toMoneyNumber(target.value);
+    } else if (target.name === "discountType") {
+      draft.discountType = normalizeDiscountType(target.value);
+    } else if (target.name === "discountValue") {
+      draft.discountValue = normalizeDiscountValue(target.value);
+    } else if (target.name) {
+      draft[target.name] = target.value;
+    }
+
+    if (["printType", "paper", "side"].includes(target.name)) {
+      const options = getCardSelectOptions(config, draft);
+      draft.printType = options.selectedPrintType;
+      draft.paper = options.selectedPaper;
+      draft.side = options.selectedSide;
+      draft.quantity = options.selectedQuantity;
+    }
+    renderNewQuoteCardEditor();
+  });
+
+  newQuoteCardEditor?.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-new-quote-card-action]")?.dataset.newQuoteCardAction;
+    if (!action) return;
+    if (action === "cancel") {
+      closeNewQuoteCardEditor(true);
+      return;
+    }
+    if (action !== "confirm") return;
+    const draft = getNewQuoteCardDraft();
+    if (!draft) return;
+    draft.description = draft.description.trim() || "Cartão de visita";
+    draft.touched = true;
+    const workbook = calculateCardWorkbook(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id);
+    if (!row?.priceItem) {
+      setMainFeedback("Não foi possível localizar o preço deste cartão. Revise impressão, papel, lados e quantidade.", "warning");
+      renderNewQuoteCardEditor();
+      return;
+    }
+    closeNewQuoteCardEditor(false);
+    persist();
+    renderRowsAndSummary();
+    setMainFeedback("Cartão de visita adicionado ao orçamento atual.", "success");
   });
 
   [
