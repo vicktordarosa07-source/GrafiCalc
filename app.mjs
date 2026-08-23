@@ -7418,10 +7418,14 @@ async function initApp() {
   const newQuoteFlyerEditor = document.getElementById("new-quote-flyer-editor");
   const newQuoteCredentialEditor = document.getElementById("new-quote-credential-editor");
   const newQuoteBlockEditor = document.getElementById("new-quote-block-editor");
+  const newQuoteReadyEditor = document.getElementById("new-quote-ready-editor");
+  const newQuoteBookletEditor = document.getElementById("new-quote-booklet-editor");
   let activeNewQuoteCardId = "";
   let activeNewQuoteFlyerId = "";
   let activeNewQuoteCredentialId = "";
   let activeNewQuoteBlock = { tab: "sulfite", id: "" };
+  let activeNewQuoteReadyId = "";
+  let activeNewQuoteBookletId = "";
   const feedback = document.getElementById("import-feedback");
   const colorFeedback = document.getElementById("color-feedback");
   const credentialFeedback = document.getElementById("credential-feedback");
@@ -10203,6 +10207,177 @@ async function initApp() {
       <div class="toolbar new-quote-card-editor-actions">
         <button class="button" type="button" data-new-quote-block-action="cancel">Descartar item</button>
         <button class="button button-primary" type="button" data-new-quote-block-action="confirm">Adicionar ao orçamento</button>
+      </div>
+    `;
+  }
+
+  function getNewQuoteReadyDraft() {
+    return state.readyItems.find((row) => row.id === activeNewQuoteReadyId) || null;
+  }
+
+  function getNewQuoteReadyDraftIndex() {
+    return state.readyItems.findIndex((row) => row.id === activeNewQuoteReadyId);
+  }
+
+  function openNewQuoteReadyEditor() {
+    const inactiveIndex = state.readyItems.findIndex((row) => !isReadyRowActive(row));
+    const index = inactiveIndex >= 0 ? inactiveIndex : state.readyItems.length;
+    state.readyItems[index] = createDefaultReadyRow(index);
+    activeNewQuoteReadyId = state.readyItems[index].id;
+    renderNewQuoteReadyEditor();
+  }
+
+  function closeNewQuoteReadyEditor(discardDraft = false) {
+    const index = getNewQuoteReadyDraftIndex();
+    if (discardDraft && index >= 0) {
+      state.readyItems[index] = createDefaultReadyRow(index);
+    }
+    activeNewQuoteReadyId = "";
+    if (newQuoteReadyEditor) {
+      newQuoteReadyEditor.hidden = true;
+      newQuoteReadyEditor.innerHTML = "";
+    }
+  }
+
+  function renderNewQuoteReadyEditor() {
+    if (!newQuoteReadyEditor) return;
+    const draft = getNewQuoteReadyDraft();
+    if (!draft) {
+      newQuoteReadyEditor.hidden = true;
+      newQuoteReadyEditor.innerHTML = "";
+      return;
+    }
+
+    const catalog = getReadyProductCatalog(config);
+    const product = catalog.find((item) => item.id === draft.productId) || null;
+    const pricingRows = getReadyPricingRows(config, product);
+    const pricingMode = product?.readyPricingMode || "manual";
+    const variantFixed = pricingMode === "variant-fixed";
+    const selectedVariant = variantFixed ? getReadyVariantRow(pricingRows, draft.variantIndex) : null;
+    const quantityLocked = selectedVariant?.mode === "total";
+    const workbook = calculateReadyWorkbook(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id) || draft;
+    const productOptions = ["<option value=\"\">Selecione um produto</option>", ...catalog.map((item) => `
+      <option value="${escapeAttribute(item.id)}"${item.id === draft.productId ? " selected" : ""}>${escapeHtml(item.label)}</option>
+    `)].join("");
+    const variantOptions = pricingRows.map((item, index) => `
+      <option value="${index}"${index === Number(draft.variantIndex || 0) ? " selected" : ""}>${escapeHtml(item.label || `Opção ${index + 1}`)}${item.value ? ` - ${formatCurrency(item.value)}` : ""}</option>
+    `).join("");
+
+    newQuoteReadyEditor.hidden = false;
+    newQuoteReadyEditor.innerHTML = `
+      <div class="panel-heading new-quote-inline-heading">
+        <div>
+          <span class="new-quote-eyebrow">Editor integrado</span>
+          <h2>Material pronto</h2>
+          <p class="panel-copy">Selecione um produto do catálogo. A tabela e a faixa correta são calculadas automaticamente.</p>
+        </div>
+        <button class="button button-compact" type="button" data-new-quote-ready-action="cancel">Cancelar</button>
+      </div>
+      <div class="new-quote-card-editor-grid">
+        <label><span>Produto</span><select name="productId">${productOptions}</select></label>
+        <label><span>Descrição</span><input name="description" value="${escapeAttribute(draft.description)}" placeholder="Ex.: Serviço personalizado" autocomplete="off"></label>
+        ${variantFixed ? `<label><span>Opção da tabela</span><select name="variantIndex">${variantOptions || "<option value=\"0\">Sem opções cadastradas</option>"}</select></label>` : ""}
+        <label><span>Quantidade${product?.unitLabel ? ` (${escapeHtml(product.unitLabel)})` : ""}</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(quantityLocked ? row.effectiveQuantity : draft.quantity)}"${quantityLocked ? " readonly" : ""}></label>
+        ${pricingMode === "manual" ? `<label><span>Preço base</span><input name="basePriceOverride" type="number" min="0" step="0.01" value="${escapeAttribute(draft.basePriceOverride)}" placeholder="0,00"></label>` : ""}
+        <label><span>Adicional</span><input name="extraCharge" type="number" min="0" step="0.01" value="${escapeAttribute(draft.extraCharge)}" placeholder="0,00"></label>
+        <label><span>Valor de arte</span><input name="artCreationFee" type="number" min="0" step="0.01" value="${escapeAttribute(draft.artCreationFee)}" placeholder="0,00"></label>
+        <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, normalizeDiscountType(draft.discountType))}</select></label>
+        <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(normalizeDiscountValue(draft.discountValue))}" placeholder="0,00"></label>
+      </div>
+      ${row.note ? `<p class="helper-text">${escapeHtml(row.note)}</p>` : ""}
+      <div class="new-quote-card-preview" aria-label="Resumo do material pronto">
+        <div><span>Tabela</span><strong>${formatCurrency(row.baseTotal || 0)}</strong></div>
+        <div><span>Faixa</span><strong>${escapeHtml(row.pricingLabel || "A definir")}</strong></div>
+        <div><span>Total do item</span><strong>${formatCurrency(row.total || 0)}</strong></div>
+        <div><span>Valor unitário</span><strong>${formatCurrency(row.unitValue || 0)}</strong></div>
+      </div>
+      <div class="toolbar new-quote-card-editor-actions">
+        <button class="button" type="button" data-new-quote-ready-action="cancel">Descartar item</button>
+        <button class="button button-primary" type="button" data-new-quote-ready-action="confirm">Adicionar ao orçamento</button>
+      </div>
+    `;
+  }
+
+  function getNewQuoteBookletDraft() {
+    return state.rows.find((row) => row.id === activeNewQuoteBookletId) || null;
+  }
+
+  function getNewQuoteBookletDraftIndex() {
+    return state.rows.findIndex((row) => row.id === activeNewQuoteBookletId);
+  }
+
+  function openNewQuoteBookletEditor() {
+    const inactiveIndex = state.rows.findIndex((row) => !isRowActive(row));
+    const index = inactiveIndex >= 0 ? inactiveIndex : state.rows.length;
+    state.rows[index] = createDefaultRow(index);
+    activeNewQuoteBookletId = state.rows[index].id;
+    renderNewQuoteBookletEditor();
+  }
+
+  function closeNewQuoteBookletEditor(discardDraft = false) {
+    const index = getNewQuoteBookletDraftIndex();
+    if (discardDraft && index >= 0) {
+      state.rows[index] = createDefaultRow(index);
+    }
+    activeNewQuoteBookletId = "";
+    if (newQuoteBookletEditor) {
+      newQuoteBookletEditor.hidden = true;
+      newQuoteBookletEditor.innerHTML = "";
+    }
+  }
+
+  function renderNewQuoteBookletEditor() {
+    if (!newQuoteBookletEditor) return;
+    const draft = getNewQuoteBookletDraft();
+    if (!draft) {
+      newQuoteBookletEditor.hidden = true;
+      newQuoteBookletEditor.innerHTML = "";
+      return;
+    }
+
+    const workbook = calculateWorkbook(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id) || draft;
+    const selectOptions = (values, selected) => values.map((value) => `
+      <option value="${escapeAttribute(value)}"${value === selected ? " selected" : ""}>${escapeHtml(value)}</option>
+    `).join("");
+    const hasSpiralOption = ["Encadernação espiral", "Encadernação wire-o"].includes(draft.finishing);
+
+    newQuoteBookletEditor.hidden = false;
+    newQuoteBookletEditor.innerHTML = `
+      <div class="panel-heading new-quote-inline-heading">
+        <div>
+          <span class="new-quote-eyebrow">Editor integrado</span>
+          <h2>Cálculo de apostila</h2>
+          <p class="panel-copy">Informe páginas e quantidade. As regras de impressão, capas e acabamento são as mesmas da aba de apostilas.</p>
+        </div>
+        <button class="button button-compact" type="button" data-new-quote-booklet-action="cancel">Cancelar</button>
+      </div>
+      <div class="new-quote-card-editor-grid">
+        <label><span>Descrição</span><input name="description" value="${escapeAttribute(draft.description)}" placeholder="Ex.: Apostila de treinamento" autocomplete="off"></label>
+        <label><span>Impressão interna</span><select name="printType">${selectOptions(OPTIONS.printTypes, draft.printType)}</select></label>
+        <label><span>Tamanho</span><select name="size">${selectOptions(OPTIONS.sizes, draft.size)}</select></label>
+        <label><span>Lados</span><select name="printMode">${selectOptions(OPTIONS.printModes, draft.printMode)}</select></label>
+        <label><span>Páginas</span><input name="pages" type="number" min="1" step="1" value="${escapeAttribute(draft.pages)}"></label>
+        <label><span>Quantidade</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity)}"></label>
+        <label><span>Acabamento</span><select name="finishing">${selectOptions(OPTIONS.finishing, draft.finishing)}</select></label>
+        ${hasSpiralOption ? `<label><span>Opção de encadernação</span><select name="spiralOption">${selectOptions(OPTIONS.spiralOptions, draft.spiralOption)}</select></label>` : ""}
+        <label><span>Capa</span><select name="coverType">${selectOptions(OPTIONS.coverTypes, draft.coverType)}</select></label>
+        ${draft.coverType !== "Sem capa" ? `<label><span>Papel da capa</span><select name="coverPaper">${selectOptions(OPTIONS.coverPapers, draft.coverPaper)}</select></label>` : ""}
+        <label><span>Contracapa</span><select name="backCoverType">${selectOptions(OPTIONS.backCoverTypes, draft.backCoverType)}</select></label>
+        ${draft.backCoverType !== "Sem contracapa" ? `<label><span>Papel da contracapa</span><select name="backCoverPaper">${selectOptions(OPTIONS.coverPapers, draft.backCoverPaper)}</select></label>` : ""}
+        <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, normalizeDiscountType(draft.discountType))}</select></label>
+        <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(normalizeDiscountValue(draft.discountValue))}" placeholder="0,00"></label>
+      </div>
+      <div class="new-quote-card-preview" aria-label="Resumo da apostila">
+        <div><span>Impressão interna</span><strong>${formatCurrency(row.innerTotal || 0)}</strong></div>
+        <div><span>Capas</span><strong>${formatCurrency((row.coverTotal || 0) + (row.backTotal || 0))}</strong></div>
+        <div><span>Total do item</span><strong>${formatCurrency(row.total || 0)}</strong></div>
+        <div><span>Valor unitário</span><strong>${formatCurrency(row.unitValue || 0)}</strong></div>
+      </div>
+      <div class="toolbar new-quote-card-editor-actions">
+        <button class="button" type="button" data-new-quote-booklet-action="cancel">Descartar item</button>
+        <button class="button button-primary" type="button" data-new-quote-booklet-action="confirm">Adicionar ao orçamento</button>
       </div>
     `;
   }
@@ -14760,6 +14935,16 @@ async function initApp() {
   newQuoteServiceResults?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-new-quote-service]");
     if (!button) return;
+    if (button.dataset.newQuoteService === "apostila") {
+      openNewQuoteBookletEditor();
+      newQuoteBookletEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
+    if (button.dataset.newQuoteService === "pronto") {
+      openNewQuoteReadyEditor();
+      newQuoteReadyEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
     if (button.dataset.newQuoteService === "cartao") {
       openNewQuoteCardEditor();
       newQuoteCardEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -15031,6 +15216,129 @@ async function initApp() {
     persist();
     renderRowsAndSummary();
     setMainFeedback("Bloco adicionado ao orçamento atual.", "success");
+  });
+
+  newQuoteReadyEditor?.addEventListener("input", (event) => {
+    const draft = getNewQuoteReadyDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement) || target.name !== "description") return;
+    draft.description = target.value;
+  });
+
+  newQuoteReadyEditor?.addEventListener("change", (event) => {
+    const draft = getNewQuoteReadyDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+
+    if (target.name === "productId") {
+      draft.productId = target.value;
+      draft.variantIndex = 0;
+      const product = getReadyProductCatalog(config).find((item) => item.id === target.value);
+      const firstVariant = getReadyVariantRow(getReadyPricingRows(config, product), 0);
+      if (!draft.description.trim()) draft.description = product?.label || "";
+      if (firstVariant?.mode === "total") draft.quantity = Number(firstVariant.quantity || 0);
+      else if (Number(draft.quantity) <= 0) draft.quantity = Number(firstVariant?.quantity || 1);
+    } else if (target.name === "variantIndex") {
+      draft.variantIndex = Math.max(0, toWholeNumber(target.value));
+      const product = getReadyProductCatalog(config).find((item) => item.id === draft.productId);
+      const variant = getReadyVariantRow(getReadyPricingRows(config, product), draft.variantIndex);
+      if (variant?.mode === "total") draft.quantity = Number(variant.quantity || 0);
+    } else if (target.name === "quantity") {
+      draft.quantity = Math.max(1, toWholeNumber(target.value));
+    } else if (["basePriceOverride", "extraCharge", "artCreationFee"].includes(target.name)) {
+      draft[target.name] = toMoneyNumber(target.value);
+    } else if (target.name === "discountType") {
+      draft.discountType = normalizeDiscountType(target.value);
+    } else if (target.name === "discountValue") {
+      draft.discountValue = normalizeDiscountValue(target.value);
+    }
+    renderNewQuoteReadyEditor();
+  });
+
+  newQuoteReadyEditor?.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-new-quote-ready-action]")?.dataset.newQuoteReadyAction;
+    if (!action) return;
+    if (action === "cancel") {
+      closeNewQuoteReadyEditor(true);
+      return;
+    }
+    if (action !== "confirm") return;
+    const draft = getNewQuoteReadyDraft();
+    if (!draft) return;
+    const workbook = calculateReadyWorkbook(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id);
+    if (!row?.productLabel) {
+      setMainFeedback("Selecione um material pronto para adicionar o item ao orçamento.", "warning");
+      renderNewQuoteReadyEditor();
+      return;
+    }
+    if (row.pricingMode === "manual" && row.baseTotal <= 0) {
+      setMainFeedback("Informe o preço base deste material antes de adicionar ao orçamento.", "warning");
+      renderNewQuoteReadyEditor();
+      return;
+    }
+    if (row.pricingMode !== "manual" && row.baseTotal <= 0) {
+      setMainFeedback("A tabela deste material não retornou preço. Revise a configuração do produto.", "warning");
+      renderNewQuoteReadyEditor();
+      return;
+    }
+    draft.description = draft.description.trim() || row.productLabel;
+    closeNewQuoteReadyEditor(false);
+    persist();
+    renderRowsAndSummary();
+    setMainFeedback("Material pronto adicionado ao orçamento atual.", "success");
+  });
+
+  newQuoteBookletEditor?.addEventListener("input", (event) => {
+    const draft = getNewQuoteBookletDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement) || target.name !== "description") return;
+    draft.description = target.value;
+  });
+
+  newQuoteBookletEditor?.addEventListener("change", (event) => {
+    const draft = getNewQuoteBookletDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+    if (["pages", "quantity"].includes(target.name)) {
+      draft[target.name] = Math.max(0, toWholeNumber(target.value));
+    } else if (target.name === "discountType") {
+      draft.discountType = normalizeDiscountType(target.value);
+    } else if (target.name === "discountValue") {
+      draft.discountValue = normalizeDiscountValue(target.value);
+    } else if (target.name) {
+      draft[target.name] = target.value;
+    }
+    renderNewQuoteBookletEditor();
+  });
+
+  newQuoteBookletEditor?.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-new-quote-booklet-action]")?.dataset.newQuoteBookletAction;
+    if (!action) return;
+    if (action === "cancel") {
+      closeNewQuoteBookletEditor(true);
+      return;
+    }
+    if (action !== "confirm") return;
+    const draft = getNewQuoteBookletDraft();
+    if (!draft) return;
+    const workbook = calculateWorkbook(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id);
+    if (!row || row.pages <= 0 || row.quantity <= 0) {
+      setMainFeedback("Informe uma quantidade e um número de páginas válidos para adicionar a apostila.", "warning");
+      renderNewQuoteBookletEditor();
+      return;
+    }
+    if (row.total <= 0) {
+      setMainFeedback("A apostila não retornou preço. Revise impressão, capas e acabamento na configuração.", "warning");
+      renderNewQuoteBookletEditor();
+      return;
+    }
+    draft.description = draft.description.trim() || "Apostila";
+    closeNewQuoteBookletEditor(false);
+    persist();
+    renderRowsAndSummary();
+    setMainFeedback("Apostila adicionada ao orçamento atual.", "success");
   });
 
   [
