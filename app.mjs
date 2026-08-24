@@ -7420,6 +7420,7 @@ async function initApp() {
   const newQuoteBlockEditor = document.getElementById("new-quote-block-editor");
   const newQuoteReadyEditor = document.getElementById("new-quote-ready-editor");
   const newQuoteBookletEditor = document.getElementById("new-quote-booklet-editor");
+  const newQuoteColorEditor = document.getElementById("new-quote-color-editor");
   const newQuoteM2Editor = document.getElementById("new-quote-m2-editor");
   const newQuoteResinEditor = document.getElementById("new-quote-resin-editor");
   let activeNewQuoteCardId = "";
@@ -7428,6 +7429,7 @@ async function initApp() {
   let activeNewQuoteBlock = { tab: "sulfite", id: "" };
   let activeNewQuoteReadyId = "";
   let activeNewQuoteBookletId = "";
+  let activeNewQuoteColorId = "";
   let activeNewQuoteM2Id = "";
   let activeNewQuoteResinId = "";
   const feedback = document.getElementById("import-feedback");
@@ -10386,6 +10388,116 @@ async function initApp() {
     `;
   }
 
+  function getNewQuoteColorDraft() {
+    return state.colorPrintItems.find((row) => row.id === activeNewQuoteColorId) || null;
+  }
+
+  function getNewQuoteColorDraftIndex() {
+    return state.colorPrintItems.findIndex((row) => row.id === activeNewQuoteColorId);
+  }
+
+  function openNewQuoteColorEditor() {
+    const inactiveIndex = state.colorPrintItems.findIndex((row) => !isColorPrintRowActive(row));
+    const index = inactiveIndex >= 0 ? inactiveIndex : state.colorPrintItems.length;
+    state.colorPrintItems[index] = createDefaultColorPrintRow(index);
+    activeNewQuoteColorId = state.colorPrintItems[index].id;
+    renderNewQuoteColorEditor();
+  }
+
+  function closeNewQuoteColorEditor(discardDraft = false) {
+    const index = getNewQuoteColorDraftIndex();
+    if (discardDraft && index >= 0) {
+      state.colorPrintItems[index] = createDefaultColorPrintRow(index);
+    }
+    activeNewQuoteColorId = "";
+    closeColorServicePopover();
+    if (newQuoteColorEditor) {
+      newQuoteColorEditor.hidden = true;
+      newQuoteColorEditor.innerHTML = "";
+    }
+  }
+
+  function applyColorProductPreset(draft, productPresetId) {
+    draft.productPresetId = productPresetId;
+    const preset = getColorProductCatalog(config).find((item) => item.id === productPresetId);
+    if (!preset) return;
+    draft.description = draft.description || preset.label || "";
+    draft.widthMm = Number(preset.widthCm || 0);
+    draft.heightMm = Number(preset.heightCm || 0);
+    draft.bleedMode = preset.bleedMode || "Sem sangra";
+    draft.printMode = preset.printMode || "Só frente";
+    draft.paperType = preset.paperType || "Sulfite 75g";
+    if (preset.customPricingMode === "direct-bracket-unit") {
+      draft.cutPriceOverride = "";
+      if (preset.unitLabel === "Folha A3") {
+        draft.widthMm = 29.7;
+        draft.heightMm = 42;
+      } else if (!(Number(preset.widthCm || 0) > 0 && Number(preset.heightCm || 0) > 0)) {
+        draft.widthMm = 0;
+        draft.heightMm = 0;
+      }
+    }
+  }
+
+  function renderNewQuoteColorEditor() {
+    if (!newQuoteColorEditor) return;
+    const draft = getNewQuoteColorDraft();
+    if (!draft) {
+      newQuoteColorEditor.hidden = true;
+      newQuoteColorEditor.innerHTML = "";
+      return;
+    }
+
+    const workbook = calculateColorPrintWorkbook(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id) || draft;
+    const catalog = getColorProductCatalog(config);
+    const selectedServices = (Array.isArray(draft.serviceIds) ? draft.serviceIds : [])
+      .map((serviceId) => getCombinationServices(config).find((service) => service.id === serviceId)?.label)
+      .filter(Boolean);
+    const productOptions = [
+      `<option value="">Impressão personalizada</option>`,
+      ...catalog.map((product) => `<option value="${escapeAttribute(product.id)}"${product.id === draft.productPresetId ? " selected" : ""}>${escapeHtml(product.label)}</option>`),
+    ].join("");
+    const serviceLabel = selectedServices.length ? `Complementos (${selectedServices.length})` : "Sem complemento";
+
+    newQuoteColorEditor.hidden = false;
+    newQuoteColorEditor.innerHTML = `
+      <div class="panel-heading new-quote-inline-heading">
+        <div>
+          <span class="new-quote-eyebrow">Editor integrado</span>
+          <h2>Impressos coloridos</h2>
+          <p class="panel-copy">Defina tamanho, papel, impressão e complementos. O aproveitamento, corte e preço seguem exatamente as regras atuais da aba de impressos.</p>
+        </div>
+        <button class="button button-compact" type="button" data-new-quote-color-action="cancel">Cancelar</button>
+      </div>
+      <div class="new-quote-card-editor-grid">
+        <label><span>Produto da tabela</span><select name="productPresetId">${productOptions}</select></label>
+        <label><span>Descrição</span><input name="description" value="${escapeAttribute(draft.description)}" placeholder="Ex.: Cartão, flyer ou impresso especial" autocomplete="off"></label>
+        <label><span>Largura (cm)</span><input name="widthMm" type="number" min="0" step="0.1" value="${escapeAttribute(draft.widthMm)}"></label>
+        <label><span>Altura (cm)</span><input name="heightMm" type="number" min="0" step="0.1" value="${escapeAttribute(draft.heightMm)}"></label>
+        <label><span>Sangra</span><select name="bleedMode">${buildOptions(OPTIONS.bleedModes, draft.bleedMode)}</select></label>
+        <label><span>Impressão</span><select name="printMode">${buildOptions(OPTIONS.printModes, draft.printMode)}</select></label>
+        <label><span>Papel</span><select name="paperType">${buildOptions(OPTIONS.colorPaperTypes, draft.paperType)}</select></label>
+        <label><span>Quantidade</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity)}"></label>
+        <label><span>Corte final</span><input name="cutPriceOverride" type="number" min="0" step="0.01" value="${escapeAttribute(draft.cutPriceOverride)}" placeholder="${Number(row.suggestedCutPrice || 0).toFixed(2)}"></label>
+        <label><span>Complementos</span><button class="finish-picker-toggle" type="button" data-new-quote-color-services data-color-service-toggle>${escapeHtml(serviceLabel)}<span aria-hidden="true">▾</span></button></label>
+        <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, normalizeDiscountType(draft.discountType))}</select></label>
+        <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(normalizeDiscountValue(draft.discountValue))}" placeholder="0,00"></label>
+      </div>
+      ${selectedServices.length ? `<p class="helper-text">${escapeHtml(selectedServices.join(" | "))}</p>` : ""}
+      <div class="new-quote-card-preview" aria-label="Resumo de impressos coloridos">
+        <div><span>Por folha A4</span><strong>${formatInteger(row.itemsPerSheet || 0)}</strong></div>
+        <div><span>Impressões A4</span><strong>${formatInteger(row.a4Impressions || 0)}</strong></div>
+        <div><span>Total do item</span><strong>${formatCurrency(row.total || 0)}</strong></div>
+        <div><span>Valor unitário</span><strong>${formatCurrency(row.unitValue || 0)}</strong></div>
+      </div>
+      <div class="toolbar new-quote-card-editor-actions">
+        <button class="button" type="button" data-new-quote-color-action="cancel">Descartar item</button>
+        <button class="button button-primary" type="button" data-new-quote-color-action="confirm">Adicionar ao orçamento</button>
+      </div>
+    `;
+  }
+
   function getNewQuoteM2Draft() {
     return state.m2Items.find((row) => row.id === activeNewQuoteM2Id) || null;
   }
@@ -12449,6 +12561,7 @@ async function initApp() {
       row.serviceIds = checked;
       persist();
       renderRowsAndSummary();
+      if (activeNewQuoteColorId === row.id) renderNewQuoteColorEditor();
     };
 
     popover.addEventListener("change", (event) => {
@@ -12462,6 +12575,7 @@ async function initApp() {
         row.serviceOverrides = {};
         persist();
         renderRowsAndSummary();
+        if (activeNewQuoteColorId === row.id) renderNewQuoteColorEditor();
         closeColorServicePopover();
         return;
       }
@@ -12491,6 +12605,7 @@ async function initApp() {
         row.serviceOverrides[serviceId] = toMoneyNumber(target.value);
         persist();
         renderRowsAndSummary();
+        if (activeNewQuoteColorId === row.id) renderNewQuoteColorEditor();
       }
     });
 
@@ -12505,6 +12620,7 @@ async function initApp() {
         row.serviceOverrides = {};
         persist();
         renderRowsAndSummary();
+        if (activeNewQuoteColorId === row.id) renderNewQuoteColorEditor();
         closeColorServicePopover();
       }
     });
@@ -15107,6 +15223,11 @@ async function initApp() {
       newQuoteBookletEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
+    if (button.dataset.newQuoteService === "impresso") {
+      openNewQuoteColorEditor();
+      newQuoteColorEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
     if (button.dataset.newQuoteService === "pronto") {
       openNewQuoteReadyEditor();
       newQuoteReadyEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -15516,6 +15637,72 @@ async function initApp() {
     persist();
     renderRowsAndSummary();
     setMainFeedback("Apostila adicionada ao orçamento atual.", "success");
+  });
+
+  newQuoteColorEditor?.addEventListener("input", (event) => {
+    const draft = getNewQuoteColorDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement) || target.name !== "description") return;
+    draft.description = target.value;
+  });
+
+  newQuoteColorEditor?.addEventListener("change", (event) => {
+    const draft = getNewQuoteColorDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+
+    if (target.name === "productPresetId") {
+      applyColorProductPreset(draft, target.value);
+    } else if (target.name === "quantity") {
+      draft.quantity = Math.max(0, toWholeNumber(target.value));
+    } else if (["widthMm", "heightMm"].includes(target.name)) {
+      draft[target.name] = Math.max(0, toDecimalNumber(target.value));
+    } else if (target.name === "cutPriceOverride") {
+      draft.cutPriceOverride = target.value === "" ? "" : toMoneyNumber(target.value);
+    } else if (target.name === "discountType") {
+      draft.discountType = normalizeDiscountType(target.value);
+    } else if (target.name === "discountValue") {
+      draft.discountValue = normalizeDiscountValue(target.value);
+    } else if (target.name) {
+      draft[target.name] = target.value;
+    }
+    renderNewQuoteColorEditor();
+  });
+
+  newQuoteColorEditor?.addEventListener("click", (event) => {
+    const serviceButton = event.target.closest("[data-new-quote-color-services]");
+    if (serviceButton) {
+      const index = getNewQuoteColorDraftIndex();
+      if (index >= 0) openColorServicePopover(index, serviceButton);
+      return;
+    }
+
+    const action = event.target.closest("[data-new-quote-color-action]")?.dataset.newQuoteColorAction;
+    if (!action) return;
+    if (action === "cancel") {
+      closeNewQuoteColorEditor(true);
+      return;
+    }
+    if (action !== "confirm") return;
+    const draft = getNewQuoteColorDraft();
+    if (!draft) return;
+    const workbook = calculateColorPrintWorkbook(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id);
+    if (!row || row.quantity <= 0 || (!draft.productPresetId && (row.widthMm <= 0 || row.heightMm <= 0))) {
+      setMainFeedback("Informe descrição, quantidade e uma medida válida para adicionar o impresso colorido.", "warning");
+      renderNewQuoteColorEditor();
+      return;
+    }
+    if (row.total <= 0) {
+      setMainFeedback("O impresso não retornou preço. Revise tamanho, papel e tabela de impressão.", "warning");
+      renderNewQuoteColorEditor();
+      return;
+    }
+    draft.description = draft.description.trim() || row.productLabel || "Impresso colorido";
+    closeNewQuoteColorEditor(false);
+    persist();
+    renderRowsAndSummary();
+    setMainFeedback("Impresso colorido adicionado ao orçamento atual.", "success");
   });
 
   newQuoteM2Editor?.addEventListener("input", (event) => {
