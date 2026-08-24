@@ -7420,12 +7420,16 @@ async function initApp() {
   const newQuoteBlockEditor = document.getElementById("new-quote-block-editor");
   const newQuoteReadyEditor = document.getElementById("new-quote-ready-editor");
   const newQuoteBookletEditor = document.getElementById("new-quote-booklet-editor");
+  const newQuoteM2Editor = document.getElementById("new-quote-m2-editor");
+  const newQuoteResinEditor = document.getElementById("new-quote-resin-editor");
   let activeNewQuoteCardId = "";
   let activeNewQuoteFlyerId = "";
   let activeNewQuoteCredentialId = "";
   let activeNewQuoteBlock = { tab: "sulfite", id: "" };
   let activeNewQuoteReadyId = "";
   let activeNewQuoteBookletId = "";
+  let activeNewQuoteM2Id = "";
+  let activeNewQuoteResinId = "";
   const feedback = document.getElementById("import-feedback");
   const colorFeedback = document.getElementById("color-feedback");
   const credentialFeedback = document.getElementById("credential-feedback");
@@ -10378,6 +10382,168 @@ async function initApp() {
       <div class="toolbar new-quote-card-editor-actions">
         <button class="button" type="button" data-new-quote-booklet-action="cancel">Descartar item</button>
         <button class="button button-primary" type="button" data-new-quote-booklet-action="confirm">Adicionar ao orçamento</button>
+      </div>
+    `;
+  }
+
+  function getNewQuoteM2Draft() {
+    return state.m2Items.find((row) => row.id === activeNewQuoteM2Id) || null;
+  }
+
+  function getNewQuoteM2DraftIndex() {
+    return state.m2Items.findIndex((row) => row.id === activeNewQuoteM2Id);
+  }
+
+  function openNewQuoteM2Editor() {
+    const inactiveIndex = state.m2Items.findIndex((row) => !(toDecimalNumber(row.widthMm) > 0 && toDecimalNumber(row.heightMm) > 0 && toWholeNumber(row.quantity) > 0));
+    const index = inactiveIndex >= 0 ? inactiveIndex : state.m2Items.length;
+    state.m2Items[index] = createDefaultM2Row(index);
+    activeNewQuoteM2Id = state.m2Items[index].id;
+    renderNewQuoteM2Editor();
+  }
+
+  function closeNewQuoteM2Editor(discardDraft = false) {
+    const index = getNewQuoteM2DraftIndex();
+    if (discardDraft && index >= 0) {
+      state.m2Items[index] = createDefaultM2Row(index);
+    }
+    activeNewQuoteM2Id = "";
+    if (newQuoteM2Editor) {
+      newQuoteM2Editor.hidden = true;
+      newQuoteM2Editor.innerHTML = "";
+    }
+  }
+
+  function renderNewQuoteM2Editor() {
+    if (!newQuoteM2Editor) return;
+    const draft = getNewQuoteM2Draft();
+    if (!draft) {
+      newQuoteM2Editor.hidden = true;
+      newQuoteM2Editor.innerHTML = "";
+      return;
+    }
+
+    const catalog = getM2Catalog(config);
+    const workbook = calculateM2WorkbookFromConfig(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id) || draft;
+    const selectedFinishes = getM2FinishSummary(draft, config);
+    const productOptions = catalog.map((product) => `
+      <option value="${escapeAttribute(product.id)}"${product.id === draft.productId ? " selected" : ""}>${escapeHtml(product.label)}</option>
+    `).join("");
+    const widthLabel = draft.measureUnit === "m" ? "Largura (m)" : "Largura (cm)";
+    const heightLabel = draft.measureUnit === "m" ? "Altura (m)" : "Altura (cm)";
+
+    newQuoteM2Editor.hidden = false;
+    newQuoteM2Editor.innerHTML = `
+      <div class="panel-heading new-quote-inline-heading">
+        <div>
+          <span class="new-quote-eyebrow">Editor integrado</span>
+          <h2>Cálculo de m²</h2>
+          <p class="panel-copy">Escolha o material, informe as medidas e use os acabamentos quando precisar. Sangra, mínimo e faixa de preço seguem a configuração atual.</p>
+        </div>
+        <button class="button button-compact" type="button" data-new-quote-m2-action="cancel">Cancelar</button>
+      </div>
+      <div class="new-quote-card-editor-grid">
+        <label><span>Produto</span><select name="productId">${productOptions}</select></label>
+        <label><span>Descrição</span><input name="description" value="${escapeAttribute(draft.description)}" placeholder="Ex.: Fachada loja" autocomplete="off"></label>
+        <label><span>Unidade de medida</span><select name="measureUnit"><option value="cm"${draft.measureUnit !== "m" ? " selected" : ""}>Centímetros</option><option value="m"${draft.measureUnit === "m" ? " selected" : ""}>Metros</option></select></label>
+        <label><span>${widthLabel}</span><input name="widthMm" type="number" min="0" step="0.01" value="${escapeAttribute(draft.widthMm)}"></label>
+        <label><span>${heightLabel}</span><input name="heightMm" type="number" min="0" step="0.01" value="${escapeAttribute(draft.heightMm)}"></label>
+        <label><span>Quantidade</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity)}"></label>
+        <label><span>Acabamentos</span><button class="finish-picker-toggle" type="button" data-new-quote-m2-finishes>${escapeHtml(selectedFinishes.length ? `${selectedFinishes.length} acabamento(s)` : "Sem acabamento")}<span aria-hidden="true">▾</span></button></label>
+        <label><span>Adicional fixo</span><input name="extraCharge" type="number" min="0" step="0.01" value="${escapeAttribute(draft.extraCharge)}" placeholder="0,00"></label>
+        <label><span>Valor de arte</span><input name="artCreationFee" type="number" min="0" step="0.01" value="${escapeAttribute(draft.artCreationFee)}" placeholder="0,00"></label>
+        <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, normalizeDiscountType(draft.discountType))}</select></label>
+        <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(normalizeDiscountValue(draft.discountValue))}" placeholder="0,00"></label>
+      </div>
+      ${selectedFinishes.length ? `<p class="helper-text">${escapeHtml(selectedFinishes.join(" | "))}</p>` : ""}
+      <div class="new-quote-card-preview" aria-label="Resumo do cálculo de metros quadrados">
+        <div><span>Área total</span><strong>${formatAreaM2(row.areaM2 || 0)} m²</strong></div>
+        <div><span>Faixa aplicada</span><strong>${escapeHtml(row.tierLabel || "A definir")}</strong></div>
+        <div><span>Total do item</span><strong>${formatCurrency(row.total || 0)}</strong></div>
+        <div><span>Valor unitário</span><strong>${formatCurrency(row.unitValue || 0)}</strong></div>
+      </div>
+      <div class="toolbar new-quote-card-editor-actions">
+        <button class="button" type="button" data-new-quote-m2-action="cancel">Descartar item</button>
+        <button class="button button-primary" type="button" data-new-quote-m2-action="confirm">Adicionar ao orçamento</button>
+      </div>
+    `;
+  }
+
+  function getNewQuoteResinDraft() {
+    return state.resinItems.find((row) => row.id === activeNewQuoteResinId) || null;
+  }
+
+  function getNewQuoteResinDraftIndex() {
+    return state.resinItems.findIndex((row) => row.id === activeNewQuoteResinId);
+  }
+
+  function openNewQuoteResinEditor() {
+    const inactiveIndex = state.resinItems.findIndex((row) => !isResinRowActive(row));
+    const index = inactiveIndex >= 0 ? inactiveIndex : state.resinItems.length;
+    state.resinItems[index] = createDefaultResinRow(index);
+    activeNewQuoteResinId = state.resinItems[index].id;
+    renderNewQuoteResinEditor();
+  }
+
+  function closeNewQuoteResinEditor(discardDraft = false) {
+    const index = getNewQuoteResinDraftIndex();
+    if (discardDraft && index >= 0) {
+      state.resinItems[index] = createDefaultResinRow(index);
+    }
+    activeNewQuoteResinId = "";
+    if (newQuoteResinEditor) {
+      newQuoteResinEditor.hidden = true;
+      newQuoteResinEditor.innerHTML = "";
+    }
+  }
+
+  function renderNewQuoteResinEditor() {
+    if (!newQuoteResinEditor) return;
+    const draft = getNewQuoteResinDraft();
+    if (!draft) {
+      newQuoteResinEditor.hidden = true;
+      newQuoteResinEditor.innerHTML = "";
+      return;
+    }
+
+    const workbook = calculateResinWorkbook(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id) || draft;
+    const materialOptions = RESIN_MATERIAL_OPTIONS.map((material) => `
+      <option value="${escapeAttribute(material.id)}"${material.id === draft.materialType ? " selected" : ""}>${escapeHtml(material.label)}</option>
+    `).join("");
+    const layoutSummary = row.piecesPerSheet > 0
+      ? `${formatInteger(row.piecesPerSheet)} por folha${row.rotated ? " (girado)" : ""}`
+      : "Informe uma medida válida";
+
+    newQuoteResinEditor.hidden = false;
+    newQuoteResinEditor.innerHTML = `
+      <div class="panel-heading new-quote-inline-heading">
+        <div>
+          <span class="new-quote-eyebrow">Editor integrado</span>
+          <h2>Adesivos resinados</h2>
+          <p class="panel-copy">Informe a medida final do adesivo em milímetros. O aproveitamento na folha A3 e o espaço técnico configurado são aplicados automaticamente.</p>
+        </div>
+        <button class="button button-compact" type="button" data-new-quote-resin-action="cancel">Cancelar</button>
+      </div>
+      <div class="new-quote-card-editor-grid">
+        <label><span>Material</span><select name="materialType">${materialOptions}</select></label>
+        <label><span>Descrição opcional</span><input name="description" value="${escapeAttribute(draft.description)}" placeholder="Ex.: Logo em resina" autocomplete="off"></label>
+        <label><span>Largura (mm)</span><input name="widthMm" type="number" min="0" step="0.1" value="${escapeAttribute(draft.widthMm)}"></label>
+        <label><span>Altura (mm)</span><input name="heightMm" type="number" min="0" step="0.1" value="${escapeAttribute(draft.heightMm)}"></label>
+        <label><span>Quantidade</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity)}"></label>
+        <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, normalizeDiscountType(draft.discountType))}</select></label>
+        <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(normalizeDiscountValue(draft.discountValue))}" placeholder="0,00"></label>
+      </div>
+      <div class="new-quote-card-preview" aria-label="Resumo dos adesivos resinados">
+        <div><span>Aproveitamento</span><strong>${escapeHtml(layoutSummary)}</strong></div>
+        <div><span>Folhas A3</span><strong>${formatInteger(row.sheetsNeeded || 0)}</strong></div>
+        <div><span>Total do item</span><strong>${formatCurrency(row.total || 0)}</strong></div>
+        <div><span>Valor unitário</span><strong>${formatCurrency(row.unitValue || 0)}</strong></div>
+      </div>
+      <div class="toolbar new-quote-card-editor-actions">
+        <button class="button" type="button" data-new-quote-resin-action="cancel">Descartar item</button>
+        <button class="button button-primary" type="button" data-new-quote-resin-action="confirm">Adicionar ao orçamento</button>
       </div>
     `;
   }
@@ -14945,6 +15111,16 @@ async function initApp() {
       newQuoteReadyEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
+    if (button.dataset.newQuoteService === "m2") {
+      openNewQuoteM2Editor();
+      newQuoteM2Editor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
+    if (button.dataset.newQuoteService === "resinado") {
+      openNewQuoteResinEditor();
+      newQuoteResinEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
     if (button.dataset.newQuoteService === "cartao") {
       openNewQuoteCardEditor();
       newQuoteCardEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -15339,6 +15515,133 @@ async function initApp() {
     persist();
     renderRowsAndSummary();
     setMainFeedback("Apostila adicionada ao orçamento atual.", "success");
+  });
+
+  newQuoteM2Editor?.addEventListener("input", (event) => {
+    const draft = getNewQuoteM2Draft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement) || target.name !== "description") return;
+    draft.description = target.value;
+  });
+
+  newQuoteM2Editor?.addEventListener("change", (event) => {
+    const draft = getNewQuoteM2Draft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+
+    if (["widthMm", "heightMm"].includes(target.name)) {
+      draft[target.name] = Math.max(0, toDecimalNumber(target.value));
+    } else if (target.name === "quantity") {
+      draft.quantity = Math.max(0, toWholeNumber(target.value));
+    } else if (target.name === "measureUnit") {
+      const wasMeters = draft.measureUnit === "m";
+      const willUseMeters = target.value === "m";
+      if (wasMeters !== willUseMeters) {
+        const conversion = willUseMeters ? 0.01 : 100;
+        draft.widthMm = toDecimalNumber(draft.widthMm) * conversion;
+        draft.heightMm = toDecimalNumber(draft.heightMm) * conversion;
+      }
+      draft.measureUnit = willUseMeters ? "m" : "cm";
+    } else if (["extraCharge", "artCreationFee"].includes(target.name)) {
+      draft[target.name] = toMoneyNumber(target.value);
+    } else if (target.name === "discountType") {
+      draft.discountType = normalizeDiscountType(target.value);
+    } else if (target.name === "discountValue") {
+      draft.discountValue = normalizeDiscountValue(target.value);
+    } else if (target.name) {
+      draft[target.name] = target.value;
+    }
+    renderNewQuoteM2Editor();
+  });
+
+  newQuoteM2Editor?.addEventListener("click", (event) => {
+    const finishButton = event.target.closest("[data-new-quote-m2-finishes]");
+    if (finishButton) {
+      const index = getNewQuoteM2DraftIndex();
+      if (index >= 0) openM2FinishPopover(index, finishButton);
+      return;
+    }
+
+    const action = event.target.closest("[data-new-quote-m2-action]")?.dataset.newQuoteM2Action;
+    if (!action) return;
+    if (action === "cancel") {
+      closeNewQuoteM2Editor(true);
+      return;
+    }
+    if (action !== "confirm") return;
+    const draft = getNewQuoteM2Draft();
+    if (!draft) return;
+    const workbook = calculateM2WorkbookFromConfig(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id);
+    if (!row?.active) {
+      setMainFeedback("Informe largura, altura e quantidade válidas para calcular o item em m².", "warning");
+      renderNewQuoteM2Editor();
+      return;
+    }
+    if (row.total <= 0) {
+      setMainFeedback("O material não retornou preço. Revise o produto e as faixas de preço na configuração.", "warning");
+      renderNewQuoteM2Editor();
+      return;
+    }
+    draft.description = draft.description.trim() || row.productLabel;
+    closeNewQuoteM2Editor(false);
+    persist();
+    renderRowsAndSummary();
+    setMainFeedback("Item de cálculo de m² adicionado ao orçamento atual.", "success");
+  });
+
+  newQuoteResinEditor?.addEventListener("input", (event) => {
+    const draft = getNewQuoteResinDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement) || target.name !== "description") return;
+    draft.description = target.value;
+  });
+
+  newQuoteResinEditor?.addEventListener("change", (event) => {
+    const draft = getNewQuoteResinDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+
+    if (["widthMm", "heightMm"].includes(target.name)) {
+      draft[target.name] = Math.max(0, toDecimalNumber(target.value));
+    } else if (target.name === "quantity") {
+      draft.quantity = Math.max(0, toWholeNumber(target.value));
+    } else if (target.name === "materialType") {
+      draft.materialType = RESIN_MATERIAL_OPTIONS.some((item) => item.id === target.value) ? target.value : "white";
+    } else if (target.name === "discountType") {
+      draft.discountType = normalizeDiscountType(target.value);
+    } else if (target.name === "discountValue") {
+      draft.discountValue = normalizeDiscountValue(target.value);
+    }
+    renderNewQuoteResinEditor();
+  });
+
+  newQuoteResinEditor?.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-new-quote-resin-action]")?.dataset.newQuoteResinAction;
+    if (!action) return;
+    if (action === "cancel") {
+      closeNewQuoteResinEditor(true);
+      return;
+    }
+    if (action !== "confirm") return;
+    const draft = getNewQuoteResinDraft();
+    if (!draft) return;
+    const workbook = calculateResinWorkbook(state, config);
+    const row = workbook.rows.find((item) => item.id === draft.id);
+    if (!row?.active || row.piecesPerSheet <= 0) {
+      setMainFeedback("Informe largura, altura e quantidade válidas que caibam na folha A3 para calcular o resinado.", "warning");
+      renderNewQuoteResinEditor();
+      return;
+    }
+    if (row.total <= 0) {
+      setMainFeedback("O resinado não retornou preço. Revise a tabela de preços na configuração.", "warning");
+      renderNewQuoteResinEditor();
+      return;
+    }
+    closeNewQuoteResinEditor(false);
+    persist();
+    renderRowsAndSummary();
+    setMainFeedback("Adesivo resinado adicionado ao orçamento atual.", "success");
   });
 
   [
