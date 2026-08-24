@@ -14216,6 +14216,7 @@ async function initApp() {
   document.addEventListener("click", (event) => {
     if (
       event.target.closest("[data-finish-picker-toggle]") ||
+      event.target.closest("[data-new-quote-m2-finishes]") ||
       event.target.closest("#m2-finish-popover") ||
       event.target.closest("[data-color-service-toggle]") ||
       event.target.closest("#color-service-popover") ||
