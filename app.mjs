@@ -6619,6 +6619,9 @@ function createColorProductPresetMarkup(product, productIndex, config, viewMode 
 function createReadyProductPresetMarkup(product, productIndex, config, viewMode = "basic") {
   const isAdvanced = viewMode === "advanced";
   const pricingRows = config.readyProductPricing?.[product.readyPricingKey] || [];
+  // Fixed unit variants, such as stamps, do not use the imported quantity reference.
+  const hidesQuantityReference = product.readyPricingMode === "variant-fixed"
+    && product.readyVariantMode === "unit-variant";
 
   if (product.readyPricingMode === "manual") {
     return `
@@ -6629,15 +6632,21 @@ function createReadyProductPresetMarkup(product, productIndex, config, viewMode 
   }
 
   const headers = product.readyPricingMode === "variant-fixed"
-    ? ["Qtd. ref.", "Valor", "Cobrança", "Opção"]
+    ? (hidesQuantityReference ? ["Valor", "Cobrança", "Opção"] : ["Qtd. ref.", "Valor", "Cobrança", "Opção"])
     : ["Qtd mínima", "Valor", "Cobrança", "Faixa"];
   const fields = product.readyPricingMode === "variant-fixed"
-    ? [
-        { key: "quantity", type: "number", step: "1" },
-        { key: "value", type: "number", step: "0.01" },
-        { key: "mode", type: "text" },
-        { key: "label", type: "text" },
-      ]
+    ? (hidesQuantityReference
+      ? [
+          { key: "value", type: "number", step: "0.01" },
+          { key: "mode", type: "text" },
+          { key: "label", type: "text" },
+        ]
+      : [
+          { key: "quantity", type: "number", step: "1" },
+          { key: "value", type: "number", step: "0.01" },
+          { key: "mode", type: "text" },
+          { key: "label", type: "text" },
+        ])
     : [
         { key: "min", type: "number", step: "1" },
         { key: "value", type: "number", step: "0.01" },
