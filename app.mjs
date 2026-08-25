@@ -6023,13 +6023,19 @@ function createConfigErrorMarkup(message = "") {
 function createConfigCardMarkup(title, copy, innerMarkup) {
   return `
     <article class="config-card">
-      <div class="config-card-meta">
-        <span class="config-card-tag">Configuração</span>
-        <span class="config-card-tag subtle">Base compartilhada</span>
+      <header class="config-card-header">
+        <div>
+          <div class="config-card-meta">
+            <span class="config-card-tag">Configuração</span>
+            <span class="config-card-tag subtle">Base compartilhada</span>
+          </div>
+          <h3>${escapeHtml(title)}</h3>
+          ${copy ? `<p class="helper-text config-card-copy">${escapeHtml(copy)}</p>` : ""}
+        </div>
+      </header>
+      <div class="config-card-content">
+        ${innerMarkup}
       </div>
-      <h3>${escapeHtml(title)}</h3>
-      ${copy ? `<p class="helper-text">${escapeHtml(copy)}</p>` : ""}
-      ${innerMarkup}
     </article>
   `;
 }
@@ -6056,9 +6062,13 @@ function createAddConfigButtonMarkup(label, group, target) {
 function createInlineConfigBlockMarkup(title, innerMarkup, copy = "") {
   return `
     <section class="config-subblock">
-      <h4>${escapeHtml(title)}</h4>
-      ${copy ? `<p class="helper-text">${escapeHtml(copy)}</p>` : ""}
-      ${innerMarkup}
+      <header class="config-subblock-header">
+        <div>
+          <h4>${escapeHtml(title)}</h4>
+          ${copy ? `<p class="helper-text">${escapeHtml(copy)}</p>` : ""}
+        </div>
+      </header>
+      <div class="config-subblock-content">${innerMarkup}</div>
     </section>
   `;
 }
@@ -6067,9 +6077,12 @@ function createConfigGroupMarkup(id, title, copy, cards) {
   return `
     <section class="config-group" id="config-group-${escapeHtml(id)}">
       <div class="config-group-heading">
-        <span class="config-group-kicker">Área de configuração</span>
-        <h3>${escapeHtml(title)}</h3>
-        <p class="helper-text">${escapeHtml(copy)}</p>
+        <div>
+          <span class="config-group-kicker">Área de configuração</span>
+          <h3>${escapeHtml(title)}</h3>
+          <p class="helper-text">${escapeHtml(copy)}</p>
+        </div>
+        <span class="config-group-count">${cards.length} ${cards.length === 1 ? "painel" : "painéis"}</span>
       </div>
       <div class="config-card-grid">
         ${cards.join("")}
@@ -6539,32 +6552,41 @@ function createCatalogTabCardMarkup(tab, title, sections, config, viewMode = "ba
       ${products.length ? `
         <div class="nested-list">
           ${products.map((product, productIndex) => `
-            <div class="nested-row${isAdvanced ? " is-advanced" : ""}">
-              <label>
-                <span>Nome do produto</span>
-                <input data-catalog-product-key="label" data-catalog-product-tab="${escapeHtml(tab)}" data-catalog-product-index="${productIndex}" type="text" value="${escapeHtml(product.label || "")}" placeholder="Ex.: Lona 440g">
-              </label>
-              <label${isAdvanced ? "" : ' class="is-hidden-basic"'}>
-                <span>Código interno</span>
-                <input data-catalog-product-key="id" data-catalog-product-tab="${escapeHtml(tab)}" data-catalog-product-index="${productIndex}" type="text" value="${escapeHtml(product.id || "")}" placeholder="Ex.: lona-440g">
-              </label>
-              <label${isAdvanced ? "" : ' class="is-hidden-basic"'}>
-                <span>Observação opcional</span>
-                <input data-catalog-product-key="note" data-catalog-product-tab="${escapeHtml(tab)}" data-catalog-product-index="${productIndex}" type="text" value="${escapeHtml(product.note || "")}" placeholder="Texto auxiliar">
-              </label>
-              <div class="config-row-toolbar">
-                ${createConfigDeleteButtonMarkup(
-                  "catalog-product",
-                  {
-                    "catalog-tab": tab,
-                    "catalog-index": productIndex,
-                  }
-                )}
+            <article class="catalog-product-card">
+              <header class="catalog-product-card-header">
+                <div class="catalog-product-index">${String(productIndex + 1).padStart(2, "0")}</div>
+                <div>
+                  <span class="catalog-product-kicker">Produto configurável</span>
+                  <strong>${escapeHtml(product.label || "Novo produto")}</strong>
+                </div>
+                <div class="config-row-toolbar">
+                  ${createConfigDeleteButtonMarkup(
+                    "catalog-product",
+                    {
+                      "catalog-tab": tab,
+                      "catalog-index": productIndex,
+                    }
+                  )}
+                </div>
+              </header>
+              <div class="catalog-product-fields nested-row${isAdvanced ? " is-advanced" : ""}">
+                <label>
+                  <span>Nome do produto</span>
+                  <input data-catalog-product-key="label" data-catalog-product-tab="${escapeHtml(tab)}" data-catalog-product-index="${productIndex}" type="text" value="${escapeHtml(product.label || "")}" placeholder="Ex.: Lona 440g">
+                </label>
+                <label${isAdvanced ? "" : ' class="is-hidden-basic"'}>
+                  <span>Código interno</span>
+                  <input data-catalog-product-key="id" data-catalog-product-tab="${escapeHtml(tab)}" data-catalog-product-index="${productIndex}" type="text" value="${escapeHtml(product.id || "")}" placeholder="Ex.: lona-440g">
+                </label>
+                <label${isAdvanced ? "" : ' class="is-hidden-basic"'}>
+                  <span>Observação opcional</span>
+                  <input data-catalog-product-key="note" data-catalog-product-tab="${escapeHtml(tab)}" data-catalog-product-index="${productIndex}" type="text" value="${escapeHtml(product.note || "")}" placeholder="Texto auxiliar">
+                </label>
               </div>
-            </div>
             ${tab === "m2" ? createM2ProductPricingMarkup(product, productIndex, config, viewMode) : ""}
             ${tab === "impressos" ? createColorProductPresetMarkup(product, productIndex, config, viewMode) : ""}
             ${tab === "prontos" ? createReadyProductPresetMarkup(product, productIndex, config, viewMode) : ""}
+            </article>
           `).join("")}
         </div>
       ` : `<div class="empty-state"><strong>Nenhum produto extra cadastrado</strong><span>Use o botão "Adicionar produto" para montar esta aba do jeito da sua gráfica.</span></div>`}
@@ -6577,6 +6599,12 @@ function createColorProductPresetMarkup(product, productIndex, config, viewMode 
   const pricingRows = config.colorProductPricing?.[product.customPricingKey] || [];
   return `
     <div class="m2-product-pricing">
+      <div class="product-pricing-heading">
+        <div>
+          <span>Regras de preço</span>
+          <small>Defina o tamanho, papel e as faixas deste produto.</small>
+        </div>
+      </div>
       <div class="config-field-grid${isAdvanced ? " is-advanced" : ""}">
         <label>
           <span>Largura (cm)</span>
@@ -6658,6 +6686,12 @@ function createReadyProductPresetMarkup(product, productIndex, config, viewMode 
 
   return `
     <div class="m2-product-pricing">
+      <div class="product-pricing-heading">
+        <div>
+          <span>Regras de preço</span>
+          <small>Cadastre opções e valores que aparecerão no orçamento.</small>
+        </div>
+      </div>
       <div class="config-field-grid${isAdvanced ? " is-advanced" : ""}">
         <label${isAdvanced ? "" : ' class="is-hidden-basic"'}>
           <span>Modo do produto</span>
@@ -6717,6 +6751,12 @@ function createM2ProductPricingMarkup(product, productIndex, config, viewMode = 
   const isAdvanced = viewMode === "advanced";
   return `
     <div class="m2-product-pricing">
+      <div class="product-pricing-heading">
+        <div>
+          <span>Regras de preço</span>
+          <small>Escolha a tabela base e ajuste as faixas quando necessário.</small>
+        </div>
+      </div>
       <div class="config-field-grid${isAdvanced ? " is-advanced" : ""}">
         <label>
           <span>Base de preços</span>
