@@ -6620,8 +6620,10 @@ function createReadyProductPresetMarkup(product, productIndex, config, viewMode 
   const isAdvanced = viewMode === "advanced";
   const pricingRows = config.readyProductPricing?.[product.readyPricingKey] || [];
   // Fixed unit variants, such as stamps, do not use the imported quantity reference.
+  const sourceProductId = String(product.sourceSeedId || product.id || "");
+  const isStampVariant = sourceProductId.startsWith("carimbo-");
   const hidesQuantityReference = product.readyPricingMode === "variant-fixed"
-    && product.readyVariantMode === "unit-variant";
+    && (product.readyVariantMode === "unit-variant" || isStampVariant);
 
   if (product.readyPricingMode === "manual") {
     return `
