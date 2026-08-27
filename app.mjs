@@ -965,6 +965,8 @@ function createDefaultConfig() {
     flyerFinishes: deepClone(DEFAULT_FLYER_FINISHES),
     catalogSections: [],
     combinationServices: [],
+    freeProductCategories: [],
+    freeProducts: [],
     spiralPlasticDiscount: 1.5,
   };
 }
@@ -1174,6 +1176,7 @@ function createDefaultState() {
       serviceQuery: "",
       clientQuery: "",
     },
+    freeQuoteItems: [],
     paymentTerms: "",
     quoteNotes: "",
   };
@@ -1234,6 +1237,59 @@ function normalizeCatalogSections(list) {
     }
   }
   return normalized;
+}
+
+function normalizeFreeProductCategories(list) {
+  if (!Array.isArray(list)) return [];
+  const usedIds = new Set();
+  return list
+    .filter((item) => item && typeof item === "object" && typeof item.label === "string" && item.label.trim())
+    .map((item, index) => {
+      const baseId = String(item.id || `categoria-livre-${index + 1}`).trim().toLowerCase().replace(/[^a-z0-9-]/g, "-") || `categoria-livre-${index + 1}`;
+      let id = baseId;
+      let suffix = 2;
+      while (usedIds.has(id)) id = `${baseId}-${suffix++}`;
+      usedIds.add(id);
+      return { id, label: item.label.trim(), icon: typeof item.icon === "string" ? item.icon.slice(0, 4) : "+" };
+    });
+}
+
+function normalizeFreePriceTiers(list) {
+  const source = Array.isArray(list) ? list : [];
+  const tiers = source
+    .filter((item) => item && typeof item === "object")
+    .map((item, index) => ({
+      min: Math.max(1, toWholeNumber(item.min || 1)),
+      value: Math.max(0, toMoneyNumber(item.value)),
+      label: typeof item.label === "string" && item.label.trim() ? item.label.trim() : `A partir de ${Math.max(1, toWholeNumber(item.min || 1))}`,
+      id: typeof item.id === "string" && item.id ? item.id : `faixa-${index + 1}`,
+    }))
+    .sort((a, b) => a.min - b.min);
+  return tiers.length ? tiers : [{ id: "faixa-1", min: 1, value: 0, label: "A partir de 1" }];
+}
+
+function normalizeFreeProducts(list, categories) {
+  if (!Array.isArray(list)) return [];
+  const categoryIds = new Set(categories.map((category) => category.id));
+  return list
+    .filter((item) => item && typeof item === "object" && typeof item.label === "string" && item.label.trim())
+    .map((item, index) => ({
+      id: typeof item.id === "string" && item.id ? item.id : `produto-livre-${index + 1}`,
+      label: item.label.trim(),
+      categoryId: categoryIds.has(item.categoryId) ? item.categoryId : "geral",
+      calculationMode: ["unit", "area", "sheet", "lot"].includes(item.calculationMode) ? item.calculationMode : "unit",
+      unitLabel: typeof item.unitLabel === "string" && item.unitLabel.trim() ? item.unitLabel.trim() : "unidades",
+      widthCm: Math.max(0, toDecimalNumber(item.widthCm)),
+      heightCm: Math.max(0, toDecimalNumber(item.heightCm)),
+      sheetWidthCm: Math.max(0, toDecimalNumber(item.sheetWidthCm)),
+      sheetHeightCm: Math.max(0, toDecimalNumber(item.sheetHeightCm)),
+      spacingCm: Math.max(0, toDecimalNumber(item.spacingCm)),
+      artFee: Math.max(0, toMoneyNumber(item.artFee)),
+      note: typeof item.note === "string" ? item.note.trim() : "",
+      priceTiers: normalizeFreePriceTiers(item.priceTiers),
+      active: item.active !== false,
+      createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString(),
+    }));
 }
 
 function createUniqueM2PricingKey(baseKey, existingKeys) {
@@ -1540,6 +1596,9 @@ function mergeConfig(candidate) {
     merged.catalogSections = normalizeCatalogSections(candidate.catalogSections);
   }
 
+  merged.freeProductCategories = normalizeFreeProductCategories(candidate.freeProductCategories);
+  merged.freeProducts = normalizeFreeProducts(candidate.freeProducts, merged.freeProductCategories);
+
   merged.combinationServices = normalizeCombinationServices(candidate.combinationServices);
 
   if (candidate.m2Pricing && typeof candidate.m2Pricing === "object") {
@@ -1609,6 +1668,19 @@ function mergeState(candidate, configCandidate = null) {
     serviceQuery: typeof candidate.quoteBuilder?.serviceQuery === "string" ? candidate.quoteBuilder.serviceQuery : "",
     clientQuery: typeof candidate.quoteBuilder?.clientQuery === "string" ? candidate.quoteBuilder.clientQuery : "",
   };
+  state.freeQuoteItems = Array.isArray(candidate.freeQuoteItems)
+    ? candidate.freeQuoteItems
+        .filter((item) => item && typeof item === "object" && item.product && typeof item.product === "object")
+        .map((item, index) => ({
+          id: typeof item.id === "string" && item.id ? item.id : `item-livre-${index + 1}`,
+          product: normalizeFreeProducts([item.product], normalizeFreeProductCategories(configCandidate?.freeProductCategories))[0],
+          quantity: Math.max(1, toWholeNumber(item.quantity || 1)),
+          description: typeof item.description === "string" ? item.description : "",
+          discountType: normalizeDiscountType(item.discountType),
+          discountValue: normalizeDiscountValue(item.discountValue),
+        }))
+        .filter((item) => item.product)
+    : [];
   state.company = { ...state.company, ...(candidate.company || {}) };
   state.clients = Array.isArray(candidate.clients)
     ? candidate.clients
@@ -7071,8 +7143,74 @@ function buildApostilaCoverDetail(row) {
   return parts.join(" | ");
 }
 
+function getFreeProductCategoryLabel(product, config) {
+  return (config?.freeProductCategories || []).find((category) => category.id === product.categoryId)?.label || "Produtos livres";
+}
+
+function calculateFreeQuoteItem(item) {
+  const product = item?.product;
+  if (!product) return { total: 0, unitValue: 0, quantity: 0, detail: "Produto não informado" };
+  const quantity = Math.max(1, toWholeNumber(item.quantity || 1));
+  const tiers = normalizeFreePriceTiers(product.priceTiers);
+  let billableQuantity = quantity;
+  let detail = `${formatInteger(quantity)} ${product.unitLabel || "unidades"}`;
+
+  if (product.calculationMode === "area") {
+    const area = (Number(product.widthCm || 0) * Number(product.heightCm || 0) * quantity) / 10000;
+    billableQuantity = area;
+    detail = `${formatInteger(quantity)} ${product.unitLabel || "unidades"} | ${formatMeasure(product.widthCm)} x ${formatMeasure(product.heightCm)} cm | ${formatAreaM2(area)} m²`;
+  }
+
+  if (product.calculationMode === "sheet") {
+    const spacing = Number(product.spacingCm || 0);
+    const productWidth = Number(product.widthCm || 0) + spacing;
+    const productHeight = Number(product.heightCm || 0) + spacing;
+    const sheetWidth = Number(product.sheetWidthCm || 0);
+    const sheetHeight = Number(product.sheetHeightCm || 0);
+    const normal = productWidth > 0 && productHeight > 0 ? Math.floor(sheetWidth / productWidth) * Math.floor(sheetHeight / productHeight) : 0;
+    const rotated = productWidth > 0 && productHeight > 0 ? Math.floor(sheetWidth / productHeight) * Math.floor(sheetHeight / productWidth) : 0;
+    const piecesPerSheet = Math.max(normal, rotated);
+    const sheets = piecesPerSheet > 0 ? Math.ceil(quantity / piecesPerSheet) : 0;
+    billableQuantity = sheets;
+    detail = `${formatInteger(quantity)} ${product.unitLabel || "unidades"} | ${piecesPerSheet || "?"} por folha | ${formatInteger(sheets)} folha(s) de ${formatMeasure(sheetWidth)} x ${formatMeasure(sheetHeight)} cm`;
+  }
+
+  const tier = lookupTier(tiers, Math.max(1, billableQuantity));
+  const tierValue = Number(tier?.value || 0);
+  const baseTotal = product.calculationMode === "lot" ? tierValue : billableQuantity * tierValue;
+  const artFee = Number(product.artFee || 0);
+  const subtotal = baseTotal + artFee;
+  const discountResult = calculateDiscount(subtotal, item);
+  const discount = discountResult.discountAmount;
+  const total = discountResult.totalAfterDiscount;
+  return {
+    quantity,
+    billableQuantity,
+    tier,
+    baseTotal,
+    artFee,
+    discount,
+    total,
+    unitValue: quantity > 0 ? total / quantity : 0,
+    detail,
+  };
+}
+
 function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook = { activeRows: [] }, flyerWorkbook = { activeRows: [] }, blockSulfiteWorkbook = { activeRows: [] }, blockAutocopiativoWorkbook = { activeRows: [] }) {
   return [
+    ...(state.freeQuoteItems || []).map((item) => {
+      const calculated = calculateFreeQuoteItem(item);
+      return {
+        source: "livre",
+        sourceId: item.id,
+        kind: "Produto livre",
+        description: item.description || item.product.label,
+        detail: calculated.detail,
+        extraDetail: [calculated.tier?.label, item.product.artFee > 0 ? `Arte: ${formatCurrency(item.product.artFee)}` : "", calculated.discount > 0 ? `Desconto: ${formatCurrency(calculated.discount)}` : ""].filter(Boolean).join(" | "),
+        quantity: calculated.quantity,
+        total: calculated.total,
+      };
+    }),
     ...workbook.activeRows.map((row) => {
       const coverDetail = buildApostilaCoverDetail(row);
       const discountDetail = getDiscountQuoteDetail(row);
@@ -7177,7 +7315,7 @@ function createQuoteHistoryItems(state, workbook, colorWorkbook, credentialWorkb
     category: entry.kind || "",
     detail: entry.detail || "",
     extraDetail: entry.extraDetail || "",
-    quantity: Number.parseInt(String(entry.detail || "").match(/\d+/)?.[0] || "1", 10) || 1,
+    quantity: Number(entry.quantity) > 0 ? Number(entry.quantity) : (Number.parseInt(String(entry.detail || "").match(/\d+/)?.[0] || "1", 10) || 1),
     total: Number(entry.total || 0),
   }));
 }
@@ -7199,8 +7337,8 @@ function refreshVerticalCalculationTables() {
 function createQuoteHtml(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, flyerWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, blockSulfiteWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, blockAutocopiativoWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }) {
   const dateText = new Intl.DateTimeFormat("pt-BR").format(new Date());
   const quoteEntries = createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook);
-  const combinedTotal = workbook.totals.totalGeneral + colorWorkbook.totals.totalGeneral + credentialWorkbook.totals.totalGeneral + m2Workbook.totals.totalGeneral + readyWorkbook.totals.totalGeneral + resinWorkbook.totals.totalGeneral + cardWorkbook.totals.totalGeneral + flyerWorkbook.totals.totalGeneral + blockSulfiteWorkbook.totals.totalGeneral + blockAutocopiativoWorkbook.totals.totalGeneral;
-  const combinedUnits = workbook.totals.totalQuantity + colorWorkbook.totals.totalQuantity + credentialWorkbook.totals.totalQuantity + m2Workbook.totals.totalQuantity + readyWorkbook.totals.totalQuantity + resinWorkbook.totals.totalQuantity + cardWorkbook.totals.totalQuantity + flyerWorkbook.totals.totalQuantity + blockSulfiteWorkbook.totals.totalQuantity + blockAutocopiativoWorkbook.totals.totalQuantity;
+  const combinedTotal = quoteEntries.reduce((sum, entry) => sum + Number(entry.total || 0), 0);
+  const combinedUnits = workbook.totals.totalQuantity + colorWorkbook.totals.totalQuantity + credentialWorkbook.totals.totalQuantity + m2Workbook.totals.totalQuantity + readyWorkbook.totals.totalQuantity + resinWorkbook.totals.totalQuantity + cardWorkbook.totals.totalQuantity + flyerWorkbook.totals.totalQuantity + blockSulfiteWorkbook.totals.totalQuantity + blockAutocopiativoWorkbook.totals.totalQuantity + (state.freeQuoteItems || []).reduce((sum, item) => sum + calculateFreeQuoteItem(item).quantity, 0);
   const lineItemsMarkup = quoteEntries.length
     ? quoteEntries
         .map(
@@ -7324,6 +7462,13 @@ function createQuoteText(state, workbook, colorWorkbook, credentialWorkbook, m2W
     ...blockAutocopiativoWorkbook.activeRows.map((row, index) => ({
       text: `- ${row.description || `Bloco autocopiativo ${index + 1}`} | ${row.quantity} blocos | ${row.format} | ${row.vias} vias | ${row.measure || "medida não informada"}${row.artCreationFee > 0 ? ` | Arte: ${formatCurrency(row.artCreationFee)}` : ""}${getDiscountQuoteDetail(row) ? ` | ${getDiscountQuoteDetail(row)}` : ""} | ${formatCurrency(row.total)}`,
     })),
+    ...(state.freeQuoteItems || []).map((item) => {
+      const calculated = calculateFreeQuoteItem(item);
+      return {
+        text: `- ${item.description || item.product.label} | ${calculated.detail}${calculated.tier?.label ? ` | ${calculated.tier.label}` : ""}${item.product.artFee > 0 ? ` | Arte: ${formatCurrency(item.product.artFee)}` : ""}${calculated.discount > 0 ? ` | Desconto: ${formatCurrency(calculated.discount)}` : ""} | ${formatCurrency(calculated.total)}`,
+        total: calculated.total,
+      };
+    }),
   ];
 
   if (quoteEntries.length === 0) {
@@ -7332,7 +7477,7 @@ function createQuoteText(state, workbook, colorWorkbook, credentialWorkbook, m2W
     quoteEntries.forEach((entry) => lines.push(entry.text));
   }
 
-  lines.push("", `Total geral: ${formatCurrency(workbook.totals.totalGeneral + colorWorkbook.totals.totalGeneral + credentialWorkbook.totals.totalGeneral + m2Workbook.totals.totalGeneral + readyWorkbook.totals.totalGeneral + resinWorkbook.totals.totalGeneral + cardWorkbook.totals.totalGeneral + flyerWorkbook.totals.totalGeneral + blockSulfiteWorkbook.totals.totalGeneral + blockAutocopiativoWorkbook.totals.totalGeneral)}`);
+  lines.push("", `Total geral: ${formatCurrency(quoteEntries.reduce((sum, entry) => sum + Number(entry.total || 0), 0))}`);
 
   if (state.quoteNotes?.trim()) {
     lines.push("", "Observações:", state.quoteNotes.trim());
@@ -7474,6 +7619,7 @@ async function initApp() {
   const newQuoteColorEditor = document.getElementById("new-quote-color-editor");
   const newQuoteM2Editor = document.getElementById("new-quote-m2-editor");
   const newQuoteResinEditor = document.getElementById("new-quote-resin-editor");
+  const newQuoteFreeEditor = document.getElementById("new-quote-free-editor");
   let activeNewQuoteCardId = "";
   let activeNewQuoteFlyerId = "";
   let activeNewQuoteCredentialId = "";
@@ -7483,6 +7629,7 @@ async function initApp() {
   let activeNewQuoteColorId = "";
   let activeNewQuoteM2Id = "";
   let activeNewQuoteResinId = "";
+  let activeNewQuoteFreeId = "";
   const feedback = document.getElementById("import-feedback");
   const colorFeedback = document.getElementById("color-feedback");
   const credentialFeedback = document.getElementById("credential-feedback");
@@ -8944,16 +9091,19 @@ async function initApp() {
       blockSulfiteWorkbook,
       blockAutocopiativoWorkbook
     ).split("\n").slice(0, 10).join(" • ");
-    const total = workbook.totals.totalGeneral
-      + colorWorkbook.totals.totalGeneral
-      + credentialWorkbook.totals.totalGeneral
-      + m2Workbook.totals.totalGeneral
-      + readyWorkbook.totals.totalGeneral
-      + resinWorkbook.totals.totalGeneral
-      + cardWorkbook.totals.totalGeneral
-      + flyerWorkbook.totals.totalGeneral
-      + blockSulfiteWorkbook.totals.totalGeneral
-      + blockAutocopiativoWorkbook.totals.totalGeneral;
+    const total = createQuoteEntries(
+      state,
+      workbook,
+      colorWorkbook,
+      credentialWorkbook,
+      m2Workbook,
+      readyWorkbook,
+      resinWorkbook,
+      cardWorkbook,
+      flyerWorkbook,
+      blockSulfiteWorkbook,
+      blockAutocopiativoWorkbook
+    ).reduce((sum, entry) => sum + Number(entry.total || 0), 0);
     const savedAt = new Date().toISOString();
 
     return {
@@ -9726,6 +9876,7 @@ async function initApp() {
     { id: "cartao", label: "Cartão de visita", description: "Laser ou offset, papel, lados e acabamentos", tab: "cartoes", icon: "CV" },
     { id: "panfleto", label: "Panfleto e folder", description: "Laser ou offset, papel, tamanho, cores e dobra", tab: "panfletos", icon: "PF" },
     { id: "bloco", label: "Bloco", description: "Sulfite ou autocopiativo, vias, impressão e acabamentos", tab: "blocosSulfite", icon: "B" },
+    { id: "livre", label: "Produto não listado", description: "Crie um produto, defina a regra de preço e use no orçamento", tab: "novoOrcamento", icon: "+" },
   ];
 
   function getQuoteBuilderEntries() {
@@ -9766,12 +9917,14 @@ async function initApp() {
       panfleto: { rows: state.flyerItems, create: createDefaultFlyerRow },
       "bloco-sulfite": { rows: state.blockItems.sulfite, create: (index) => createDefaultBlockRow("sulfite", index) },
       "bloco-autocopiativo": { rows: state.blockItems.autocopiativo, create: (index) => createDefaultBlockRow("autocopiativo", index) },
+      livre: { rows: state.freeQuoteItems, create: () => null },
     };
     const collection = collections[source];
     if (!collection || !sourceId) return false;
     const index = collection.rows.findIndex((row) => row.id === sourceId);
     if (index < 0) return false;
-    collection.rows[index] = collection.create(index);
+    if (source === "livre") collection.rows.splice(index, 1);
+    else collection.rows[index] = collection.create(index);
     return true;
   }
 
@@ -9787,6 +9940,7 @@ async function initApp() {
     state.flyerItems = resetRows(state.flyerItems, createDefaultFlyerRow);
     state.blockItems.sulfite = resetRows(state.blockItems.sulfite, (index) => createDefaultBlockRow("sulfite", index));
     state.blockItems.autocopiativo = resetRows(state.blockItems.autocopiativo, (index) => createDefaultBlockRow("autocopiativo", index));
+    state.freeQuoteItems = [];
   }
 
   function renderNewQuoteClientResults(query = "") {
@@ -9848,7 +10002,17 @@ async function initApp() {
   function renderNewQuoteServices() {
     if (!newQuoteServiceResults) return;
     const query = String(state.quoteBuilder?.serviceQuery || "").trim().toLocaleLowerCase("pt-BR");
-    const services = NEW_QUOTE_SERVICES.filter((service) => !query || `${service.label} ${service.description}`.toLocaleLowerCase("pt-BR").includes(query));
+    const savedFreeProducts = (config.freeProducts || [])
+      .filter((product) => product.active !== false)
+      .map((product) => ({
+        id: `livre:${product.id}`,
+        label: product.label,
+        description: `${getFreeProductCategoryLabel(product, config)} · ${({ unit: "Por unidade", area: "Por m²", sheet: "Por folha", lot: "Por lote" })[product.calculationMode] || "Livre"}`,
+        tab: "novoOrcamento",
+        icon: "+",
+      }));
+    const services = [...NEW_QUOTE_SERVICES, ...savedFreeProducts]
+      .filter((service) => !query || `${service.label} ${service.description}`.toLocaleLowerCase("pt-BR").includes(query));
     newQuoteServiceResults.innerHTML = services.length
       ? services.map((service) => `
           <button class="new-quote-service-card" type="button" data-new-quote-service="${service.id}">
@@ -10266,6 +10430,110 @@ async function initApp() {
         <button class="button button-primary" type="button" data-new-quote-block-action="confirm">Adicionar ao orçamento</button>
       </div>
     `;
+  }
+
+  function getNewQuoteFreeDraft() {
+    return state.freeQuoteItems.find((item) => item.id === activeNewQuoteFreeId) || null;
+  }
+
+  function getNewQuoteFreeDraftIndex() {
+    return state.freeQuoteItems.findIndex((item) => item.id === activeNewQuoteFreeId);
+  }
+
+  function createFreeQuoteDraft(product = null) {
+    const normalizedProduct = normalizeFreeProducts([product || {
+      id: `produto-livre-${Date.now()}`,
+      label: "",
+      categoryId: "geral",
+      calculationMode: "unit",
+      unitLabel: "unidades",
+      priceTiers: [{ min: 1, value: 0, label: "A partir de 1" }],
+    }], config.freeProductCategories || [])[0];
+    return {
+      id: `item-livre-${Date.now()}`,
+      product: deepClone(normalizedProduct),
+      description: normalizedProduct.label,
+      quantity: 1,
+      discountType: "R$",
+      discountValue: 0,
+      saveProduct: !product,
+      catalogProductId: product?.id || "",
+    };
+  }
+
+  function openNewQuoteFreeEditor(productId = "") {
+    const product = (config.freeProducts || []).find((item) => item.id === productId) || null;
+    const draft = createFreeQuoteDraft(product);
+    state.freeQuoteItems.push(draft);
+    activeNewQuoteFreeId = draft.id;
+    renderNewQuoteFreeEditor();
+  }
+
+  function closeNewQuoteFreeEditor(discardDraft = false) {
+    const index = getNewQuoteFreeDraftIndex();
+    if (discardDraft && index >= 0) state.freeQuoteItems.splice(index, 1);
+    activeNewQuoteFreeId = "";
+    if (newQuoteFreeEditor) {
+      newQuoteFreeEditor.hidden = true;
+      newQuoteFreeEditor.innerHTML = "";
+    }
+  }
+
+  function renderNewQuoteFreeEditor() {
+    if (!newQuoteFreeEditor) return;
+    const draft = getNewQuoteFreeDraft();
+    if (!draft) {
+      newQuoteFreeEditor.hidden = true;
+      newQuoteFreeEditor.innerHTML = "";
+      return;
+    }
+    const product = draft.product;
+    const calculated = calculateFreeQuoteItem(draft);
+    const categoryOptions = [
+      `<option value="geral"${product.categoryId === "geral" ? " selected" : ""}>Produtos livres</option>`,
+      ...(config.freeProductCategories || []).map((category) => `<option value="${escapeAttribute(category.id)}"${product.categoryId === category.id ? " selected" : ""}>${escapeHtml(category.label)}</option>`),
+      `<option value="__new"${product.categoryId === "__new" ? " selected" : ""}>Criar nova categoria...</option>`,
+    ].join("");
+    const tierMarkup = normalizeFreePriceTiers(product.priceTiers).map((tier, index) => `
+      <div class="free-product-tier" data-free-tier-row="${index}">
+        <input data-free-tier-field="min" data-free-tier-index="${index}" type="number" min="1" step="1" value="${escapeAttribute(tier.min)}" aria-label="Quantidade mínima">
+        <input data-free-tier-field="value" data-free-tier-index="${index}" type="number" min="0" step="0.01" value="${escapeAttribute(tier.value)}" aria-label="Valor da faixa">
+        <input data-free-tier-field="label" data-free-tier-index="${index}" type="text" value="${escapeAttribute(tier.label)}" aria-label="Descrição da faixa">
+        ${index > 0 ? `<button class="button button-compact" type="button" data-new-quote-free-action="remove-tier" data-free-tier-index="${index}">Remover</button>` : ""}
+      </div>`).join("");
+    const modeFields = product.calculationMode === "area" ? `
+      <label><span>Largura (cm)</span><input name="widthCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.widthCm)}"></label>
+      <label><span>Altura (cm)</span><input name="heightCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.heightCm)}"></label>`
+      : product.calculationMode === "sheet" ? `
+      <label><span>Largura do produto (cm)</span><input name="widthCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.widthCm)}"></label>
+      <label><span>Altura do produto (cm)</span><input name="heightCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.heightCm)}"></label>
+      <label><span>Largura da folha (cm)</span><input name="sheetWidthCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.sheetWidthCm)}"></label>
+      <label><span>Altura da folha (cm)</span><input name="sheetHeightCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.sheetHeightCm)}"></label>
+      <label><span>Espaço técnico (cm)</span><input name="spacingCm" type="number" min="0" step="0.1" value="${escapeAttribute(product.spacingCm)}"></label>` : "";
+    const modeLabel = ({ unit: "Por unidade", area: "Por m²", sheet: "Por folha", lot: "Por lote" })[product.calculationMode];
+    newQuoteFreeEditor.hidden = false;
+    newQuoteFreeEditor.innerHTML = `
+      <div class="panel-heading new-quote-inline-heading">
+        <div><span class="new-quote-eyebrow">Cadastro inteligente</span><h2>${draft.catalogProductId ? "Produto livre" : "Novo produto não listado"}</h2><p class="panel-copy">Defina uma regra clara agora e o GrafiCalc reutiliza este produto nos próximos orçamentos.</p></div>
+        <button class="button button-compact" type="button" data-new-quote-free-action="cancel">Cancelar</button>
+      </div>
+      <div class="new-quote-card-editor-grid">
+        <label><span>Nome do produto</span><input name="productLabel" value="${escapeAttribute(product.label)}" placeholder="Ex.: Display de balcão" autocomplete="off"></label>
+        <label><span>Categoria</span><select name="categoryId">${categoryOptions}</select></label>
+        ${product.categoryId === "__new" ? `<label><span>Nome da nova categoria</span><input name="newCategoryLabel" value="${escapeAttribute(draft.newCategoryLabel || "")}" placeholder="Ex.: Comunicação visual"></label>` : ""}
+        <label><span>Como calcular</span><select name="calculationMode"><option value="unit"${product.calculationMode === "unit" ? " selected" : ""}>Por unidade</option><option value="area"${product.calculationMode === "area" ? " selected" : ""}>Por m²</option><option value="sheet"${product.calculationMode === "sheet" ? " selected" : ""}>Por folha</option><option value="lot"${product.calculationMode === "lot" ? " selected" : ""}>Por lote</option></select></label>
+        <label><span>Unidade de venda</span><input name="unitLabel" value="${escapeAttribute(product.unitLabel)}" placeholder="unidades"></label>
+        ${modeFields}
+        <label><span>Arte / valor fixo</span><input name="artFee" type="number" min="0" step="0.01" value="${escapeAttribute(product.artFee)}"></label>
+        <label><span>Quantidade neste orçamento</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity)}"></label>
+        <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, draft.discountType)}</select></label>
+        <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(draft.discountValue)}"></label>
+        <label><span>Observação</span><input name="note" value="${escapeAttribute(product.note)}" placeholder="Opcional"></label>
+      </div>
+      <div class="free-product-tiers"><div class="free-product-tiers-heading"><div><strong>Faixas de preço</strong><span>O sistema aplica a faixa correspondente à quantidade${product.calculationMode === "sheet" ? " de folhas" : ""}.</span></div><button class="button button-compact" type="button" data-new-quote-free-action="add-tier">Adicionar faixa</button></div><div class="free-product-tier-labels"><span>Mínimo</span><span>Valor</span><span>Descrição</span></div>${tierMarkup}</div>
+      <label class="free-product-save-toggle"><input name="saveProduct" type="checkbox"${draft.saveProduct ? " checked" : ""}> <span>Salvar no catálogo para reutilizar em outros orçamentos</span></label>
+      <div class="new-quote-card-preview"><div><span>Modelo</span><strong>${escapeHtml(modeLabel)}</strong></div><div><span>Faixa aplicada</span><strong>${escapeHtml(calculated.tier?.label || "A definir")}</strong></div><div><span>Total do item</span><strong>${formatCurrency(calculated.total)}</strong></div><div><span>Valor unitário</span><strong>${formatCurrency(calculated.unitValue)}</strong></div></div>
+      <div class="toolbar new-quote-card-editor-actions"><button class="button" type="button" data-new-quote-free-action="cancel">Descartar item</button><button class="button button-primary" type="button" data-new-quote-free-action="confirm">Adicionar ao orçamento</button></div>`;
   }
 
   function getNewQuoteReadyDraft() {
@@ -15269,6 +15537,16 @@ async function initApp() {
   newQuoteServiceResults?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-new-quote-service]");
     if (!button) return;
+    if (button.dataset.newQuoteService === "livre") {
+      openNewQuoteFreeEditor();
+      newQuoteFreeEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
+    if (button.dataset.newQuoteService?.startsWith("livre:")) {
+      openNewQuoteFreeEditor(button.dataset.newQuoteService.slice("livre:".length));
+      newQuoteFreeEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
     if (button.dataset.newQuoteService === "apostila") {
       openNewQuoteBookletEditor();
       newQuoteBookletEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -15320,6 +15598,107 @@ async function initApp() {
     renderRowsAndSummary();
     selectTab(service.tab);
     setMainFeedback(`Nova linha de ${service.label} pronta para preencher.`, "success");
+  });
+
+  newQuoteFreeEditor?.addEventListener("input", (event) => {
+    const draft = getNewQuoteFreeDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement)) return;
+    const tierIndex = Number(target.dataset.freeTierIndex);
+    if (Number.isInteger(tierIndex) && target.dataset.freeTierField) {
+      const tiers = normalizeFreePriceTiers(draft.product.priceTiers);
+      const tier = tiers[tierIndex];
+      if (!tier) return;
+      if (target.dataset.freeTierField === "min") tier.min = Math.max(1, toWholeNumber(target.value));
+      if (target.dataset.freeTierField === "value") tier.value = Math.max(0, toMoneyNumber(target.value));
+      if (target.dataset.freeTierField === "label") tier.label = target.value;
+      draft.product.priceTiers = tiers;
+      return;
+    }
+    if (target.name === "productLabel") {
+      const previousLabel = draft.product.label;
+      draft.product.label = target.value;
+      if (!draft.description || draft.description === previousLabel) draft.description = target.value;
+      return;
+    }
+    if (target.name === "newCategoryLabel") draft.newCategoryLabel = target.value;
+    if (target.name === "unitLabel") draft.product.unitLabel = target.value;
+    if (target.name === "note") draft.product.note = target.value;
+    if (target.name === "quantity") draft.quantity = Math.max(1, toWholeNumber(target.value));
+    if (target.name === "artFee") draft.product.artFee = Math.max(0, toMoneyNumber(target.value));
+    if (["widthCm", "heightCm", "sheetWidthCm", "sheetHeightCm", "spacingCm"].includes(target.name)) draft.product[target.name] = Math.max(0, toDecimalNumber(target.value));
+    if (target.name === "discountValue") draft.discountValue = normalizeDiscountValue(target.value);
+    if (target.name === "saveProduct") draft.saveProduct = target.checked;
+  });
+
+  newQuoteFreeEditor?.addEventListener("change", (event) => {
+    const draft = getNewQuoteFreeDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+    if (target.name === "categoryId") draft.product.categoryId = target.value;
+    if (target.name === "calculationMode") draft.product.calculationMode = target.value;
+    if (target.name === "discountType") draft.discountType = normalizeDiscountType(target.value);
+    if (target.name === "saveProduct" && target instanceof HTMLInputElement) draft.saveProduct = target.checked;
+    renderNewQuoteFreeEditor();
+  });
+
+  newQuoteFreeEditor?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-new-quote-free-action]");
+    if (!button) return;
+    const draft = getNewQuoteFreeDraft();
+    if (!draft) return;
+    const action = button.dataset.newQuoteFreeAction;
+    if (action === "cancel") {
+      closeNewQuoteFreeEditor(true);
+      return;
+    }
+    if (action === "add-tier") {
+      const tiers = normalizeFreePriceTiers(draft.product.priceTiers);
+      const last = tiers[tiers.length - 1];
+      tiers.push({ id: `faixa-${Date.now()}`, min: Math.max(1, Number(last.min || 1) + 1), value: Number(last.value || 0), label: "Nova faixa" });
+      draft.product.priceTiers = tiers;
+      renderNewQuoteFreeEditor();
+      return;
+    }
+    if (action === "remove-tier") {
+      const index = Number(button.dataset.freeTierIndex);
+      draft.product.priceTiers = normalizeFreePriceTiers(draft.product.priceTiers).filter((_, tierIndex) => tierIndex !== index);
+      renderNewQuoteFreeEditor();
+      return;
+    }
+    if (action === "confirm") {
+      const label = String(draft.product.label || "").trim();
+      if (!label) {
+        setMainFeedback("Informe o nome do produto antes de adicioná-lo ao orçamento.", "warning");
+        return;
+      }
+      if (draft.product.categoryId === "__new") {
+        const categoryLabel = String(draft.newCategoryLabel || "").trim();
+        if (!categoryLabel) {
+          setMainFeedback("Informe o nome da nova categoria.", "warning");
+          return;
+        }
+        const existing = (config.freeProductCategories || []).find((category) => normalizeLookupText(category.label) === normalizeLookupText(categoryLabel));
+        const category = existing || { id: `categoria-livre-${Date.now()}`, label: categoryLabel, icon: "+" };
+        if (!existing) config.freeProductCategories.push(category);
+        draft.product.categoryId = category.id;
+      }
+      draft.product.label = label;
+      draft.product.priceTiers = normalizeFreePriceTiers(draft.product.priceTiers);
+      if (draft.saveProduct) {
+        const productId = draft.catalogProductId || draft.product.id || `produto-livre-${Date.now()}`;
+        const product = { ...deepClone(draft.product), id: productId, createdAt: draft.product.createdAt || new Date().toISOString() };
+        const index = (config.freeProducts || []).findIndex((item) => item.id === productId);
+        if (index >= 0) config.freeProducts[index] = product;
+        else config.freeProducts.push(product);
+        draft.product = deepClone(product);
+        draft.catalogProductId = productId;
+      }
+      persist();
+      renderNewQuoteBuilder();
+      closeNewQuoteFreeEditor(false);
+      setMainFeedback(draft.saveProduct ? "Produto salvo no catálogo e adicionado ao orçamento." : "Produto adicionado somente a este orçamento.", "success");
+    }
   });
 
   newQuoteCardEditor?.addEventListener("input", (event) => {
