@@ -3,7 +3,8 @@ import process from "node:process";
 
 // Use the Windows certificate store so local Next requests can reach Supabase.
 const nodeOptions = [process.env.NODE_OPTIONS, "--use-system-ca"].filter(Boolean).join(" ");
-const next = spawn(process.execPath, ["./node_modules/next/dist/bin/next", "dev", "--hostname", "0.0.0.0", "--port", "3210"], {
+const port = process.env.PORT || "3210";
+const next = spawn(process.execPath, ["./node_modules/next/dist/bin/next", "dev", "--hostname", "0.0.0.0", "--port", port], {
   env: { ...process.env, NODE_OPTIONS: nodeOptions },
   stdio: "inherit",
 });
