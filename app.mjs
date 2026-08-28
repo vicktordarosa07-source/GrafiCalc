@@ -2001,6 +2001,8 @@ function normalizeAccessControlCandidate(candidate) {
   const groups = Array.isArray(candidate?.groups) && candidate.groups.length
     ? candidate.groups.map((group, index) => {
         const dashboards = { ...createDashboardPermissionMap(false), ...(group?.dashboards || {}) };
+        const groupTabs = group?.tabs && typeof group.tabs === "object" ? group.tabs : {};
+        const hasNewQuotePermission = Object.prototype.hasOwnProperty.call(groupTabs, "novoOrcamento");
         if (group?.dashboards?.quickLinks && !Object.prototype.hasOwnProperty.call(group.dashboards, "monthlySales")) {
           dashboards.monthlySales = true;
         }
@@ -2011,7 +2013,8 @@ function normalizeAccessControlCandidate(candidate) {
           tabs: {
             ...createTabPermissionMap(false, false),
             ...(group?.id === "funcionarios" ? {} : { conta: true }),
-            ...(group?.tabs || {}),
+            ...(hasNewQuotePermission ? {} : { novoOrcamento: Boolean(groupTabs.orcamento) }),
+            ...groupTabs,
             ...(group?.id === "funcionarios" ? { conta: false, home: false, configuracao: false, clientes: false, os: false, relatorios: false, historico: false, desenvolvedor: false } : {}),
           },
           dashboards,
