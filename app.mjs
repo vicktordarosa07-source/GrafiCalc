@@ -10446,7 +10446,7 @@ async function initApp() {
   function createFreeQuoteDraft(product = null) {
     const normalizedProduct = normalizeFreeProducts([product || {
       id: `produto-livre-${Date.now()}`,
-      label: "",
+      label: "Produto não listado",
       categoryId: "geral",
       calculationMode: "unit",
       unitLabel: "unidades",
