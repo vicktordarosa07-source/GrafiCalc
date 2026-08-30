@@ -10447,6 +10447,57 @@ async function initApp() {
     return state.freeQuoteItems.findIndex((item) => item.id === activeNewQuoteFreeId);
   }
 
+  function syncNewQuoteFreeDraftFromForm(draft) {
+    if (!draft || !newQuoteFreeEditor) return;
+    const field = (name) => newQuoteFreeEditor.querySelector(`[name="${name}"]`);
+    const productLabel = field("productLabel");
+    const categoryId = field("categoryId");
+    const calculationMode = field("calculationMode");
+    const unitLabel = field("unitLabel");
+    const artFee = field("artFee");
+    const quantity = field("quantity");
+    const discountType = field("discountType");
+    const discountValue = field("discountValue");
+    const note = field("note");
+    const newCategoryLabel = field("newCategoryLabel");
+    const saveProduct = field("saveProduct");
+
+    if (productLabel instanceof HTMLInputElement) draft.product.label = productLabel.value;
+    if (categoryId instanceof HTMLSelectElement) draft.product.categoryId = categoryId.value;
+    if (calculationMode instanceof HTMLSelectElement) draft.product.calculationMode = calculationMode.value;
+    if (unitLabel instanceof HTMLInputElement) draft.product.unitLabel = unitLabel.value;
+    if (artFee instanceof HTMLInputElement) draft.product.artFee = Math.max(0, toMoneyNumber(artFee.value));
+    if (quantity instanceof HTMLInputElement) draft.quantity = Math.max(1, toWholeNumber(quantity.value));
+    if (discountType instanceof HTMLSelectElement) draft.discountType = normalizeDiscountType(discountType.value);
+    if (discountValue instanceof HTMLInputElement) draft.discountValue = normalizeDiscountValue(discountValue.value);
+    if (note instanceof HTMLInputElement) draft.product.note = note.value;
+    if (newCategoryLabel instanceof HTMLInputElement) draft.newCategoryLabel = newCategoryLabel.value;
+    if (saveProduct instanceof HTMLInputElement) draft.saveProduct = saveProduct.checked;
+
+    const tiers = [...newQuoteFreeEditor.querySelectorAll("[data-free-tier-row]")].map((row, index) => {
+      const minField = row.querySelector('[data-free-tier-field="min"]');
+      const valueField = row.querySelector('[data-free-tier-field="value"]');
+      const labelField = row.querySelector('[data-free-tier-field="label"]');
+      return {
+        id: `faixa-${index + 1}`,
+        min: Math.max(1, toWholeNumber(minField?.value || 1)),
+        value: Math.max(0, toMoneyNumber(valueField?.value || 0)),
+        label: labelField?.value || "",
+      };
+    });
+    if (tiers.length) draft.product.priceTiers = normalizeFreePriceTiers(tiers);
+  }
+
+  function updateNewQuoteFreePreview() {
+    const draft = getNewQuoteFreeDraft();
+    if (!draft || !newQuoteFreeEditor) return;
+    const calculated = calculateFreeQuoteItem(draft);
+    const values = [...newQuoteFreeEditor.querySelectorAll(".new-quote-card-preview > div strong")];
+    if (values[1]) values[1].textContent = calculated.tier?.label || "A definir";
+    if (values[2]) values[2].textContent = formatCurrency(calculated.total);
+    if (values[3]) values[3].textContent = formatCurrency(calculated.unitValue);
+  }
+
   function createFreeQuoteDraft(product = null) {
     const normalizedProduct = normalizeFreeProducts([product || {
       id: `produto-livre-${Date.now()}`,
@@ -15624,6 +15675,7 @@ async function initApp() {
       if (target.dataset.freeTierField === "value") tier.value = Math.max(0, toMoneyNumber(target.value));
       if (target.dataset.freeTierField === "label") tier.label = target.value;
       draft.product.priceTiers = tiers;
+      updateNewQuoteFreePreview();
       return;
     }
     if (target.name === "productLabel") {
@@ -15640,6 +15692,7 @@ async function initApp() {
     if (["widthCm", "heightCm", "sheetWidthCm", "sheetHeightCm", "spacingCm"].includes(target.name)) draft.product[target.name] = Math.max(0, toDecimalNumber(target.value));
     if (target.name === "discountValue") draft.discountValue = normalizeDiscountValue(target.value);
     if (target.name === "saveProduct") draft.saveProduct = target.checked;
+    updateNewQuoteFreePreview();
   });
 
   newQuoteFreeEditor?.addEventListener("change", (event) => {
@@ -15678,9 +15731,14 @@ async function initApp() {
       return;
     }
     if (action === "confirm") {
+      syncNewQuoteFreeDraftFromForm(draft);
       const label = String(draft.product.label || "").trim();
       if (!label) {
         setMainFeedback("Informe o nome do produto antes de adicioná-lo ao orçamento.", "warning");
+        return;
+      }
+      if (!normalizeFreePriceTiers(draft.product.priceTiers).some((tier) => Number(tier.value) > 0)) {
+        setMainFeedback("Informe um valor maior que zero em pelo menos uma faixa de preço.", "warning");
         return;
       }
       if (draft.product.categoryId === "__new") {
