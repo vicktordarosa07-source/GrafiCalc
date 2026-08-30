@@ -3087,10 +3087,10 @@ function formatAreaM2(value) {
   }).format(Number(value || 0));
 }
 
-function lookupTier(tiers, quantity, valueKey = "value") {
+function getApplicableTier(tiers, quantity) {
   const qty = Number(quantity || 0);
   if (!Array.isArray(tiers) || qty <= 0) {
-    return 0;
+    return null;
   }
 
   let selected = tiers[0];
@@ -3100,6 +3100,11 @@ function lookupTier(tiers, quantity, valueKey = "value") {
     }
   }
 
+  return selected || null;
+}
+
+function lookupTier(tiers, quantity, valueKey = "value") {
+  const selected = getApplicableTier(tiers, quantity);
   return Number(selected?.[valueKey] || 0);
 }
 
@@ -7196,7 +7201,7 @@ function calculateFreeQuoteItem(item) {
     detail = `${formatInteger(quantity)} ${product.unitLabel || "unidades"} | ${piecesPerSheet || "?"} por folha | ${formatInteger(sheets)} folha(s) de ${formatMeasure(sheetWidth)} x ${formatMeasure(sheetHeight)} cm`;
   }
 
-  const tier = lookupTier(tiers, Math.max(1, billableQuantity));
+  const tier = getApplicableTier(tiers, Math.max(1, billableQuantity));
   const tierValue = Number(tier?.value || 0);
   const baseTotal = product.calculationMode === "lot" ? tierValue : billableQuantity * tierValue;
   const artFee = Math.max(0, toMoneyNumber(item.quoteArtFee ?? product.artFee));
