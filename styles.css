@@ -8665,6 +8665,57 @@ body::before {
   align-items: flex-start;
 }
 
+.new-quote-free-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.new-quote-free-choice {
+  display: grid;
+  gap: 8px;
+  min-height: 132px;
+  padding: 18px;
+  border: 1px solid rgba(54, 189, 143, 0.3);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #23474d;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.new-quote-free-choice:hover,
+.new-quote-free-choice:focus-visible {
+  border-color: #0aa47f;
+  background: #f1fcf7;
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.new-quote-free-choice strong {
+  color: #123f43;
+  font-size: 1rem;
+}
+
+.new-quote-free-choice span {
+  color: #668086;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.new-quote-free-budget-section {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(83, 163, 143, 0.2);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
 .new-quote-card-editor-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -9060,7 +9111,8 @@ body::before {
   }
 
   .new-quote-card-editor-grid,
-  .new-quote-card-preview {
+  .new-quote-card-preview,
+  .new-quote-free-choice-grid {
     grid-template-columns: 1fr;
   }
 

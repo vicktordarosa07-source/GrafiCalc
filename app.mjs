@@ -1283,6 +1283,7 @@ function normalizeFreeProducts(list, categories) {
       heightCm: Math.max(0, toDecimalNumber(item.heightCm)),
       sheetWidthCm: Math.max(0, toDecimalNumber(item.sheetWidthCm)),
       sheetHeightCm: Math.max(0, toDecimalNumber(item.sheetHeightCm)),
+      sheetPreset: typeof item.sheetPreset === "string" ? item.sheetPreset : "custom",
       spacingCm: Math.max(0, toDecimalNumber(item.spacingCm)),
       artFee: Math.max(0, toMoneyNumber(item.artFee)),
       note: typeof item.note === "string" ? item.note.trim() : "",
@@ -7154,6 +7155,23 @@ function calculateFreeQuoteItem(item) {
   const product = item?.product;
   if (!product) return { total: 0, unitValue: 0, quantity: 0, detail: "Produto não informado" };
   const quantity = Math.max(1, toWholeNumber(item.quantity || 1));
+  if (item.entryMode === "quote") {
+    const manualValue = Math.max(0, toMoneyNumber(item.manualValue));
+    const artFee = Math.max(0, toMoneyNumber(item.manualArtFee));
+    const subtotal = quantity * manualValue + artFee;
+    const discountResult = calculateDiscount(subtotal, item);
+    return {
+      quantity,
+      billableQuantity: quantity,
+      tier: null,
+      baseTotal: quantity * manualValue,
+      artFee,
+      discount: discountResult.discountAmount,
+      total: discountResult.totalAfterDiscount,
+      unitValue: quantity > 0 ? discountResult.totalAfterDiscount / quantity : 0,
+      detail: `${formatInteger(quantity)} ${item.unitLabel || "unidades"}${item.material ? ` | Material: ${item.material}` : ""}`,
+    };
+  }
   const tiers = normalizeFreePriceTiers(product.priceTiers);
   let billableQuantity = quantity;
   let detail = `${formatInteger(quantity)} ${product.unitLabel || "unidades"}`;
@@ -7181,7 +7199,7 @@ function calculateFreeQuoteItem(item) {
   const tier = lookupTier(tiers, Math.max(1, billableQuantity));
   const tierValue = Number(tier?.value || 0);
   const baseTotal = product.calculationMode === "lot" ? tierValue : billableQuantity * tierValue;
-  const artFee = Number(product.artFee || 0);
+  const artFee = Math.max(0, toMoneyNumber(item.quoteArtFee ?? product.artFee));
   const subtotal = baseTotal + artFee;
   const discountResult = calculateDiscount(subtotal, item);
   const discount = discountResult.discountAmount;
@@ -7209,7 +7227,7 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
         kind: "Produto livre",
         description: item.description || item.product.label,
         detail: calculated.detail,
-        extraDetail: [calculated.tier?.label, item.product.artFee > 0 ? `Arte: ${formatCurrency(item.product.artFee)}` : "", calculated.discount > 0 ? `Desconto: ${formatCurrency(calculated.discount)}` : ""].filter(Boolean).join(" | "),
+        extraDetail: [calculated.tier?.label, calculated.artFee > 0 ? `Arte: ${formatCurrency(calculated.artFee)}` : "", item.note ? `Obs.: ${item.note}` : item.product.note ? `Obs.: ${item.product.note}` : "", calculated.discount > 0 ? `Desconto: ${formatCurrency(calculated.discount)}` : ""].filter(Boolean).join(" | "),
         quantity: calculated.quantity,
         total: calculated.total,
       };
@@ -10450,6 +10468,10 @@ async function initApp() {
   function syncNewQuoteFreeDraftFromForm(draft) {
     if (!draft || !newQuoteFreeEditor) return;
     const field = (name) => newQuoteFreeEditor.querySelector(`[name="${name}"]`);
+    const description = field("description");
+    const material = field("material");
+    const manualValue = field("manualValue");
+    const manualArtFee = field("manualArtFee");
     const productLabel = field("productLabel");
     const categoryId = field("categoryId");
     const calculationMode = field("calculationMode");
@@ -10460,19 +10482,24 @@ async function initApp() {
     const discountValue = field("discountValue");
     const note = field("note");
     const newCategoryLabel = field("newCategoryLabel");
-    const saveProduct = field("saveProduct");
+    if (description instanceof HTMLInputElement) draft.description = description.value;
+    if (material instanceof HTMLInputElement) draft.material = material.value;
+    if (manualValue instanceof HTMLInputElement) draft.manualValue = Math.max(0, toMoneyNumber(manualValue.value));
+    if (manualArtFee instanceof HTMLInputElement) draft.manualArtFee = Math.max(0, toMoneyNumber(manualArtFee.value));
 
     if (productLabel instanceof HTMLInputElement) draft.product.label = productLabel.value;
     if (categoryId instanceof HTMLSelectElement) draft.product.categoryId = categoryId.value;
     if (calculationMode instanceof HTMLSelectElement) draft.product.calculationMode = calculationMode.value;
     if (unitLabel instanceof HTMLInputElement) draft.product.unitLabel = unitLabel.value;
-    if (artFee instanceof HTMLInputElement) draft.product.artFee = Math.max(0, toMoneyNumber(artFee.value));
+    if (artFee instanceof HTMLInputElement) draft.quoteArtFee = Math.max(0, toMoneyNumber(artFee.value));
     if (quantity instanceof HTMLInputElement) draft.quantity = Math.max(1, toWholeNumber(quantity.value));
     if (discountType instanceof HTMLSelectElement) draft.discountType = normalizeDiscountType(discountType.value);
     if (discountValue instanceof HTMLInputElement) draft.discountValue = normalizeDiscountValue(discountValue.value);
-    if (note instanceof HTMLInputElement) draft.product.note = note.value;
+    if (note instanceof HTMLInputElement) {
+      if (draft.entryMode === "quote") draft.note = note.value;
+      else draft.product.note = note.value;
+    }
     if (newCategoryLabel instanceof HTMLInputElement) draft.newCategoryLabel = newCategoryLabel.value;
-    if (saveProduct instanceof HTMLInputElement) draft.saveProduct = saveProduct.checked;
 
     const tiers = [...newQuoteFreeEditor.querySelectorAll("[data-free-tier-row]")].map((row, index) => {
       const minField = row.querySelector('[data-free-tier-field="min"]');
@@ -10498,7 +10525,7 @@ async function initApp() {
     if (values[3]) values[3].textContent = formatCurrency(calculated.unitValue);
   }
 
-  function createFreeQuoteDraft(product = null) {
+  function createFreeQuoteDraft(product = null, entryMode = product ? "saved" : "choice") {
     const normalizedProduct = normalizeFreeProducts([product || {
       id: `produto-livre-${Date.now()}`,
       label: "Produto não listado",
@@ -10514,14 +10541,19 @@ async function initApp() {
       quantity: 1,
       discountType: "R$",
       discountValue: 0,
-      saveProduct: !product,
+      entryMode,
+      quoteArtFee: 0,
+      manualValue: 0,
+      manualArtFee: 0,
+      material: "",
+      note: "",
       catalogProductId: product?.id || "",
     };
   }
 
-  function openNewQuoteFreeEditor(productId = "") {
+  function openNewQuoteFreeEditor(productId = "", entryMode = productId ? "saved" : "choice") {
     const product = (config.freeProducts || []).find((item) => item.id === productId) || null;
-    const draft = createFreeQuoteDraft(product);
+    const draft = createFreeQuoteDraft(product, entryMode);
     state.freeQuoteItems.push(draft);
     activeNewQuoteFreeId = draft.id;
     renderNewQuoteFreeEditor();
@@ -10545,8 +10577,43 @@ async function initApp() {
       newQuoteFreeEditor.innerHTML = "";
       return;
     }
+    if (draft.entryMode === "choice") {
+      newQuoteFreeEditor.hidden = false;
+      newQuoteFreeEditor.innerHTML = `
+        <div class="panel-heading new-quote-inline-heading">
+          <div><span class="new-quote-eyebrow">Produto não listado</span><h2>Como deseja usar este produto?</h2><p class="panel-copy">Escolha se a configuração ficará disponível no catálogo ou será usada apenas neste orçamento.</p></div>
+          <button class="button button-compact" type="button" data-new-quote-free-action="cancel">Cancelar</button>
+        </div>
+        <div class="new-quote-free-choice-grid">
+          <button class="new-quote-free-choice" type="button" data-new-quote-free-action="choose-saved"><strong>Criar produto para salvar</strong><span>Configure o modo de cálculo, a folha e as faixas de preço para reutilizar depois.</span></button>
+          <button class="new-quote-free-choice" type="button" data-new-quote-free-action="choose-quote"><strong>Somente para esse orçamento</strong><span>Informe manualmente descrição, quantidade, valor, arte e material sem salvar no catálogo.</span></button>
+        </div>`;
+      return;
+    }
     const product = draft.product;
     const calculated = calculateFreeQuoteItem(draft);
+    const isQuoteOnly = draft.entryMode === "quote";
+    if (isQuoteOnly) {
+      newQuoteFreeEditor.hidden = false;
+      newQuoteFreeEditor.innerHTML = `
+        <div class="panel-heading new-quote-inline-heading">
+          <div><span class="new-quote-eyebrow">Uso único</span><h2>Produto somente para este orçamento</h2><p class="panel-copy">Estes dados entram apenas nesta linha e não alteram o catálogo.</p></div>
+          <button class="button button-compact" type="button" data-new-quote-free-action="cancel">Cancelar</button>
+        </div>
+        <div class="new-quote-card-editor-grid">
+          <label><span>Descrição</span><input name="description" value="${escapeAttribute(draft.description)}" placeholder="Ex.: Display de balcão" autocomplete="off"></label>
+          <label><span>Material utilizado</span><input name="material" value="${escapeAttribute(draft.material)}" placeholder="Ex.: PVC 2 mm" autocomplete="off"></label>
+          <label><span>Quantidade</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity)}"></label>
+          <label><span>Valor por unidade</span><input name="manualValue" type="number" min="0" step="0.01" value="${escapeAttribute(draft.manualValue)}" placeholder="0,00"></label>
+          <label><span>Valor de arte</span><input name="manualArtFee" type="number" min="0" step="0.01" value="${escapeAttribute(draft.manualArtFee)}" placeholder="0,00"></label>
+          <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, draft.discountType)}</select></label>
+          <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(draft.discountValue)}" placeholder="0,00"></label>
+          <label><span>Observação</span><input name="note" value="${escapeAttribute(draft.note || "")}" placeholder="Opcional"></label>
+        </div>
+        <div class="new-quote-card-preview"><div><span>Quantidade</span><strong>${formatInteger(calculated.quantity)}</strong></div><div><span>Material</span><strong>${escapeHtml(draft.material || "A informar")}</strong></div><div><span>Total do item</span><strong>${formatCurrency(calculated.total)}</strong></div><div><span>Valor unitário</span><strong>${formatCurrency(calculated.unitValue)}</strong></div></div>
+        <div class="toolbar new-quote-card-editor-actions"><button class="button" type="button" data-new-quote-free-action="cancel">Descartar item</button><button class="button button-primary" type="button" data-new-quote-free-action="confirm">Adicionar ao orçamento</button></div>`;
+      return;
+    }
     const categoryOptions = [
       `<option value="geral"${product.categoryId === "geral" ? " selected" : ""}>Produtos livres</option>`,
       ...(config.freeProductCategories || []).map((category) => `<option value="${escapeAttribute(category.id)}"${product.categoryId === category.id ? " selected" : ""}>${escapeHtml(category.label)}</option>`),
@@ -10565,6 +10632,7 @@ async function initApp() {
       : product.calculationMode === "sheet" ? `
       <label><span>Largura do produto (cm)</span><input name="widthCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.widthCm)}"></label>
       <label><span>Altura do produto (cm)</span><input name="heightCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.heightCm)}"></label>
+      <label><span>Tamanho da folha</span><select name="sheetPreset"><option value="a4"${product.sheetPreset === "a4" ? " selected" : ""}>A4 (21 x 29,7 cm)</option><option value="a3"${product.sheetPreset === "a3" ? " selected" : ""}>A3 (29,7 x 42 cm)</option><option value="12x18"${product.sheetPreset === "12x18" ? " selected" : ""}>12 x 18 pol (30,48 x 45,72 cm)</option><option value="custom"${!['a4', 'a3', '12x18'].includes(product.sheetPreset) ? " selected" : ""}>Folha personalizada</option></select></label>
       <label><span>Largura da folha (cm)</span><input name="sheetWidthCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.sheetWidthCm)}"></label>
       <label><span>Altura da folha (cm)</span><input name="sheetHeightCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.sheetHeightCm)}"></label>
       <label><span>Espaço técnico (cm)</span><input name="spacingCm" type="number" min="0" step="0.1" value="${escapeAttribute(product.spacingCm)}"></label>` : "";
@@ -10572,7 +10640,7 @@ async function initApp() {
     newQuoteFreeEditor.hidden = false;
     newQuoteFreeEditor.innerHTML = `
       <div class="panel-heading new-quote-inline-heading">
-        <div><span class="new-quote-eyebrow">Cadastro inteligente</span><h2>${draft.catalogProductId ? "Produto livre" : "Novo produto não listado"}</h2><p class="panel-copy">Defina uma regra clara agora e o GrafiCalc reutiliza este produto nos próximos orçamentos.</p></div>
+        <div><span class="new-quote-eyebrow">Configuração salva</span><h2>${draft.catalogProductId ? "Produto livre" : "Criar produto para salvar"}</h2><p class="panel-copy">Estas informações ficam no catálogo e serão reutilizadas nos próximos orçamentos.</p></div>
         <button class="button button-compact" type="button" data-new-quote-free-action="cancel">Cancelar</button>
       </div>
       <div class="new-quote-card-editor-grid">
@@ -10582,14 +10650,16 @@ async function initApp() {
         <label><span>Como calcular</span><select name="calculationMode"><option value="unit"${product.calculationMode === "unit" ? " selected" : ""}>Por unidade</option><option value="area"${product.calculationMode === "area" ? " selected" : ""}>Por m²</option><option value="sheet"${product.calculationMode === "sheet" ? " selected" : ""}>Por folha</option><option value="lot"${product.calculationMode === "lot" ? " selected" : ""}>Por lote</option></select></label>
         <label><span>Unidade de venda</span><input name="unitLabel" value="${escapeAttribute(product.unitLabel)}" placeholder="unidades"></label>
         ${modeFields}
-        <label><span>Arte / valor fixo</span><input name="artFee" type="number" min="0" step="0.01" value="${escapeAttribute(product.artFee)}"></label>
+      </div>
+      <div class="new-quote-free-budget-section"><div class="free-product-tiers-heading"><div><strong>Neste orçamento</strong><span>Quantidade e arte pertencem somente a esta linha.</span></div></div><div class="new-quote-card-editor-grid">
         <label><span>Quantidade neste orçamento</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity)}"></label>
+        <label><span>Valor de arte</span><input name="artFee" type="number" min="0" step="0.01" value="${escapeAttribute(draft.quoteArtFee)}"></label>
         <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, draft.discountType)}</select></label>
         <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(draft.discountValue)}"></label>
         <label><span>Observação</span><input name="note" value="${escapeAttribute(product.note)}" placeholder="Opcional"></label>
       </div>
+      </div>
       <div class="free-product-tiers"><div class="free-product-tiers-heading"><div><strong>Faixas de preço</strong><span>O sistema aplica a faixa correspondente à quantidade${product.calculationMode === "sheet" ? " de folhas" : ""}.</span></div><button class="button button-compact" type="button" data-new-quote-free-action="add-tier">Adicionar faixa</button></div><div class="free-product-tier-labels"><span>Mínimo</span><span>Valor</span><span>Descrição</span></div>${tierMarkup}</div>
-      <label class="free-product-save-toggle"><input name="saveProduct" type="checkbox"${draft.saveProduct ? " checked" : ""}> <span>Salvar no catálogo para reutilizar em outros orçamentos</span></label>
       <div class="new-quote-card-preview"><div><span>Modelo</span><strong>${escapeHtml(modeLabel)}</strong></div><div><span>Faixa aplicada</span><strong>${escapeHtml(calculated.tier?.label || "A definir")}</strong></div><div><span>Total do item</span><strong>${formatCurrency(calculated.total)}</strong></div><div><span>Valor unitário</span><strong>${formatCurrency(calculated.unitValue)}</strong></div></div>
       <div class="toolbar new-quote-card-editor-actions"><button class="button" type="button" data-new-quote-free-action="cancel">Descartar item</button><button class="button button-primary" type="button" data-new-quote-free-action="confirm">Adicionar ao orçamento</button></div>`;
   }
@@ -15684,14 +15754,18 @@ async function initApp() {
       if (!draft.description || draft.description === previousLabel) draft.description = target.value;
       return;
     }
+    if (target.name === "description") draft.description = target.value;
+    if (target.name === "material") draft.material = target.value;
+    if (target.name === "manualValue") draft.manualValue = Math.max(0, toMoneyNumber(target.value));
+    if (target.name === "manualArtFee") draft.manualArtFee = Math.max(0, toMoneyNumber(target.value));
     if (target.name === "newCategoryLabel") draft.newCategoryLabel = target.value;
     if (target.name === "unitLabel") draft.product.unitLabel = target.value;
     if (target.name === "note") draft.product.note = target.value;
     if (target.name === "quantity") draft.quantity = Math.max(1, toWholeNumber(target.value));
-    if (target.name === "artFee") draft.product.artFee = Math.max(0, toMoneyNumber(target.value));
+    if (target.name === "artFee") draft.quoteArtFee = Math.max(0, toMoneyNumber(target.value));
     if (["widthCm", "heightCm", "sheetWidthCm", "sheetHeightCm", "spacingCm"].includes(target.name)) draft.product[target.name] = Math.max(0, toDecimalNumber(target.value));
     if (target.name === "discountValue") draft.discountValue = normalizeDiscountValue(target.value);
-    if (target.name === "saveProduct") draft.saveProduct = target.checked;
+    if (target.name === "note" && draft.entryMode === "quote") draft.note = target.value;
     updateNewQuoteFreePreview();
   });
 
@@ -15701,6 +15775,13 @@ async function initApp() {
     if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
     if (target.name === "categoryId") draft.product.categoryId = target.value;
     if (target.name === "calculationMode") draft.product.calculationMode = target.value;
+    if (target.name === "sheetPreset") {
+      draft.product.sheetPreset = target.value;
+      const sheetSizes = { a4: [21, 29.7], a3: [29.7, 42], "12x18": [30.48, 45.72] };
+      if (sheetSizes[target.value]) {
+        [draft.product.sheetWidthCm, draft.product.sheetHeightCm] = sheetSizes[target.value];
+      }
+    }
     if (target.name === "discountType") draft.discountType = normalizeDiscountType(target.value);
     if (target.name === "saveProduct" && target instanceof HTMLInputElement) draft.saveProduct = target.checked;
     renderNewQuoteFreeEditor();
@@ -15714,6 +15795,18 @@ async function initApp() {
     const action = button.dataset.newQuoteFreeAction;
     if (action === "cancel") {
       closeNewQuoteFreeEditor(true);
+      return;
+    }
+    if (action === "choose-saved") {
+      draft.entryMode = "saved";
+      draft.saveProduct = true;
+      renderNewQuoteFreeEditor();
+      return;
+    }
+    if (action === "choose-quote") {
+      draft.entryMode = "quote";
+      draft.saveProduct = false;
+      renderNewQuoteFreeEditor();
       return;
     }
     if (action === "add-tier") {
@@ -15737,8 +15830,16 @@ async function initApp() {
         setMainFeedback("Informe o nome do produto antes de adicioná-lo ao orçamento.", "warning");
         return;
       }
-      if (!normalizeFreePriceTiers(draft.product.priceTiers).some((tier) => Number(tier.value) > 0)) {
+      if (draft.entryMode !== "quote" && !normalizeFreePriceTiers(draft.product.priceTiers).some((tier) => Number(tier.value) > 0)) {
         setMainFeedback("Informe um valor maior que zero em pelo menos uma faixa de preço.", "warning");
+        return;
+      }
+      if (draft.entryMode === "quote" && Number(draft.manualValue || 0) <= 0) {
+        setMainFeedback("Informe um valor maior que zero para este orçamento.", "warning");
+        return;
+      }
+      if (draft.entryMode === "quote" && !String(draft.description || "").trim()) {
+        setMainFeedback("Informe uma descrição para este orçamento.", "warning");
         return;
       }
       if (draft.product.categoryId === "__new") {
@@ -15754,9 +15855,9 @@ async function initApp() {
       }
       draft.product.label = label;
       draft.product.priceTiers = normalizeFreePriceTiers(draft.product.priceTiers);
-      if (draft.saveProduct) {
+      if (draft.entryMode !== "quote") {
         const productId = draft.catalogProductId || draft.product.id || `produto-livre-${Date.now()}`;
-        const product = { ...deepClone(draft.product), id: productId, createdAt: draft.product.createdAt || new Date().toISOString() };
+        const product = { ...deepClone(draft.product), id: productId, artFee: 0, createdAt: draft.product.createdAt || new Date().toISOString() };
         const index = (config.freeProducts || []).findIndex((item) => item.id === productId);
         if (index >= 0) config.freeProducts[index] = product;
         else config.freeProducts.push(product);
@@ -15766,7 +15867,7 @@ async function initApp() {
       persist();
       renderNewQuoteBuilder();
       closeNewQuoteFreeEditor(false);
-      setMainFeedback(draft.saveProduct ? "Produto salvo no catálogo e adicionado ao orçamento." : "Produto adicionado somente a este orçamento.", "success");
+      setMainFeedback(draft.entryMode === "quote" ? "Produto adicionado somente a este orçamento." : "Produto salvo no catálogo e adicionado ao orçamento.", "success");
     }
   });
 
