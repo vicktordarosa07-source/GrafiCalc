@@ -10039,7 +10039,13 @@ async function initApp() {
     const services = [...NEW_QUOTE_SERVICES, ...savedFreeProducts]
       .filter((service) => !query || `${service.label} ${service.description}`.toLocaleLowerCase("pt-BR").includes(query));
     newQuoteServiceResults.innerHTML = services.length
-      ? services.map((service) => `
+      ? services.map((service) => service.id.startsWith("livre:") ? `
+          <article class="new-quote-service-card new-quote-saved-product-card" data-new-quote-service="${service.id}">
+            <span class="new-quote-service-icon" aria-hidden="true">${escapeHtml(service.icon)}</span>
+            <span><strong>${escapeHtml(service.label)}</strong><small>${escapeHtml(service.description)}</small></span>
+            <span class="new-quote-service-card-actions"><button class="new-quote-service-action" type="button">Adicionar</button><button class="new-quote-service-delete" type="button" data-free-product-delete="${escapeAttribute(service.id.slice("livre:".length))}" aria-label="Excluir ${escapeAttribute(service.label)}">Excluir</button></span>
+          </article>
+        ` : `
           <button class="new-quote-service-card" type="button" data-new-quote-service="${service.id}">
             <span class="new-quote-service-icon" aria-hidden="true">${escapeHtml(service.icon)}</span>
             <span><strong>${escapeHtml(service.label)}</strong><small>${escapeHtml(service.description)}</small></span>
@@ -10569,6 +10575,63 @@ async function initApp() {
     }
   }
 
+  function saveFreeProductFromDraft(draft) {
+    if (!draft || draft.entryMode === "quote") return false;
+    syncNewQuoteFreeDraftFromForm(draft);
+    const label = String(draft.product.label || "").trim();
+    if (!label) {
+      setMainFeedback("Informe o nome do produto antes de salvá-lo.", "warning");
+      return false;
+    }
+    if (!normalizeFreePriceTiers(draft.product.priceTiers).some((tier) => Number(tier.value) > 0)) {
+      setMainFeedback("Informe um valor maior que zero em pelo menos uma faixa de preço.", "warning");
+      return false;
+    }
+    if (draft.product.categoryId === "__new") {
+      const categoryLabel = String(draft.newCategoryLabel || "").trim();
+      if (!categoryLabel) {
+        setMainFeedback("Informe o nome da nova categoria.", "warning");
+        return false;
+      }
+      const existing = (config.freeProductCategories || []).find((category) => normalizeLookupText(category.label) === normalizeLookupText(categoryLabel));
+      if (!existing) config.freeProductCategories.push({ id: `categoria-livre-${Date.now()}`, label: categoryLabel, icon: "+" });
+      draft.product.categoryId = existing?.id || config.freeProductCategories[config.freeProductCategories.length - 1].id;
+    }
+    const productId = draft.catalogProductId || draft.product.id || `produto-livre-${Date.now()}`;
+    const product = { ...deepClone(draft.product), id: productId, artFee: 0, createdAt: draft.product.createdAt || new Date().toISOString() };
+    const index = (config.freeProducts || []).findIndex((item) => item.id === productId);
+    if (index >= 0) config.freeProducts[index] = product;
+    else config.freeProducts.push(product);
+    draft.product = deepClone(product);
+    draft.catalogProductId = productId;
+    draft.product.priceTiers = normalizeFreePriceTiers(draft.product.priceTiers);
+    persist();
+    renderNewQuoteServices();
+    renderNewQuoteFreeEditor();
+    setMainFeedback("Produto salvo no catálogo.", "success");
+    return true;
+  }
+
+  async function deleteFreeProduct(productId) {
+    const product = (config.freeProducts || []).find((item) => item.id === productId);
+    if (!product) return;
+    const confirmed = await confirmAppAction({
+      kicker: "Produto salvo",
+      title: "Excluir produto do catálogo?",
+      message: `O produto “${product.label}” será removido da lista de produtos salvos. Itens já adicionados a orçamentos não serão alterados.`,
+      confirmLabel: "Excluir produto",
+      danger: true,
+    });
+    if (!confirmed) return;
+    config.freeProducts = (config.freeProducts || []).filter((item) => item.id !== productId);
+    const draft = getNewQuoteFreeDraft();
+    if (draft?.catalogProductId === productId) closeNewQuoteFreeEditor(true);
+    persist();
+    renderNewQuoteServices();
+    renderNewQuoteBuilder();
+    setMainFeedback("Produto excluído do catálogo.", "success");
+  }
+
   function renderNewQuoteFreeEditor() {
     if (!newQuoteFreeEditor) return;
     const draft = getNewQuoteFreeDraft();
@@ -10661,7 +10724,7 @@ async function initApp() {
       </div>
       <div class="free-product-tiers"><div class="free-product-tiers-heading"><div><strong>Faixas de preço</strong><span>O sistema aplica a faixa correspondente à quantidade${product.calculationMode === "sheet" ? " de folhas" : ""}.</span></div><button class="button button-compact" type="button" data-new-quote-free-action="add-tier">Adicionar faixa</button></div><div class="free-product-tier-labels"><span>Mínimo</span><span>Valor</span><span>Descrição</span></div>${tierMarkup}</div>
       <div class="new-quote-card-preview"><div><span>Modelo</span><strong>${escapeHtml(modeLabel)}</strong></div><div><span>Faixa aplicada</span><strong>${escapeHtml(calculated.tier?.label || "A definir")}</strong></div><div><span>Total do item</span><strong>${formatCurrency(calculated.total)}</strong></div><div><span>Valor unitário</span><strong>${formatCurrency(calculated.unitValue)}</strong></div></div>
-      <div class="toolbar new-quote-card-editor-actions"><button class="button" type="button" data-new-quote-free-action="cancel">Descartar item</button><button class="button button-primary" type="button" data-new-quote-free-action="confirm">Adicionar ao orçamento</button></div>`;
+      <div class="toolbar new-quote-card-editor-actions"><button class="button" type="button" data-new-quote-free-action="cancel">Descartar item</button><button class="button" type="button" data-new-quote-free-action="save-product">${draft.catalogProductId ? "Atualizar produto" : "Salvar produto"}</button><button class="button button-primary" type="button" data-new-quote-free-action="confirm">Adicionar ao orçamento</button></div>`;
   }
 
   function getNewQuoteReadyDraft() {
@@ -15667,6 +15730,11 @@ async function initApp() {
   });
 
   newQuoteServiceResults?.addEventListener("click", (event) => {
+    const deleteButton = event.target.closest("[data-free-product-delete]");
+    if (deleteButton) {
+      deleteFreeProduct(deleteButton.dataset.freeProductDelete);
+      return;
+    }
     const button = event.target.closest("[data-new-quote-service]");
     if (!button) return;
     if (button.dataset.newQuoteService === "livre") {
@@ -15809,6 +15877,10 @@ async function initApp() {
       renderNewQuoteFreeEditor();
       return;
     }
+    if (action === "save-product") {
+      saveFreeProductFromDraft(draft);
+      return;
+    }
     if (action === "add-tier") {
       const tiers = normalizeFreePriceTiers(draft.product.priceTiers);
       const last = tiers[tiers.length - 1];
@@ -15842,27 +15914,8 @@ async function initApp() {
         setMainFeedback("Informe uma descrição para este orçamento.", "warning");
         return;
       }
-      if (draft.product.categoryId === "__new") {
-        const categoryLabel = String(draft.newCategoryLabel || "").trim();
-        if (!categoryLabel) {
-          setMainFeedback("Informe o nome da nova categoria.", "warning");
-          return;
-        }
-        const existing = (config.freeProductCategories || []).find((category) => normalizeLookupText(category.label) === normalizeLookupText(categoryLabel));
-        const category = existing || { id: `categoria-livre-${Date.now()}`, label: categoryLabel, icon: "+" };
-        if (!existing) config.freeProductCategories.push(category);
-        draft.product.categoryId = category.id;
-      }
-      draft.product.label = label;
-      draft.product.priceTiers = normalizeFreePriceTiers(draft.product.priceTiers);
       if (draft.entryMode !== "quote") {
-        const productId = draft.catalogProductId || draft.product.id || `produto-livre-${Date.now()}`;
-        const product = { ...deepClone(draft.product), id: productId, artFee: 0, createdAt: draft.product.createdAt || new Date().toISOString() };
-        const index = (config.freeProducts || []).findIndex((item) => item.id === productId);
-        if (index >= 0) config.freeProducts[index] = product;
-        else config.freeProducts.push(product);
-        draft.product = deepClone(product);
-        draft.catalogProductId = productId;
+        if (!saveFreeProductFromDraft(draft)) return;
       }
       persist();
       renderNewQuoteBuilder();

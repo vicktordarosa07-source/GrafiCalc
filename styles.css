@@ -8649,6 +8649,36 @@ body::before {
   text-transform: uppercase;
 }
 
+.new-quote-service-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  align-items: center;
+}
+
+.new-quote-service-card-actions .new-quote-service-action,
+.new-quote-service-delete {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+}
+
+.new-quote-service-delete {
+  color: #b34f4f;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.new-quote-service-delete:hover,
+.new-quote-service-delete:focus-visible {
+  color: #8f2929;
+  outline: none;
+  text-decoration: underline;
+}
+
 .new-quote-items-panel {
   margin-bottom: 20px;
 }
@@ -9094,6 +9124,15 @@ body::before {
 
   .new-quote-service-action {
     grid-column: 2;
+  }
+
+  .new-quote-saved-product-card {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .new-quote-saved-product-card .new-quote-service-card-actions {
+    grid-column: 2;
+    justify-content: flex-start;
   }
 
   .new-quote-item {
