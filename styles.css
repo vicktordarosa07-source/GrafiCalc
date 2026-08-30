@@ -9187,3 +9187,61 @@ body::before {
     overflow-y: auto;
   }
 }
+
+/* Native mobile section picker replaces the long horizontal tab rail. */
+.mobile-nav-control {
+  display: none;
+}
+
+@media (max-width: 1180px) {
+  .page-shell:not(.is-auth-mode) .mobile-nav-control {
+    display: grid;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+    margin-bottom: 10px;
+  }
+
+  .page-shell:not(.is-auth-mode) .mobile-nav-control label {
+    color: #55747a;
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+
+  .page-shell:not(.is-auth-mode) #mobile-tab-select {
+    width: 100%;
+    min-height: 50px;
+    padding: 0 42px 0 14px;
+    border: 1px solid rgba(111, 184, 163, .42);
+    border-radius: 16px;
+    background: #fff;
+    color: #173a40;
+    font-size: .96rem;
+    font-weight: 750;
+    box-shadow: 0 10px 24px rgba(21, 87, 83, .08);
+  }
+
+  .page-shell:not(.is-auth-mode) .tab-bar.tab-bar--v3 {
+    display: none !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3 {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 70 !important;
+    margin-bottom: 12px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-shell:not(.is-auth-mode) .mobile-nav-control {
+    margin-bottom: 8px;
+  }
+
+  .page-shell:not(.is-auth-mode) #mobile-tab-select {
+    min-height: 52px;
+    border-radius: 14px;
+  }
+}

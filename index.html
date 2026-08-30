@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GrafiCalc | Orçamento Gráfico</title>
   <link rel="icon" type="image/png" href="./assets/favicon.png">
-  <link rel="stylesheet" href="./styles.css?v=20260809-mobile-menu-fix">
+  <link rel="stylesheet" href="./styles.css?v=20260830-mobile-nav">
 </head>
 <body>
   <svg class="navigation-icon-sprite" aria-hidden="true" focusable="false">
@@ -46,6 +46,32 @@
     </header>
 
     <div class="app-menu-shell app-menu-shell--v3">
+      <div class="mobile-nav-control">
+        <label for="mobile-tab-select">Seção atual</label>
+        <select id="mobile-tab-select" aria-label="Selecionar seção do GrafiCalc">
+          <option value="login">Login</option>
+          <option value="home">Home</option>
+          <option value="novoOrcamento">Novo orçamento</option>
+          <option value="clientes">Clientes</option>
+          <option value="historico">Histórico</option>
+          <option value="orcamento">Orçamentos</option>
+          <option value="os">Ordens de serviço</option>
+          <option value="relatorios">Relatórios</option>
+          <option value="calculo">Apostilas</option>
+          <option value="blocosSulfite">Blocos</option>
+          <option value="cartoes">Cartões</option>
+          <option value="credenciais">Credenciais</option>
+          <option value="impressos">Impressos</option>
+          <option value="m2">Cálculo m²</option>
+          <option value="prontos">Materiais</option>
+          <option value="panfletos">Panfletos</option>
+          <option value="resinados">Resinados</option>
+          <option value="conta">Minha conta</option>
+          <option value="configuracao">Configuração</option>
+          <option value="equipe">Equipe</option>
+          <option value="desenvolvedor">Dev</option>
+        </select>
+      </div>
       <nav class="tab-bar tab-bar--v3" id="main-tab-menu" aria-label="Abas principais">
         <div class="tab-menu-head">
           <div class="menu-brand-card" aria-hidden="true">

@@ -7716,6 +7716,7 @@ async function initApp() {
   let lastGeneratedTemporaryPassword = "";
 
   const tabButtons = [...document.querySelectorAll(".tab-button")];
+  const mobileTabSelect = document.getElementById("mobile-tab-select");
   const menuShortcutButtons = [...document.querySelectorAll("[data-menu-shortcut]")];
   const tabPanels = [...document.querySelectorAll(".tab-panel")];
   const appMenuShell = document.querySelector(".app-menu-shell");
@@ -9697,6 +9698,9 @@ async function initApp() {
     tabButtons.forEach((button) => {
       button.classList.toggle("is-active", button.dataset.tabTarget === tabName);
     });
+    if (mobileTabSelect) {
+      mobileTabSelect.value = tabName;
+    }
     tabPanels.forEach((panel) => {
       panel.classList.toggle("is-active", panel.dataset.tabPanel === tabName);
     });
@@ -13046,6 +13050,10 @@ async function initApp() {
       closeAppMenu();
       collapseDesktopMenuAfterNavigation();
     });
+  });
+
+  mobileTabSelect?.addEventListener("change", () => {
+    selectTab(mobileTabSelect.value);
   });
 
   document.querySelector('[data-tab-panel="home"]')?.addEventListener("click", (event) => {
