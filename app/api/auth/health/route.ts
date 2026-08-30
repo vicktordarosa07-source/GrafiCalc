@@ -20,6 +20,7 @@ export async function GET() {
     supabaseProject: projectRef,
     publicKeyConfigured: Boolean(publishableKey),
     adminKeyConfigured: Boolean(secretKey),
+    turnstileSiteKeyConfigured: Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim()),
     ...environmentStatus,
   }, {
     headers: { "Cache-Control": "no-store" },

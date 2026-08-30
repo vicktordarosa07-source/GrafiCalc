@@ -82,6 +82,7 @@ function knownSignupErrorMessage(error: { message: string }) {
   if (/already|registered|unique|duplicate/.test(detail)) return "Já existe um cadastro com este e-mail ou documento.";
   if (/captcha|turnstile|security check/.test(detail)) return "Conclua a verificação de segurança antes de criar sua conta.";
   if (/redirect|url.*allow|not allowed/.test(detail)) return "O retorno de confirmação ainda não está autorizado no Supabase.";
+  if (/smtp|mailer|email.*send|send.*email|sending.*email|confirmation.*email|email.*confirmation/.test(detail)) return "Cadastro criado, mas o e-mail de confirmação não pôde ser enviado. Verifique o SMTP do Supabase/Resend.";
   if (/database|saving new user|trigger|profile/.test(detail)) return "Não foi possível preparar o seu perfil. Tente novamente em instantes.";
   return null;
 }
@@ -91,7 +92,16 @@ function passwordResetErrorMessage(error: { message: string }) {
   if (/captcha|turnstile|security check/.test(detail)) return "Conclua a verificação de segurança antes de solicitar a recuperação.";
   if (/redirect|url.*allow|not allowed/.test(detail)) return "O retorno da recuperação ainda não está autorizado no Supabase.";
   if (/rate limit|too many|over.*limit/.test(detail)) return "Aguarde alguns minutos antes de solicitar outro e-mail.";
+  if (/smtp|mailer|email.*send|send.*email|sending.*email|recovery.*email|reset.*email/.test(detail)) return "Não foi possível enviar o e-mail de recuperação. Verifique o SMTP do Supabase/Resend.";
   return "Não foi possível solicitar o e-mail de recuperação agora. Tente novamente em instantes.";
+}
+
+function resendConfirmationErrorMessage(error: { message: string }) {
+  const detail = error.message.toLowerCase();
+  if (/captcha|turnstile|security check/.test(detail)) return "Conclua a verificação de segurança antes de reenviar a confirmação.";
+  if (/rate limit|too many|over.*limit/.test(detail)) return "Aguarde um minuto antes de solicitar outro e-mail.";
+  if (/smtp|mailer|email.*send|send.*email|sending.*email|confirmation.*email|email.*confirmation/.test(detail)) return "Não foi possível reenviar a confirmação. Verifique o SMTP do Supabase/Resend.";
+  return "Não foi possível reenviar a confirmação agora. Tente novamente em instantes.";
 }
 
 async function requestIdentity() {
@@ -245,7 +255,10 @@ export async function resendConfirmationAction(_: ActionState, formData: FormDat
     email,
     options: { emailRedirectTo: confirmationCallbackUrl(siteUrl, email), captchaToken: captchaToken || undefined },
   });
-  if (error) return { ok: false, message: "Aguarde um minuto antes de solicitar outro e-mail." };
+  if (error) {
+    console.error("graficalc_resend_confirmation_failure", { message: error.message, status: error.status });
+    return { ok: false, message: resendConfirmationErrorMessage(error) };
+  }
   return { ok: true, message: "Novo e-mail de confirmação enviado." };
 }
 
