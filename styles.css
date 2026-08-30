@@ -9078,3 +9078,112 @@ body::before {
     width: 100%;
   }
 }
+
+/* Final mobile pass: keep touch surfaces and scrolling predictable. */
+@media (max-width: 640px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .page-shell:not(.is-auth-mode) {
+    width: calc(100% - 16px) !important;
+    margin: 8px auto 24px !important;
+    padding: 0 !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .app-menu-shell {
+    top: 6px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .tab-bar {
+    gap: 8px !important;
+    padding: 8px !important;
+    border-radius: 20px !important;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .page-shell:not(.is-auth-mode) .tab-bar .tab-button {
+    min-width: 78px !important;
+    min-height: 70px !important;
+    padding: 10px 8px !important;
+    border-radius: 16px !important;
+    scroll-snap-align: start;
+  }
+
+  .page-shell:not(.is-auth-mode) .hero {
+    padding: 20px 16px !important;
+    border-radius: 24px !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .hero-logo {
+    width: min(100%, 280px) !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .hero-copy {
+    font-size: .92rem !important;
+    line-height: 1.55 !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .tab-panels,
+  .page-shell:not(.is-auth-mode) .tab-panel,
+  .page-shell:not(.is-auth-mode) .panel,
+  .page-shell:not(.is-auth-mode) .panel-table {
+    min-width: 0 !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .panel,
+  .page-shell:not(.is-auth-mode) .panel-table,
+  .page-shell:not(.is-auth-mode) .summary-card {
+    border-radius: 20px !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .panel,
+  .page-shell:not(.is-auth-mode) .panel-table {
+    padding: 16px !important;
+  }
+
+  .panel-heading {
+    min-width: 0;
+  }
+
+  .panel-heading h2,
+  .home-overview-copy h2 {
+    overflow-wrap: anywhere;
+  }
+
+  .button,
+  .tab-button,
+  input,
+  select,
+  textarea {
+    min-height: 44px;
+  }
+
+  .table-shell {
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .table-shell:has(.calculation-vertical-table) {
+    overflow-x: visible;
+  }
+
+  .app-modal-dialog,
+  .finish-popover,
+  .menu-settings-popover {
+    max-width: calc(100vw - 24px) !important;
+  }
+
+  .app-modal-dialog {
+    width: calc(100vw - 24px) !important;
+    max-height: calc(100svh - 24px) !important;
+    overflow-y: auto;
+  }
+}
