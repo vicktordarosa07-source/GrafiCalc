@@ -114,7 +114,7 @@ const OPTIONS = {
   m2CalcModes: ["Independente", "Somar materiais iguais"],
 };
 
-const CONFIG_SECTIONS = ["calculo", "impressos", "credenciais", "m2", "prontos", "resinados", "cartoes", "panfletos", "blocos", "personalizados"];
+const CONFIG_SECTIONS = ["bases", "calculo", "impressos", "credenciais", "m2", "prontos", "resinados", "cartoes", "panfletos", "blocos", "personalizados"];
 const QUOTE_STATUS_META = {
   pending: { label: "Pendente", tone: "pending" },
   sent: { label: "Enviado", tone: "info" },
@@ -2939,14 +2939,14 @@ function saveConfigViewMode(mode) {
 
 function loadConfigSection() {
   if (typeof localStorage === "undefined") {
-    return "calculo";
+    return "bases";
   }
 
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.configSection);
-    return CONFIG_SECTIONS.includes(raw) ? raw : "calculo";
+    return CONFIG_SECTIONS.includes(raw) ? raw : "bases";
   } catch {
-    return "calculo";
+    return "bases";
   }
 }
 
@@ -2954,7 +2954,7 @@ function saveConfigSection(section) {
   if (typeof localStorage === "undefined") {
     return;
   }
-  const safeSection = CONFIG_SECTIONS.includes(section) ? section : "calculo";
+  const safeSection = CONFIG_SECTIONS.includes(section) ? section : "bases";
   localStorage.setItem(STORAGE_KEYS.configSection, safeSection);
 }
 
@@ -4955,6 +4955,7 @@ function applyPresetToRow(row, preset) {
 
 function createConfigSectionTabsMarkup(activeSection = "calculo") {
   const sections = [
+    { id: "bases", label: "Bases de cálculo", helper: "Mídias, impressão e acabamentos." },
     { id: "calculo", label: "Cálculo de apostila", helper: "Impressão, capas e acabamentos." },
     { id: "impressos", label: "Impressos coloridos", helper: "Papéis, cortes e produtos extras." },
     { id: "credenciais", label: "Credenciais", helper: "Materiais, PS, laminação e cordões." },
@@ -5957,8 +5958,18 @@ function createConfigSectionsMarkup(config, viewMode = "basic", activeSection = 
     ),
   ];
 
-  const safeSection = CONFIG_SECTIONS.includes(activeSection) ? activeSection : "calculo";
+  const safeSection = CONFIG_SECTIONS.includes(activeSection) ? activeSection : "bases";
   const configGroups = {
+    bases: createConfigGroupMarkup(
+      "bases",
+      "Bases de cálculo",
+      "Mídias, modos de impressão e acabamentos reunidos em uma referência mestra.",
+      [createConfigCardMarkup(
+        "Catálogo mestre de cálculo",
+        "A origem de cada item permanece indicada para manter as regras específicas de cada motor.",
+        createCalculationBasesMarkup(config)
+      )]
+    ),
     calculo: createConfigGroupMarkup(
       "calculo",
       "Aba: Cálculo de apostila",
@@ -6194,6 +6205,62 @@ function createFreeProductsConfigMarkup(config) {
       <div><strong>${escapeHtml(product.label)}</strong><span>${escapeHtml(modeLabels[product.calculationMode] || "Livre")} · ${normalizeFreePriceTiers(product.priceTiers).length} faixa(s)</span></div>
       <button class="button button-small button-danger" type="button" data-config-free-product-delete="${escapeAttribute(product.id)}">Excluir</button>
     </article>`).join("")}</div>`;
+}
+
+function buildCalculationBases(config) {
+  const addUnique = (list, label, type, source, unit = "") => {
+    const cleanLabel = String(label || "").trim();
+    if (!cleanLabel) return;
+    const key = `${type}::${normalizeLookupText(cleanLabel)}`;
+    const existing = list.find((item) => item.key === key);
+    if (existing) {
+      if (!existing.sources.includes(source)) existing.sources.push(source);
+      return;
+    }
+    list.push({ key, label: cleanLabel, type, unit, sources: [source] });
+  };
+  const media = [];
+  const printModes = [];
+  const finishes = [];
+
+  OPTIONS.colorPaperTypes.forEach((label) => addUnique(media, label, "Papel", "Impressos coloridos", "por unidade"));
+  OPTIONS.coverPapers.forEach((label) => addUnique(media, label, "Papel", "Capas e apostilas", "por unidade"));
+  OPTIONS.credentialMaterials.forEach((label) => addUnique(media, label, "Mídia", "Credenciais", label.startsWith("PS") ? "por m²" : "por unidade"));
+  RESIN_MATERIAL_OPTIONS.forEach((item) => addUnique(media, item.label, "Mídia", "Resinados", "por folha A3"));
+  Object.keys(config.m2Pricing || {}).forEach((key) => addUnique(media, key, "Mídia", "Cálculo de m²", "por m²"));
+  normalizeBlockCatalog(config.blockCatalog).forEach((item) => addUnique(media, item.paper, "Papel", "Blocos", "por bloco"));
+  normalizeCardPricing(config.cardPricing, DEFAULT_CARD_CATALOG).forEach((item) => addUnique(media, item.paper, "Papel", "Cartões", "por unidade"));
+  normalizeFlyerPricing(config.flyerPricing, DEFAULT_FLYER_CATALOG).forEach((item) => addUnique(media, item.paper, "Papel", "Panfletos e folders", "por unidade"));
+  (config.catalogSections || []).forEach((item) => addUnique(media, item.label, "Mídia", item.tab || "Catálogo", "conforme motor"));
+
+  OPTIONS.printTypes.forEach((label) => addUnique(printModes, label, "Processo", "Apostilas e impressos"));
+  OPTIONS.printModes.forEach((label) => addUnique(printModes, label, "Lados", "Apostilas e impressos"));
+  normalizeCardPricing(config.cardPricing, DEFAULT_CARD_CATALOG).forEach((item) => addUnique(printModes, item.printType, "Processo", "Cartões"));
+  normalizeFlyerPricing(config.flyerPricing, DEFAULT_FLYER_CATALOG).forEach((item) => addUnique(printModes, item.printType, "Processo", "Panfletos e folders"));
+
+  OPTIONS.finishing.forEach((label) => addUnique(finishes, label, "Acabamento", "Apostilas"));
+  OPTIONS.credentialLamination.forEach((label) => addUnique(finishes, label, "Acabamento", "Credenciais"));
+  (config.m2Finishes || []).forEach((item) => addUnique(finishes, item.label, "Acabamento", "Cálculo de m²", item.type === "area" ? "por m²" : "por unidade"));
+  normalizeCardFinishes(config.cardFinishes, DEFAULT_CARD_FINISHES).forEach((item) => addUnique(finishes, item.label, "Acabamento", "Cartões", "conforme regra"));
+  normalizeFlyerFinishes(config.flyerFinishes, DEFAULT_FLYER_FINISHES).forEach((item) => addUnique(finishes, item.label, "Acabamento", "Panfletos e folders", "conforme regra"));
+  (config.blockFinishes || []).forEach((item) => addUnique(finishes, item.label, "Acabamento", "Blocos", "por bloco"));
+  (config.credentialLanyardPricing?.printed || []).forEach((item) => addUnique(finishes, item.label, "Acabamento", "Credenciais", "por unidade"));
+
+  return { media, printModes, finishes };
+}
+
+function createCalculationBasesMarkup(config) {
+  const bases = buildCalculationBases(config);
+  const renderList = (items, empty) => items.length
+    ? `<div class="calculation-base-list">${items.map((item) => `<article class="calculation-base-item"><div><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.unit || "Regra configurada")}</span></div><small>${escapeHtml(item.sources.join(" · "))}</small></article>`).join("")}</div>`
+    : `<p class="helper-text">${empty}</p>`;
+  return `
+    <div class="calculation-bases-intro"><strong>Base única de referência</strong><span>Os motores atuais continuam usando seus parâmetros específicos, mas todos os materiais, processos e acabamentos ficam catalogados aqui para reutilização nos produtos personalizados.</span></div>
+    <div class="calculation-bases-grid">
+      <section class="calculation-base-group"><header><h4>Mídias de impressão</h4><span>${bases.media.length} bases</span></header>${renderList(bases.media, "Nenhuma mídia encontrada.")}</section>
+      <section class="calculation-base-group"><header><h4>Modos de impressão</h4><span>${bases.printModes.length} modos</span></header>${renderList(bases.printModes, "Nenhum modo encontrado.")}</section>
+      <section class="calculation-base-group"><header><h4>Acabamentos</h4><span>${bases.finishes.length} opções</span></header>${renderList(bases.finishes, "Nenhum acabamento encontrado.")}</section>
+    </div>`;
 }
 
 function createTableMarkup(headers, rows, prefix, fields) {
