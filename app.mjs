@@ -114,7 +114,7 @@ const OPTIONS = {
   m2CalcModes: ["Independente", "Somar materiais iguais"],
 };
 
-const CONFIG_SECTIONS = ["calculo", "impressos", "credenciais", "m2", "prontos", "resinados", "cartoes", "panfletos", "blocos"];
+const CONFIG_SECTIONS = ["calculo", "impressos", "credenciais", "m2", "prontos", "resinados", "cartoes", "panfletos", "blocos", "personalizados"];
 const QUOTE_STATUS_META = {
   pending: { label: "Pendente", tone: "pending" },
   sent: { label: "Enviado", tone: "info" },
@@ -1277,7 +1277,7 @@ function normalizeFreeProducts(list, categories) {
       id: typeof item.id === "string" && item.id ? item.id : `produto-livre-${index + 1}`,
       label: item.label.trim(),
       categoryId: categoryIds.has(item.categoryId) ? item.categoryId : "geral",
-      calculationMode: ["unit", "area", "sheet", "lot"].includes(item.calculationMode) ? item.calculationMode : "unit",
+      calculationMode: ["unit", "area", "sheet", "linear", "lot"].includes(item.calculationMode) ? item.calculationMode : "unit",
       unitLabel: typeof item.unitLabel === "string" && item.unitLabel.trim() ? item.unitLabel.trim() : "unidades",
       widthCm: Math.max(0, toDecimalNumber(item.widthCm)),
       heightCm: Math.max(0, toDecimalNumber(item.heightCm)),
@@ -4964,6 +4964,7 @@ function createConfigSectionTabsMarkup(activeSection = "calculo") {
     { id: "cartoes", label: "Cartões de visita", helper: "Laser, offset, papéis e acabamentos." },
     { id: "panfletos", label: "Panfletos e folders", helper: "Laser, offset, papéis, tamanhos e cores." },
     { id: "blocos", label: "Blocos", helper: "Papéis, impressão, tabelas e acabamentos." },
+    { id: "personalizados", label: "Produtos personalizados", helper: "Produtos não listados salvos para reutilização." },
   ];
 
   return `
@@ -6012,6 +6013,16 @@ function createConfigSectionsMarkup(config, viewMode = "basic", activeSection = 
       "Configure a tabela de sulfite e autocopiativo, o acréscimo do colorido e os acabamentos usados no orçamento.",
       blockCards
     ),
+    personalizados: createConfigGroupMarkup(
+      "personalizados",
+      "Produtos personalizados",
+      "As regras salvas aqui ficam ocultas do orçamento até você selecionar o produto e preencher suas variáveis.",
+      [createConfigCardMarkup(
+        "Catálogo de produtos não listados",
+        "Nome, modo de cálculo, tamanho de folha e faixas pertencem à configuração persistente.",
+        createFreeProductsConfigMarkup(config)
+      )]
+    ),
   };
 
   return [
@@ -6170,6 +6181,19 @@ function createConfigGroupMarkup(id, title, copy, cards) {
       </div>
     </section>
   `;
+}
+
+function createFreeProductsConfigMarkup(config) {
+  const products = Array.isArray(config?.freeProducts) ? config.freeProducts : [];
+  if (!products.length) {
+    return `<p class="helper-text">Nenhum produto personalizado salvo ainda. Use “Produto não listado” no novo orçamento para criar o primeiro.</p>`;
+  }
+  const modeLabels = { unit: "Por unidade", area: "Por m²", sheet: "Por folha", linear: "Por metro linear", lot: "Por lote" };
+  return `<div class="free-products-config-list">${products.map((product) => `
+    <article class="free-products-config-item">
+      <div><strong>${escapeHtml(product.label)}</strong><span>${escapeHtml(modeLabels[product.calculationMode] || "Livre")} · ${normalizeFreePriceTiers(product.priceTiers).length} faixa(s)</span></div>
+      <button class="button button-small button-danger" type="button" data-config-free-product-delete="${escapeAttribute(product.id)}">Excluir</button>
+    </article>`).join("")}</div>`;
 }
 
 function createTableMarkup(headers, rows, prefix, fields) {
@@ -7182,9 +7206,17 @@ function calculateFreeQuoteItem(item) {
   let detail = `${formatInteger(quantity)} ${product.unitLabel || "unidades"}`;
 
   if (product.calculationMode === "area") {
-    const area = (Number(product.widthCm || 0) * Number(product.heightCm || 0) * quantity) / 10000;
+    const widthCm = Number(item.quoteWidthCm ?? product.widthCm ?? 0);
+    const heightCm = Number(item.quoteHeightCm ?? product.heightCm ?? 0);
+    const area = (widthCm * heightCm * quantity) / 10000;
     billableQuantity = area;
-    detail = `${formatInteger(quantity)} ${product.unitLabel || "unidades"} | ${formatMeasure(product.widthCm)} x ${formatMeasure(product.heightCm)} cm | ${formatAreaM2(area)} m²`;
+    detail = `${formatInteger(quantity)} ${product.unitLabel || "unidades"} | ${formatMeasure(widthCm)} x ${formatMeasure(heightCm)} cm | ${formatAreaM2(area)} m²`;
+  }
+
+  if (product.calculationMode === "linear") {
+    const linearMeters = Math.max(0, toDecimalNumber(item.quoteLinearMeters));
+    billableQuantity = linearMeters * quantity;
+    detail = `${formatInteger(quantity)} ${product.unitLabel || "unidades"} | ${formatMeasure(linearMeters)} m lineares`;
   }
 
   if (product.calculationMode === "sheet") {
@@ -10037,7 +10069,7 @@ async function initApp() {
       .map((product) => ({
         id: `livre:${product.id}`,
         label: product.label,
-        description: `${getFreeProductCategoryLabel(product, config)} · ${({ unit: "Por unidade", area: "Por m²", sheet: "Por folha", lot: "Por lote" })[product.calculationMode] || "Livre"}`,
+        description: `${getFreeProductCategoryLabel(product, config)} · ${({ unit: "Por unidade", area: "Por m²", sheet: "Por folha", linear: "Por metro linear", lot: "Por lote" })[product.calculationMode] || "Livre"}`,
         tab: "novoOrcamento",
         icon: "+",
       }));
@@ -10483,6 +10515,9 @@ async function initApp() {
     const material = field("material");
     const manualValue = field("manualValue");
     const manualArtFee = field("manualArtFee");
+    const quoteWidthCm = field("quoteWidthCm");
+    const quoteHeightCm = field("quoteHeightCm");
+    const quoteLinearMeters = field("quoteLinearMeters");
     const productLabel = field("productLabel");
     const categoryId = field("categoryId");
     const calculationMode = field("calculationMode");
@@ -10497,6 +10532,9 @@ async function initApp() {
     if (material instanceof HTMLInputElement) draft.material = material.value;
     if (manualValue instanceof HTMLInputElement) draft.manualValue = Math.max(0, toMoneyNumber(manualValue.value));
     if (manualArtFee instanceof HTMLInputElement) draft.manualArtFee = Math.max(0, toMoneyNumber(manualArtFee.value));
+    if (quoteWidthCm instanceof HTMLInputElement) draft.quoteWidthCm = Math.max(0, toDecimalNumber(quoteWidthCm.value));
+    if (quoteHeightCm instanceof HTMLInputElement) draft.quoteHeightCm = Math.max(0, toDecimalNumber(quoteHeightCm.value));
+    if (quoteLinearMeters instanceof HTMLInputElement) draft.quoteLinearMeters = Math.max(0, toDecimalNumber(quoteLinearMeters.value));
 
     if (productLabel instanceof HTMLInputElement) draft.product.label = productLabel.value;
     if (categoryId instanceof HTMLSelectElement) draft.product.categoryId = categoryId.value;
@@ -10554,6 +10592,9 @@ async function initApp() {
       discountValue: 0,
       entryMode,
       quoteArtFee: 0,
+      quoteWidthCm: normalizedProduct.widthCm,
+      quoteHeightCm: normalizedProduct.heightCm,
+      quoteLinearMeters: 1,
       manualValue: 0,
       manualArtFee: 0,
       material: "",
@@ -10562,7 +10603,7 @@ async function initApp() {
     };
   }
 
-  function openNewQuoteFreeEditor(productId = "", entryMode = productId ? "saved" : "choice") {
+  function openNewQuoteFreeEditor(productId = "", entryMode = productId ? "variables" : "choice") {
     const product = (config.freeProducts || []).find((item) => item.id === productId) || null;
     const draft = createFreeQuoteDraft(product, entryMode);
     state.freeQuoteItems.push(draft);
@@ -10581,7 +10622,7 @@ async function initApp() {
   }
 
   function saveFreeProductFromDraft(draft) {
-    if (!draft || draft.entryMode === "quote") return false;
+    if (!draft || draft.entryMode !== "saved") return false;
     syncNewQuoteFreeDraftFromForm(draft);
     const label = String(draft.product.label || "").trim();
     if (!label) {
@@ -10590,6 +10631,10 @@ async function initApp() {
     }
     if (!normalizeFreePriceTiers(draft.product.priceTiers).some((tier) => Number(tier.value) > 0)) {
       setMainFeedback("Informe um valor maior que zero em pelo menos uma faixa de preço.", "warning");
+      return false;
+    }
+    if (draft.product.calculationMode === "sheet" && (Number(draft.product.widthCm) <= 0 || Number(draft.product.heightCm) <= 0 || Number(draft.product.sheetWidthCm) <= 0 || Number(draft.product.sheetHeightCm) <= 0)) {
+      setMainFeedback("Informe as dimensões do produto e da folha para salvar o cálculo por folha.", "warning");
       return false;
     }
     if (draft.product.categoryId === "__new") {
@@ -10612,7 +10657,8 @@ async function initApp() {
     draft.product.priceTiers = normalizeFreePriceTiers(draft.product.priceTiers);
     persist();
     renderNewQuoteServices();
-    renderNewQuoteFreeEditor();
+    closeNewQuoteFreeEditor(true);
+    renderNewQuoteBuilder();
     setMainFeedback("Produto salvo no catálogo.", "success");
     return true;
   }
@@ -10682,6 +10728,33 @@ async function initApp() {
         <div class="toolbar new-quote-card-editor-actions"><button class="button" type="button" data-new-quote-free-action="cancel">Descartar item</button><button class="button button-primary" type="button" data-new-quote-free-action="confirm">Adicionar ao orçamento</button></div>`;
       return;
     }
+    const isVariableEditor = draft.entryMode === "variables";
+    if (isVariableEditor) {
+      const variableFields = product.calculationMode === "area" ? `
+        <label><span>Largura deste orçamento (cm)</span><input name="quoteWidthCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(draft.quoteWidthCm)}"></label>
+        <label><span>Altura deste orçamento (cm)</span><input name="quoteHeightCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(draft.quoteHeightCm)}"></label>`
+        : product.calculationMode === "linear" ? `
+        <label><span>Metros lineares</span><input name="quoteLinearMeters" type="number" min="0.01" step="0.01" value="${escapeAttribute(draft.quoteLinearMeters)}"></label>`
+        : "";
+      const modeLabel = ({ unit: "Por unidade", area: "Por m²", sheet: "Por folha", linear: "Por metro linear", lot: "Por lote" })[product.calculationMode];
+      newQuoteFreeEditor.hidden = false;
+      newQuoteFreeEditor.innerHTML = `
+        <div class="panel-heading new-quote-inline-heading">
+          <div><span class="new-quote-eyebrow">Variáveis do orçamento</span><h2>${escapeHtml(product.label)}</h2><p class="panel-copy">A configuração deste produto já está salva. Preencha somente os dados deste orçamento.</p></div>
+          <button class="button button-compact" type="button" data-new-quote-free-action="cancel">Cancelar</button>
+        </div>
+        <div class="new-quote-card-editor-grid">
+          <label><span>Quantidade</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity)}"></label>
+          ${variableFields}
+          <label><span>Valor de arte</span><input name="artFee" type="number" min="0" step="0.01" value="${escapeAttribute(draft.quoteArtFee)}" placeholder="0,00"></label>
+          <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, draft.discountType)}</select></label>
+          <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(draft.discountValue)}" placeholder="0,00"></label>
+          <label><span>Observação</span><input name="note" value="${escapeAttribute(draft.note || "")}" placeholder="Opcional"></label>
+        </div>
+        <div class="new-quote-card-preview"><div><span>Modo</span><strong>${escapeHtml(modeLabel)}</strong></div><div><span>Faixa aplicada</span><strong>${escapeHtml(calculated.tier?.label || "A definir")}</strong></div><div><span>Total do item</span><strong>${formatCurrency(calculated.total)}</strong></div><div><span>Valor unitário</span><strong>${formatCurrency(calculated.unitValue)}</strong></div></div>
+        <div class="toolbar new-quote-card-editor-actions"><button class="button" type="button" data-new-quote-free-action="cancel">Descartar item</button><button class="button button-primary" type="button" data-new-quote-free-action="confirm">Adicionar ao orçamento</button></div>`;
+      return;
+    }
     const categoryOptions = [
       `<option value="geral"${product.categoryId === "geral" ? " selected" : ""}>Produtos livres</option>`,
       ...(config.freeProductCategories || []).map((category) => `<option value="${escapeAttribute(category.id)}"${product.categoryId === category.id ? " selected" : ""}>${escapeHtml(category.label)}</option>`),
@@ -10694,17 +10767,14 @@ async function initApp() {
         <input data-free-tier-field="label" data-free-tier-index="${index}" type="text" value="${escapeAttribute(tier.label)}" aria-label="Descrição da faixa">
         ${index > 0 ? `<button class="button button-compact" type="button" data-new-quote-free-action="remove-tier" data-free-tier-index="${index}">Remover</button>` : ""}
       </div>`).join("");
-    const modeFields = product.calculationMode === "area" ? `
-      <label><span>Largura (cm)</span><input name="widthCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.widthCm)}"></label>
-      <label><span>Altura (cm)</span><input name="heightCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.heightCm)}"></label>`
-      : product.calculationMode === "sheet" ? `
+    const modeFields = product.calculationMode === "sheet" ? `
       <label><span>Largura do produto (cm)</span><input name="widthCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.widthCm)}"></label>
       <label><span>Altura do produto (cm)</span><input name="heightCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.heightCm)}"></label>
       <label><span>Tamanho da folha</span><select name="sheetPreset"><option value="a4"${product.sheetPreset === "a4" ? " selected" : ""}>A4 (21 x 29,7 cm)</option><option value="a3"${product.sheetPreset === "a3" ? " selected" : ""}>A3 (29,7 x 42 cm)</option><option value="12x18"${product.sheetPreset === "12x18" ? " selected" : ""}>12 x 18 pol (30,48 x 45,72 cm)</option><option value="custom"${!['a4', 'a3', '12x18'].includes(product.sheetPreset) ? " selected" : ""}>Folha personalizada</option></select></label>
       <label><span>Largura da folha (cm)</span><input name="sheetWidthCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.sheetWidthCm)}"></label>
       <label><span>Altura da folha (cm)</span><input name="sheetHeightCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(product.sheetHeightCm)}"></label>
       <label><span>Espaço técnico (cm)</span><input name="spacingCm" type="number" min="0" step="0.1" value="${escapeAttribute(product.spacingCm)}"></label>` : "";
-    const modeLabel = ({ unit: "Por unidade", area: "Por m²", sheet: "Por folha", lot: "Por lote" })[product.calculationMode];
+    const modeLabel = ({ unit: "Por unidade", area: "Por m²", sheet: "Por folha", linear: "Por metro linear", lot: "Por lote" })[product.calculationMode];
     newQuoteFreeEditor.hidden = false;
     newQuoteFreeEditor.innerHTML = `
       <div class="panel-heading new-quote-inline-heading">
@@ -10715,7 +10785,7 @@ async function initApp() {
         <label><span>Nome do produto</span><input name="productLabel" value="${escapeAttribute(product.label)}" placeholder="Ex.: Display de balcão" autocomplete="off"></label>
         <label><span>Categoria</span><select name="categoryId">${categoryOptions}</select></label>
         ${product.categoryId === "__new" ? `<label><span>Nome da nova categoria</span><input name="newCategoryLabel" value="${escapeAttribute(draft.newCategoryLabel || "")}" placeholder="Ex.: Comunicação visual"></label>` : ""}
-        <label><span>Como calcular</span><select name="calculationMode"><option value="unit"${product.calculationMode === "unit" ? " selected" : ""}>Por unidade</option><option value="area"${product.calculationMode === "area" ? " selected" : ""}>Por m²</option><option value="sheet"${product.calculationMode === "sheet" ? " selected" : ""}>Por folha</option><option value="lot"${product.calculationMode === "lot" ? " selected" : ""}>Por lote</option></select></label>
+        <label><span>Como calcular</span><select name="calculationMode"><option value="unit"${product.calculationMode === "unit" ? " selected" : ""}>Por unidade</option><option value="area"${product.calculationMode === "area" ? " selected" : ""}>Por m²</option><option value="sheet"${product.calculationMode === "sheet" ? " selected" : ""}>Por folha</option><option value="linear"${product.calculationMode === "linear" ? " selected" : ""}>Por metro linear</option><option value="lot"${product.calculationMode === "lot" ? " selected" : ""}>Por lote</option></select></label>
         <label><span>Unidade de venda</span><input name="unitLabel" value="${escapeAttribute(product.unitLabel)}" placeholder="unidades"></label>
         ${modeFields}
       </div>
@@ -10729,7 +10799,7 @@ async function initApp() {
       </div>
       <div class="free-product-tiers"><div class="free-product-tiers-heading"><div><strong>Faixas de preço</strong><span>O sistema aplica a faixa correspondente à quantidade${product.calculationMode === "sheet" ? " de folhas" : ""}.</span></div><button class="button button-compact" type="button" data-new-quote-free-action="add-tier">Adicionar faixa</button></div><div class="free-product-tier-labels"><span>Mínimo</span><span>Valor</span><span>Descrição</span></div>${tierMarkup}</div>
       <div class="new-quote-card-preview"><div><span>Modelo</span><strong>${escapeHtml(modeLabel)}</strong></div><div><span>Faixa aplicada</span><strong>${escapeHtml(calculated.tier?.label || "A definir")}</strong></div><div><span>Total do item</span><strong>${formatCurrency(calculated.total)}</strong></div><div><span>Valor unitário</span><strong>${formatCurrency(calculated.unitValue)}</strong></div></div>
-      <div class="toolbar new-quote-card-editor-actions"><button class="button" type="button" data-new-quote-free-action="cancel">Descartar item</button><button class="button" type="button" data-new-quote-free-action="save-product">${draft.catalogProductId ? "Atualizar produto" : "Salvar produto"}</button><button class="button button-primary" type="button" data-new-quote-free-action="confirm">Adicionar ao orçamento</button></div>`;
+      <div class="toolbar new-quote-card-editor-actions"><button class="button" type="button" data-new-quote-free-action="cancel">Cancelar</button><button class="button button-primary" type="button" data-new-quote-free-action="save-product">${draft.catalogProductId ? "Atualizar produto" : "Salvar produto"}</button></div>`;
   }
 
   function getNewQuoteReadyDraft() {
@@ -15203,6 +15273,13 @@ async function initApp() {
       return;
     }
 
+    const freeProductDeleteButton = event.target.closest("[data-config-free-product-delete]");
+    if (freeProductDeleteButton) {
+      await deleteFreeProduct(freeProductDeleteButton.dataset.configFreeProductDelete);
+      renderConfig();
+      return;
+    }
+
     const modeButton = event.target.closest("[data-config-view-mode]");
     if (modeButton) {
       configViewMode = modeButton.dataset.configViewMode === "advanced" ? "advanced" : "basic";
@@ -15831,6 +15908,9 @@ async function initApp() {
     if (target.name === "material") draft.material = target.value;
     if (target.name === "manualValue") draft.manualValue = Math.max(0, toMoneyNumber(target.value));
     if (target.name === "manualArtFee") draft.manualArtFee = Math.max(0, toMoneyNumber(target.value));
+    if (target.name === "quoteWidthCm") draft.quoteWidthCm = Math.max(0, toDecimalNumber(target.value));
+    if (target.name === "quoteHeightCm") draft.quoteHeightCm = Math.max(0, toDecimalNumber(target.value));
+    if (target.name === "quoteLinearMeters") draft.quoteLinearMeters = Math.max(0, toDecimalNumber(target.value));
     if (target.name === "newCategoryLabel") draft.newCategoryLabel = target.value;
     if (target.name === "unitLabel") draft.product.unitLabel = target.value;
     if (target.name === "note") draft.product.note = target.value;
@@ -15919,13 +15999,21 @@ async function initApp() {
         setMainFeedback("Informe uma descrição para este orçamento.", "warning");
         return;
       }
-      if (draft.entryMode !== "quote") {
+      if (draft.entryMode === "variables" && draft.product.calculationMode === "area" && (Number(draft.quoteWidthCm) <= 0 || Number(draft.quoteHeightCm) <= 0)) {
+        setMainFeedback("Informe largura e altura válidas para calcular o m².", "warning");
+        return;
+      }
+      if (draft.entryMode === "variables" && draft.product.calculationMode === "linear" && Number(draft.quoteLinearMeters) <= 0) {
+        setMainFeedback("Informe uma quantidade de metros lineares maior que zero.", "warning");
+        return;
+      }
+      if (draft.entryMode === "saved") {
         if (!saveFreeProductFromDraft(draft)) return;
       }
       persist();
       renderNewQuoteBuilder();
       closeNewQuoteFreeEditor(false);
-      setMainFeedback(draft.entryMode === "quote" ? "Produto adicionado somente a este orçamento." : "Produto salvo no catálogo e adicionado ao orçamento.", "success");
+      setMainFeedback(draft.entryMode === "quote" ? "Produto adicionado somente a este orçamento." : "Produto adicionado ao orçamento.", "success");
     }
   });
 

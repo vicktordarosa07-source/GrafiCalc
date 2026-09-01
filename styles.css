@@ -8649,6 +8649,40 @@ body::before {
   text-transform: uppercase;
 }
 
+.free-products-config-list {
+  display: grid;
+  gap: 8px;
+}
+
+.free-products-config-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(83, 163, 143, 0.2);
+  border-radius: 10px;
+  background: rgba(234, 251, 244, 0.42);
+}
+
+.free-products-config-item > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.free-products-config-item strong {
+  overflow: hidden;
+  color: #173f42;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.free-products-config-item span {
+  color: #6b8186;
+  font-size: 0.76rem;
+}
+
 .new-quote-service-card-actions {
   display: flex;
   flex-wrap: wrap;
@@ -9162,6 +9196,11 @@ body::before {
   .new-quote-card-finishes {
     grid-template-columns: 1fr;
     align-items: stretch;
+  }
+
+  .free-products-config-item {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .new-quote-card-finish-popover,
