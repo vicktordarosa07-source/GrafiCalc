@@ -3089,13 +3089,22 @@ function toWholeNumber(value) {
 }
 
 function toMoneyNumber(value) {
-  const parsed = Number.parseFloat(value);
+  const parsed = Number.parseFloat(normalizeNumberInput(value));
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
 function toDecimalNumber(value) {
-  const parsed = Number.parseFloat(value);
+  const parsed = Number.parseFloat(normalizeNumberInput(value));
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function normalizeNumberInput(value) {
+  const raw = String(value ?? "").trim().replace(/\s/g, "");
+  if (!raw) return "";
+  const lastComma = raw.lastIndexOf(",");
+  const lastDot = raw.lastIndexOf(".");
+  if (lastComma > lastDot) return raw.replace(/\./g, "").replace(",", ".");
+  return raw.replace(/,/g, "");
 }
 
 function normalizeDiscountType(value) {
