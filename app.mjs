@@ -11312,6 +11312,11 @@ async function initApp() {
         <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, normalizeDiscountType(draft.discountType))}</select></label>
         <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(normalizeDiscountValue(draft.discountValue))}" placeholder="0,00"></label>
       </div>
+      <div class="new-quote-booklet-pdf-import">
+        <input type="file" accept=".pdf,application/pdf" multiple hidden data-new-quote-booklet-pdf-input>
+        <button class="button button-primary" type="button" data-new-quote-booklet-import>Importar PDF e ler páginas</button>
+        <span class="helper-text">O nome do arquivo vira a descrição e a quantidade de páginas é preenchida automaticamente.</span>
+      </div>
       <div class="new-quote-card-preview" aria-label="Resumo da apostila">
         <div><span>Impressão interna</span><strong>${formatCurrency(row.innerTotal || 0)}</strong></div>
         <div><span>Capas</span><strong>${formatCurrency((row.coverTotal || 0) + (row.backTotal || 0))}</strong></div>
@@ -13730,14 +13735,15 @@ async function initApp() {
     renderRowsAndSummary();
   }
 
-  async function importPdfFiles(fileList) {
+  async function importPdfFiles(fileList, targetRowId = "") {
     const files = [...fileList].filter((file) => file.name.toLowerCase().endsWith(".pdf"));
     if (files.length === 0) {
       setMainFeedback("Nenhum PDF válido foi selecionado. Escolha um ou mais arquivos em PDF para preencher as linhas automaticamente.", "warning");
       return;
     }
 
-    const firstFreeIndex = state.rows.findIndex((row) => !isRowActive(row));
+    const targetIndex = targetRowId ? state.rows.findIndex((row) => row.id === targetRowId) : -1;
+    const firstFreeIndex = targetIndex >= 0 ? targetIndex : state.rows.findIndex((row) => !isRowActive(row));
     const startIndex = firstFreeIndex === -1 ? state.rows.length : firstFreeIndex;
     ensureRowCount(state, startIndex + files.length);
 
@@ -13755,7 +13761,11 @@ async function initApp() {
 
     persist();
     renderRowsAndSummary();
-      setMainFeedback(`${imported} PDF(s) importado(s) com sucesso. Se a contagem de páginas de algum arquivo vier diferente, você pode corrigir direto na linha.`, "success");
+    if (targetRowId === activeNewQuoteBookletId) {
+      renderNewQuoteBookletEditor();
+      renderNewQuoteBuilder();
+    }
+    setMainFeedback(`${imported} PDF(s) importado(s) com sucesso. Se a contagem de páginas de algum arquivo vier diferente, você pode corrigir direto na linha.`, "success");
   }
 
   tabButtons.forEach((button) => {
@@ -16850,10 +16860,17 @@ async function initApp() {
     draft.description = target.value;
   });
 
-  newQuoteBookletEditor?.addEventListener("change", (event) => {
+  newQuoteBookletEditor?.addEventListener("change", async (event) => {
     const draft = getNewQuoteBookletDraft();
     const target = event.target;
     if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+    if (target.matches("[data-new-quote-booklet-pdf-input]")) {
+      if (target.files?.length) {
+        await importPdfFiles(target.files, draft.id);
+        target.value = "";
+      }
+      return;
+    }
     if (["pages", "quantity", "colorPages"].includes(target.name)) {
       draft[target.name] = Math.max(0, toWholeNumber(target.value));
     } else if (target.name === "pagesPerSheet") {
@@ -16872,6 +16889,10 @@ async function initApp() {
   });
 
   newQuoteBookletEditor?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-new-quote-booklet-import]")) {
+      newQuoteBookletEditor.querySelector("[data-new-quote-booklet-pdf-input]")?.click();
+      return;
+    }
     const action = event.target.closest("[data-new-quote-booklet-action]")?.dataset.newQuoteBookletAction;
     if (!action) return;
     if (action === "cancel") {
