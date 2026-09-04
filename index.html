@@ -63,6 +63,7 @@
           <option value="credenciais">Credenciais</option>
           <option value="impressos">Impressos</option>
           <option value="m2">Cálculo m²</option>
+          <option value="metroLinear">Metro linear</option>
           <option value="prontos">Materiais</option>
           <option value="panfletos">Panfletos</option>
           <option value="resinados">Resinados</option>
@@ -107,6 +108,7 @@
         <button class="tab-button" data-tab-target="credenciais" title="Credenciais" data-tooltip="Credenciais"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-badge"></use></svg><span class="tab-button-label">Credenciais</span></button>
         <button class="tab-button" data-tab-target="impressos" title="Impressos coloridos" data-tooltip="Impressos coloridos"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-print"></use></svg><span class="tab-button-label">Impressos</span></button>
         <button class="tab-button" data-tab-target="m2" title="Cálculo de m²" data-tooltip="Cálculo de m²"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-ruler"></use></svg><span class="tab-button-label">Cálculo m²</span></button>
+        <button class="tab-button" data-tab-target="metroLinear" title="Metro linear" data-tooltip="Metro linear"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-ruler"></use></svg><span class="tab-button-label">Metro linear</span></button>
         <button class="tab-button" data-tab-target="prontos" title="Materiais prontos" data-tooltip="Materiais prontos"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-box"></use></svg><span class="tab-button-label">Materiais</span></button>
         <button class="tab-button" data-tab-target="panfletos" title="Panfletos e folders" data-tooltip="Panfletos e folders"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-flyer"></use></svg><span class="tab-button-label">Panfletos</span></button>
         <button class="tab-button" data-tab-target="resinados" title="Resinados" data-tooltip="Resinados"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-resin"></use></svg><span class="tab-button-label">Resinados</span></button>
@@ -937,6 +939,22 @@
           </div>
 
           <div class="warning-list" id="credential-warning-list"></div>
+        </article>
+      </section>
+
+      <section class="tab-panel" data-tab-panel="metroLinear">
+        <div class="summary-grid">
+          <article class="summary-card"><span class="summary-label">Linhas ativas</span><strong id="linear-meter-summary-active">0</strong></article>
+          <article class="summary-card"><span class="summary-label">Metros lineares</span><strong id="linear-meter-summary-quantity">0 m</strong></article>
+          <article class="summary-card"><span class="summary-label">Total geral</span><strong id="linear-meter-summary-total">R$ 0,00</strong></article>
+          <article class="summary-card"><span class="summary-label">Valor médio</span><strong id="linear-meter-summary-average">R$ 0,00</strong></article>
+        </div>
+        <article class="panel panel-table">
+          <div class="panel-heading"><div><h2>Metro linear</h2><p class="panel-copy">DTF têxtil, DTF UV, canvas e papéis vendidos por metro linear.</p></div></div>
+          <div class="toolbar"><button id="add-linear-meter-row-button" class="button button-primary" type="button">Adicionar linha</button><button id="clear-linear-meter-rows-button" class="button button-danger" type="button">Limpar linhas</button></div>
+          <p class="helper-text status-note" id="linear-meter-feedback">Informe as medidas da peça e a quantidade para calcular o aproveitamento.</p>
+          <div class="table-shell"><table class="budget-table"><thead><tr><th>Item</th><th>Material</th><th>Prazo / tabela</th><th>Descrição</th><th>Largura fixa</th><th>Largura (cm)</th><th>Altura (cm)</th><th>Quantidade</th><th>Aproveitamento</th><th>Metro linear</th><th>Valor base</th><th>Arte</th><th>Tipo desc.</th><th>Desconto</th><th>Total</th></tr></thead><tbody id="linear-meter-rows-table-body"></tbody></table></div>
+          <div class="warning-list" id="linear-meter-warning-list"></div>
         </article>
       </section>
 

@@ -49,6 +49,7 @@ const APP_TAB_LABELS = [
   { id: "impressos", label: "Impressos coloridos" },
   { id: "credenciais", label: "Credenciais" },
   { id: "m2", label: "Cálculo de m²" },
+  { id: "metroLinear", label: "Metro linear" },
   { id: "prontos", label: "Materiais prontos" },
   { id: "resinados", label: "Resinados" },
   { id: "cartoes", label: "Cartões de visita" },
@@ -69,6 +70,7 @@ const EMPLOYEE_OPERATION_TABS = new Set([
   "impressos",
   "credenciais",
   "m2",
+  "metroLinear",
   "prontos",
   "resinados",
   "cartoes",
@@ -932,6 +934,30 @@ function createDefaultConfig() {
         { min: 1000000, value: 178, label: "acima de 10 m²" },
       ],
     },
+    linearMeterPricing: {
+      dtfTextile: {
+        widthLabel: "58 cm",
+        variants: [
+          { id: "2-dias", label: "Até 2 dias úteis", minimumOrder: 15, tiers: [{ upTo: 0.5, rate: 60, applicationRate: 0 }, { upTo: 1, rate: 50, applicationRate: 0 }, { upTo: 3, rate: 40, applicationRate: 0 }, { upTo: null, rate: 35, applicationRate: 0 }] },
+          { id: "amanha", label: "Necessito pra amanhã", minimumOrder: 20, tiers: [{ upTo: 0.5, rate: 90, applicationRate: 0 }, { upTo: 1, rate: 70, applicationRate: 0 }, { upTo: 3, rate: 55, applicationRate: 0 }, { upTo: null, rate: 50, applicationRate: 0 }] },
+          { id: "hoje", label: "Necessito pra hoje", minimumOrder: 40, tiers: [{ upTo: 0.5, rate: 110, applicationRate: 0 }, { upTo: 1, rate: 100, applicationRate: 0 }, { upTo: 3, rate: 90, applicationRate: 0 }, { upTo: null, rate: 85, applicationRate: 0 }] },
+        ],
+      },
+      dtfUv: {
+        widthLabel: "28 cm",
+        variants: [
+          { id: "padrao", label: "Tabela padrão", minimumHalfMeter: 65, oneMeterTotal: 80, rateUpTo3m: 75, rateAbove3m: 65 },
+          { id: "urgente", label: "Tabela urgente", minimumHalfMeter: 110, oneMeterTotal: 170, rateUpTo3m: 165, rateAbove3m: 100 },
+        ],
+      },
+      products: {
+        canvas: { widthLabel: "1,24 m", rate: 110, minimumOrder: 45 },
+        "papel-glossy": { widthLabel: "1,24 m", rate: 90, minimumOrder: 32 },
+        "couche-210g": { widthLabel: "95 cm", rate: 39, minimumOrder: 39 },
+        "couche-170g": { widthLabel: "95 cm", rate: 34, minimumOrder: 34 },
+        "papel-65g": { widthLabel: "1,4 m", rate: 34, minimumOrder: 34 },
+      },
+    },
     m2Finishes: [
       { id: "ilhós-simples", label: "Ilhós Simples", type: "eyelet", price: 0.9, spacingCm: 20 },
       { id: "ilhós-latão", label: "Ilhós Latão", type: "eyelet", price: 1.5, spacingCm: 20 },
@@ -1025,6 +1051,65 @@ function createDefaultCredentialRow(index) {
     discountType: "R$",
     discountValue: 0,
   };
+}
+
+const LINEAR_METER_CATALOG = [
+  { id: "dtf-textil", label: "DTF têxtil", widthLabel: "58 cm", variants: [{ id: "2-dias", label: "Até 2 dias úteis" }, { id: "amanha", label: "Necessito pra amanhã" }, { id: "hoje", label: "Necessito pra hoje" }] },
+  { id: "dtf-uv", label: "DTF UV", widthLabel: "28 cm", variants: [{ id: "padrao", label: "Tabela padrão" }, { id: "urgente", label: "Tabela urgente" }] },
+  { id: "canvas", label: "Canvas", widthLabel: "1,24 m" },
+  { id: "papel-glossy", label: "Papel glossy", widthLabel: "1,24 m" },
+  { id: "couche-210g", label: "Couche 210g", widthLabel: "95 cm" },
+  { id: "couche-170g", label: "Couche 170g", widthLabel: "95 cm" },
+  { id: "papel-65g", label: "Papel 65g", widthLabel: "1,4 m" },
+];
+
+function createDefaultLinearMeterRow(index) {
+  return { id: `linear-meter-row-${index + 1}`, productType: "dtf-textil", variantType: "2-dias", description: "", widthCm: 0, heightCm: 0, quantity: 0, linearMeters: 0, artCreationFee: 0, discountType: "R$", discountValue: 0 };
+}
+
+function getLinearMeterCatalog(config) {
+  const pricing = config?.linearMeterPricing || {};
+  return LINEAR_METER_CATALOG.map((product) => ({ ...product, ...(pricing.products?.[product.id] || {}), ...(product.id === "dtf-textil" ? pricing.dtfTextile || {} : {}), ...(product.id === "dtf-uv" ? pricing.dtfUv || {} : {}) }));
+}
+
+function calculateLinearMeterRow(source, index, config) {
+  const product = getLinearMeterCatalog(config).find((item) => item.id === source.productType) || getLinearMeterCatalog(config)[0];
+  const pricing = config.linearMeterPricing || {};
+  const variants = product.id === "dtf-textil" ? pricing.dtfTextile?.variants : product.id === "dtf-uv" ? pricing.dtfUv?.variants : [];
+  const variant = variants?.find((item) => item.id === source.variantType) || variants?.[0] || null;
+  const widthCm = Math.max(0, toDecimalNumber(source.widthCm));
+  const heightCm = Math.max(0, toDecimalNumber(source.heightCm));
+  const quantity = Math.max(0, toWholeNumber(source.quantity));
+  const widthText = String(product.widthLabel || "").toLowerCase();
+  const materialWidth = Number.parseFloat(widthText.replace(",", ".")) * (widthText.includes("cm") ? 1 : 100);
+  const orientations = [{ w: widthCm, h: heightCm, rotated: false }, { w: heightCm, h: widthCm, rotated: true }]
+    .filter((item) => item.w > 0 && item.h > 0 && quantity > 0 && item.w <= materialWidth)
+    .map((item) => ({ ...item, columns: Math.floor(materialWidth / item.w), rows: Math.ceil(quantity / Math.floor(materialWidth / item.w)), meters: Math.ceil(quantity / Math.floor(materialWidth / item.w)) * item.h / 100 }))
+    .sort((a, b) => a.meters - b.meters);
+  const layout = orientations[0];
+  const hasDimensions = widthCm > 0 || heightCm > 0 || quantity > 0;
+  const meters = layout?.meters || (hasDimensions ? 0 : Math.max(0, toDecimalNumber(source.linearMeters)));
+  let baseTotal = 0;
+  if (meters > 0) {
+    if (product.id === "dtf-textil") {
+      const tier = (variant?.tiers || []).find((item) => meters <= Number(item.upTo ?? Infinity)) || variant?.tiers?.[variant.tiers.length - 1];
+      baseTotal = Math.max(toMoneyNumber(variant?.minimumOrder), meters * (toMoneyNumber(tier?.rate) + toMoneyNumber(tier?.applicationRate)));
+    } else if (product.id === "dtf-uv") {
+      baseTotal = meters <= 0.5 ? toMoneyNumber(variant?.minimumHalfMeter) : meters <= 1 ? toMoneyNumber(variant?.oneMeterTotal) : meters <= 3 ? meters * toMoneyNumber(variant?.rateUpTo3m) : meters * toMoneyNumber(variant?.rateAbove3m);
+    } else {
+      baseTotal = Math.max(toMoneyNumber(product.minimumOrder), meters * toMoneyNumber(product.rate));
+    }
+  }
+  const artFee = toMoneyNumber(source.artCreationFee);
+  const discount = calculateDiscount(baseTotal + artFee, source);
+  return { ...source, active: Boolean(source.description?.trim() || hasDimensions || meters > 0 || artFee > 0), valid: meters > 0 && (!hasDimensions || Boolean(layout)), productLabel: product.label, variantLabel: variant?.label || "", fixedWidthLabel: product.widthLabel, columns: layout?.columns || 0, rows: layout?.rows || 0, rotated: Boolean(layout?.rotated), linearMeters: meters, baseTotal, artFee, discount: discount.discountAmount, total: discount.totalAfterDiscount, unitValue: quantity > 0 ? discount.totalAfterDiscount / quantity : discount.totalAfterDiscount, warning: hasDimensions && !layout ? `Item ${String(index + 1).padStart(2, "0")}: a peça não cabe na largura de ${product.widthLabel}.` : "" };
+}
+
+function calculateLinearMeterWorkbook(state, config) {
+  const rows = (state.linearMeterItems || []).map((row, index) => calculateLinearMeterRow({ ...createDefaultLinearMeterRow(index), ...row }, index, config));
+  const activeRows = rows.filter((row) => row.active);
+  const total = activeRows.reduce((sum, row) => sum + row.total, 0);
+  return { rows, activeRows, warnings: activeRows.filter((row) => row.warning).map((row) => row.warning), totals: { activeLines: activeRows.length, totalQuantity: activeRows.reduce((sum, row) => sum + row.linearMeters, 0), totalGeneral: total, averageValue: activeRows.length ? total / activeRows.length : 0 } };
 }
 
 function createDefaultM2Row(index) {
@@ -1146,6 +1231,7 @@ function createDefaultState() {
     colorPrintItems: Array.from({ length: 5 }, (_, index) => createDefaultColorPrintRow(index)),
     credentialItems: Array.from({ length: 5 }, (_, index) => createDefaultCredentialRow(index)),
     m2Items: Array.from({ length: 5 }, (_, index) => createDefaultM2Row(index)),
+    linearMeterItems: Array.from({ length: 5 }, (_, index) => createDefaultLinearMeterRow(index)),
     readyItems: Array.from({ length: 5 }, (_, index) => createDefaultReadyRow(index)),
     resinItems: Array.from({ length: 5 }, (_, index) => createDefaultResinRow(index)),
     cardItems: Array.from({ length: 5 }, (_, index) => createDefaultCardRow(index)),
@@ -1564,6 +1650,23 @@ function mergeConfig(candidate) {
     }
   }
 
+  if (candidate.linearMeterPricing && typeof candidate.linearMeterPricing === "object") {
+    const pricing = candidate.linearMeterPricing;
+    merged.linearMeterPricing = {
+      ...merged.linearMeterPricing,
+      ...pricing,
+      dtfTextile: {
+        ...merged.linearMeterPricing.dtfTextile,
+        ...(pricing.dtfTextile || {}),
+        variants: Array.isArray(pricing.dtfTextile?.variants)
+          ? merged.linearMeterPricing.dtfTextile.variants.map((fallback, index) => ({ ...fallback, ...(pricing.dtfTextile.variants[index] || {}), tiers: fallback.tiers.map((tier, tierIndex) => ({ ...tier, ...(pricing.dtfTextile.variants[index]?.tiers?.[tierIndex] || {}) })) }))
+          : merged.linearMeterPricing.dtfTextile.variants,
+      },
+      dtfUv: { ...merged.linearMeterPricing.dtfUv, ...(pricing.dtfUv || {}), variants: Array.isArray(pricing.dtfUv?.variants) ? merged.linearMeterPricing.dtfUv.variants.map((fallback, index) => ({ ...fallback, ...(pricing.dtfUv.variants[index] || {}) })) : merged.linearMeterPricing.dtfUv.variants },
+      products: { ...merged.linearMeterPricing.products, ...(pricing.products || {}) },
+    };
+  }
+
   merged.m2Finishes = normalizeM2Finishes(candidate.m2Finishes, defaults.m2Finishes);
 
   if (candidate.m2BleedByProduct && typeof candidate.m2BleedByProduct === "object") {
@@ -1883,6 +1986,21 @@ function mergeState(candidate, configCandidate = null) {
       discountType: normalizeDiscountType(row?.discountType),
       discountValue: normalizeDiscountValue(row?.discountValue),
       id: row?.id || `m2-row-${index + 1}`,
+    }));
+  }
+
+  if (Array.isArray(candidate.linearMeterItems) && candidate.linearMeterItems.length > 0) {
+    state.linearMeterItems = candidate.linearMeterItems.map((row, index) => ({
+      ...createDefaultLinearMeterRow(index),
+      ...row,
+      widthCm: toDecimalNumber(row?.widthCm),
+      heightCm: toDecimalNumber(row?.heightCm),
+      quantity: toWholeNumber(row?.quantity),
+      linearMeters: toDecimalNumber(row?.linearMeters),
+      artCreationFee: toMoneyNumber(row?.artCreationFee),
+      discountType: normalizeDiscountType(row?.discountType),
+      discountValue: normalizeDiscountValue(row?.discountValue),
+      id: row?.id || `linear-meter-row-${index + 1}`,
     }));
   }
 
@@ -6256,11 +6374,19 @@ function createCalculationBasesMarkup(config) {
     : `<p class="helper-text">${empty}</p>`;
   return `
     <div class="calculation-bases-intro"><strong>Base única de referência</strong><span>Os motores atuais continuam usando seus parâmetros específicos, mas todos os materiais, processos e acabamentos ficam catalogados aqui para reutilização nos produtos personalizados.</span></div>
+    ${createLinearMeterConfigMarkup(config)}
     <div class="calculation-bases-grid">
       <section class="calculation-base-group"><header><h4>Mídias de impressão</h4><span>${bases.media.length} bases</span></header>${renderList(bases.media, "Nenhuma mídia encontrada.")}</section>
       <section class="calculation-base-group"><header><h4>Modos de impressão</h4><span>${bases.printModes.length} modos</span></header>${renderList(bases.printModes, "Nenhum modo encontrado.")}</section>
       <section class="calculation-base-group"><header><h4>Acabamentos</h4><span>${bases.finishes.length} opções</span></header>${renderList(bases.finishes, "Nenhum acabamento encontrado.")}</section>
     </div>`;
+}
+
+function createLinearMeterConfigMarkup(config) {
+  const pricing = config.linearMeterPricing || createDefaultConfig().linearMeterPricing;
+  const textil = pricing.dtfTextile?.variants || [];
+  const uv = pricing.dtfUv?.variants || [];
+  return `<section class="calculation-base-group calculation-base-group-wide"><header><h4>Tabela de metro linear</h4><span>Valores usados pela aba Metro linear</span></header><div class="config-grid compact-grid"><label><span>Largura DTF têxtil</span><input data-config-prefix="linear-meter" data-config-key="dtfTextile.widthLabel" value="${escapeAttribute(pricing.dtfTextile?.widthLabel || "58 cm")}"></label><label><span>Largura DTF UV</span><input data-config-prefix="linear-meter" data-config-key="dtfUv.widthLabel" value="${escapeAttribute(pricing.dtfUv?.widthLabel || "28 cm")}"></label></div><div class="table-shell"><table class="config-table"><thead><tr><th>Material</th><th>Largura</th><th>Valor por metro</th><th>Pedido mínimo</th></tr></thead><tbody>${Object.entries(pricing.products || {}).map(([id, item]) => `<tr><td>${escapeHtml(LINEAR_METER_CATALOG.find((product) => product.id === id)?.label || id)}</td><td>${escapeHtml(item.widthLabel || "")}</td><td><input data-config-prefix="linear-meter" data-config-key="products.${id}.rate" type="number" step="0.01" value="${escapeAttribute(item.rate || 0)}"></td><td><input data-config-prefix="linear-meter" data-config-key="products.${id}.minimumOrder" type="number" step="0.01" value="${escapeAttribute(item.minimumOrder || 0)}"></td></tr>`).join("")}</tbody></table></div><p class="helper-text">DTF têxtil: ${textil.map((item) => `${escapeHtml(item.label)} (mínimo R$ ${escapeHtml(item.minimumOrder)})`).join(" · ")} | DTF UV: ${uv.map((item) => `${escapeHtml(item.label)} (até 0,5 m: R$ ${escapeHtml(item.minimumHalfMeter)})`).join(" · ")}</p></section>`;
 }
 
 function createTableMarkup(headers, rows, prefix, fields) {
@@ -7321,7 +7447,7 @@ function calculateFreeQuoteItem(item) {
   };
 }
 
-function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook = { activeRows: [] }, flyerWorkbook = { activeRows: [] }, blockSulfiteWorkbook = { activeRows: [] }, blockAutocopiativoWorkbook = { activeRows: [] }) {
+function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook = { activeRows: [] }, flyerWorkbook = { activeRows: [] }, blockSulfiteWorkbook = { activeRows: [] }, blockAutocopiativoWorkbook = { activeRows: [] }, linearMeterWorkbook = { activeRows: [] }) {
   return [
     ...(state.freeQuoteItems || []).map((item) => {
       const calculated = calculateFreeQuoteItem(item);
@@ -7336,6 +7462,16 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
         total: calculated.total,
       };
     }),
+    ...linearMeterWorkbook.activeRows.map((row) => ({
+      source: "metro-linear",
+      sourceId: row.id,
+      kind: "Metro linear",
+      description: row.description || row.productLabel,
+      detail: `${formatMeasure(row.linearMeters)} m | ${row.productLabel}${row.variantLabel ? ` | ${row.variantLabel}` : ""} | Largura: ${row.fixedWidthLabel}${row.rotated ? " | girado" : ""}`,
+      extraDetail: [row.artFee > 0 ? `Arte: ${formatCurrency(row.artFee)}` : "", getDiscountQuoteDetail(row)].filter(Boolean).join(" | "),
+      quantity: row.quantity,
+      total: row.total,
+    })),
     ...workbook.activeRows.map((row) => {
       const coverDetail = buildApostilaCoverDetail(row);
       const discountDetail = getDiscountQuoteDetail(row);
@@ -7433,8 +7569,8 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
   ];
 }
 
-function createQuoteHistoryItems(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook) {
-  return createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook).map((entry, index) => ({
+function createQuoteHistoryItems(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook, linearMeterWorkbook = { activeRows: [] }) {
+  return createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook, linearMeterWorkbook).map((entry, index) => ({
     id: `quote-item-${index + 1}`,
     label: entry.description || `Item ${index + 1}`,
     category: entry.kind || "",
@@ -7459,9 +7595,9 @@ function refreshVerticalCalculationTables() {
   });
 }
 
-function createQuoteHtml(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, flyerWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, blockSulfiteWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, blockAutocopiativoWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }) {
+function createQuoteHtml(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, flyerWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, blockSulfiteWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, blockAutocopiativoWorkbook = { activeRows: [], totals: { totalGeneral: 0, totalQuantity: 0 } }, linearMeterWorkbook = { activeRows: [] }) {
   const dateText = new Intl.DateTimeFormat("pt-BR").format(new Date());
-  const quoteEntries = createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook);
+  const quoteEntries = createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook, linearMeterWorkbook);
   const combinedTotal = quoteEntries.reduce((sum, entry) => sum + Number(entry.total || 0), 0);
   const combinedUnits = workbook.totals.totalQuantity + colorWorkbook.totals.totalQuantity + credentialWorkbook.totals.totalQuantity + m2Workbook.totals.totalQuantity + readyWorkbook.totals.totalQuantity + resinWorkbook.totals.totalQuantity + cardWorkbook.totals.totalQuantity + flyerWorkbook.totals.totalQuantity + blockSulfiteWorkbook.totals.totalQuantity + blockAutocopiativoWorkbook.totals.totalQuantity + (state.freeQuoteItems || []).reduce((sum, item) => sum + calculateFreeQuoteItem(item).quantity, 0);
   const lineItemsMarkup = quoteEntries.length
@@ -7536,7 +7672,7 @@ function createQuoteHtml(state, workbook, colorWorkbook, credentialWorkbook, m2W
   `;
 }
 
-function createQuoteText(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook = { activeRows: [], totals: { totalGeneral: 0 } }, flyerWorkbook = { activeRows: [], totals: { totalGeneral: 0 } }, blockSulfiteWorkbook = { activeRows: [], totals: { totalGeneral: 0 } }, blockAutocopiativoWorkbook = { activeRows: [], totals: { totalGeneral: 0 } }) {
+function createQuoteText(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook = { activeRows: [], totals: { totalGeneral: 0 } }, flyerWorkbook = { activeRows: [], totals: { totalGeneral: 0 } }, blockSulfiteWorkbook = { activeRows: [], totals: { totalGeneral: 0 } }, blockAutocopiativoWorkbook = { activeRows: [], totals: { totalGeneral: 0 } }, linearMeterWorkbook = { activeRows: [] }) {
   const dateText = new Intl.DateTimeFormat("pt-BR").format(new Date());
   const lines = [
     `ORÇAMENTO | ${state.company.name || "Sua empresa"}`,
@@ -7568,6 +7704,10 @@ function createQuoteText(state, workbook, colorWorkbook, credentialWorkbook, m2W
     })),
     ...m2Workbook.activeRows.map((row, index) => ({
       text: `- ${row.description || row.productLabel || `M² ${index + 1}`} | ${row.quantity} unidades | ${formatMeasure(row.widthMm)} x ${formatMeasure(row.heightMm)} ${row.measureUnit || "cm"} | ${formatAreaM2(row.areaM2)} m² | ${row.finishSummary ? `${row.finishSummary} | ` : ""}${row.artCreationFee > 0 ? `Arte/edição: ${formatCurrency(row.artCreationFee)} | ` : ""}${getDiscountQuoteDetail(row) ? `${getDiscountQuoteDetail(row)} | ` : ""}${formatCurrency(row.total)}`,
+    })),
+    ...linearMeterWorkbook.activeRows.map((row, index) => ({
+      text: `- ${row.description || row.productLabel || `Metro linear ${index + 1}`} | ${formatMeasure(row.linearMeters)} m | ${row.productLabel}${row.variantLabel ? ` | ${row.variantLabel}` : ""} | Largura: ${row.fixedWidthLabel}${row.artFee > 0 ? ` | Arte: ${formatCurrency(row.artFee)}` : ""}${getDiscountQuoteDetail(row) ? ` | ${getDiscountQuoteDetail(row)}` : ""} | ${formatCurrency(row.total)}`,
+      total: row.total,
     })),
     ...readyWorkbook.activeRows.map((row, index) => ({
       text: `- ${row.description || row.productLabel || `Material ${index + 1}`} | ${row.effectiveQuantity || row.quantity} ${row.unitLabel || "unidades"} | ${row.productLabel}${row.pricingLabel ? ` | ${row.pricingLabel}` : ""}${row.artCreationFee > 0 ? ` | Arte/edição: ${formatCurrency(row.artCreationFee)}` : ""}${row.extraCharge > 0 ? ` | Extra: ${formatCurrency(row.extraCharge)}` : ""}${getDiscountQuoteDetail(row) ? ` | ${getDiscountQuoteDetail(row)}` : ""} | ${formatCurrency(row.total)}`,
@@ -7686,6 +7826,7 @@ async function initApp() {
   state.colorPrintItems = trimEmptyRows(state.colorPrintItems, 5, isColorPrintRowActive);
   state.credentialItems = trimEmptyRows(state.credentialItems, 5, isCredentialRowActive);
   state.m2Items = trimEmptyRows(state.m2Items, 5, (row) => Boolean(row.description?.trim() || Number(row.quantity) > 0 || Number(row.widthMm) > 0 || Number(row.heightMm) > 0));
+  state.linearMeterItems = trimEmptyRows(state.linearMeterItems || [], 5, (row) => Boolean(row.description?.trim() || Number(row.quantity) > 0 || Number(row.widthCm) > 0 || Number(row.heightCm) > 0 || Number(row.linearMeters) > 0));
   state.readyItems = trimEmptyRows(state.readyItems, 5, isReadyRowActive);
   state.resinItems = trimEmptyRows(state.resinItems, 5, isResinRowActive);
   state.cardItems = trimEmptyRows(state.cardItems, 5, isCardRowActive);
@@ -7703,6 +7844,7 @@ async function initApp() {
   const colorWarningList = document.getElementById("color-warning-list");
   const credentialWarningList = document.getElementById("credential-warning-list");
   const m2WarningList = document.getElementById("m2-warning-list");
+  const linearMeterWarningList = document.getElementById("linear-meter-warning-list");
   const readyWarningList = document.getElementById("ready-warning-list");
   const resinWarningList = document.getElementById("resin-warning-list");
   const configSections = document.getElementById("config-sections");
@@ -7719,6 +7861,7 @@ async function initApp() {
   const clientsEditorNotes = document.getElementById("clients-editor-notes");
   const clientsEditorStatus = document.getElementById("clients-editor-status");
   const m2RowsTableBody = document.getElementById("m2-rows-table-body");
+  const linearMeterRowsTableBody = document.getElementById("linear-meter-rows-table-body");
   const readyRowsTableBody = document.getElementById("ready-rows-table-body");
   const resinRowsTableBody = document.getElementById("resin-rows-table-body");
   const cardRowsTableBody = document.getElementById("cards-rows-table-body");
@@ -9152,6 +9295,7 @@ async function initApp() {
       flyerWorkbook: calculateFlyerWorkbook(state, config),
       blockSulfiteWorkbook: calculateBlockWorkbook(state, config, "sulfite"),
       blockAutocopiativoWorkbook: calculateBlockWorkbook(state, config, "autocopiativo"),
+      linearMeterWorkbook: calculateLinearMeterWorkbook(state, config),
     };
   }
 
@@ -9169,6 +9313,7 @@ async function initApp() {
       cardItems: deepClone(state.cardItems),
       flyerItems: deepClone(state.flyerItems),
       blockItems: deepClone(state.blockItems),
+      linearMeterItems: deepClone(state.linearMeterItems),
       client: deepClone(state.client),
       company: deepClone(state.company),
       paymentTerms: state.paymentTerms,
@@ -9202,6 +9347,7 @@ async function initApp() {
       flyerWorkbook,
       blockSulfiteWorkbook,
       blockAutocopiativoWorkbook,
+      linearMeterWorkbook,
     } = calculateAllWorkbooks();
     const title = state.client.name.trim() || `Orçamento ${new Date().toLocaleDateString("pt-BR")}`;
     const summary = createQuoteText(
@@ -9216,6 +9362,7 @@ async function initApp() {
       flyerWorkbook,
       blockSulfiteWorkbook,
       blockAutocopiativoWorkbook
+      ,linearMeterWorkbook
     ).split("\n").slice(0, 10).join(" • ");
     const total = createQuoteEntries(
       state,
@@ -9229,6 +9376,7 @@ async function initApp() {
       flyerWorkbook,
       blockSulfiteWorkbook,
       blockAutocopiativoWorkbook
+      ,linearMeterWorkbook
     ).reduce((sum, entry) => sum + Number(entry.total || 0), 0);
     const savedAt = new Date().toISOString();
 
@@ -9252,7 +9400,8 @@ async function initApp() {
         cardWorkbook,
         flyerWorkbook,
         blockSulfiteWorkbook,
-        blockAutocopiativoWorkbook
+        blockAutocopiativoWorkbook,
+        linearMeterWorkbook
       ),
       paymentTerms: state.paymentTerms.trim(),
       quoteNotes: state.quoteNotes.trim(),
@@ -9847,6 +9996,7 @@ async function initApp() {
         impressos: "impressos",
         credenciais: "credenciais",
         m2: "m2",
+        metroLinear: "bases",
         prontos: "prontos",
         resinados: "resinados",
         cartoes: "cartoes",
@@ -10019,6 +10169,7 @@ async function initApp() {
     const flyerWorkbook = calculateFlyerWorkbook(state, config);
     const blockSulfiteWorkbook = calculateBlockWorkbook(state, config, "sulfite");
     const blockAutocopiativoWorkbook = calculateBlockWorkbook(state, config, "autocopiativo");
+    const linearMeterWorkbook = calculateLinearMeterWorkbook(state, config);
     return createQuoteEntries(
       state,
       workbook,
@@ -10031,6 +10182,7 @@ async function initApp() {
       flyerWorkbook,
       blockSulfiteWorkbook,
       blockAutocopiativoWorkbook
+      ,linearMeterWorkbook
     );
   }
 
@@ -10063,6 +10215,7 @@ async function initApp() {
     state.colorPrintItems = resetRows(state.colorPrintItems, createDefaultColorPrintRow);
     state.credentialItems = resetRows(state.credentialItems, createDefaultCredentialRow);
     state.m2Items = resetRows(state.m2Items, createDefaultM2Row);
+    state.linearMeterItems = resetRows(state.linearMeterItems, createDefaultLinearMeterRow);
     state.readyItems = resetRows(state.readyItems, createDefaultReadyRow);
     state.resinItems = resetRows(state.resinItems, createDefaultResinRow);
     state.cardItems = resetRows(state.cardItems, createDefaultCardRow);
@@ -12570,6 +12723,7 @@ async function initApp() {
     const flyerWorkbook = calculateFlyerWorkbook(state, config);
     const blockSulfiteWorkbook = calculateBlockWorkbook(state, config, "sulfite");
     const blockAutocopiativoWorkbook = calculateBlockWorkbook(state, config, "autocopiativo");
+    const linearMeterWorkbook = calculateLinearMeterWorkbook(state, config);
     const m2Catalog = getM2Catalog(config);
     const readyCatalog = getReadyProductCatalog(config);
 
@@ -12592,6 +12746,10 @@ async function initApp() {
     document.getElementById("m2-summary-quantity").textContent = formatInteger(m2Workbook.totals.totalQuantity);
     document.getElementById("m2-summary-total").textContent = formatCurrency(m2Workbook.totals.totalGeneral);
     document.getElementById("m2-summary-average").textContent = formatCurrency(m2Workbook.totals.averageValue);
+    document.getElementById("linear-meter-summary-active").textContent = formatInteger(linearMeterWorkbook.totals.activeLines);
+    document.getElementById("linear-meter-summary-quantity").textContent = `${formatMeasure(linearMeterWorkbook.totals.totalQuantity)} m`;
+    document.getElementById("linear-meter-summary-total").textContent = formatCurrency(linearMeterWorkbook.totals.totalGeneral);
+    document.getElementById("linear-meter-summary-average").textContent = formatCurrency(linearMeterWorkbook.totals.averageValue);
     document.getElementById("ready-summary-active").textContent = formatInteger(readyWorkbook.totals.activeLines);
     document.getElementById("ready-summary-quantity").textContent = formatInteger(readyWorkbook.totals.totalQuantity);
     document.getElementById("ready-summary-total").textContent = formatCurrency(readyWorkbook.totals.totalGeneral);
@@ -12753,6 +12911,26 @@ async function initApp() {
         `
       )
       .join("");
+    if (linearMeterRowsTableBody) {
+      linearMeterRowsTableBody.innerHTML = linearMeterWorkbook.rows.map((row, index) => `
+        <tr class="${row.active ? "" : "is-empty"}" data-linear-meter-row-index="${index}">
+          <td><strong>${String(index + 1).padStart(2, "0")}</strong></td>
+          <td><select class="cell-select" name="productType">${getLinearMeterCatalog(config).map((item) => `<option value="${escapeAttribute(item.id)}"${item.id === row.productType ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}</select></td>
+          <td><select class="cell-select" name="variantType">${(getLinearMeterCatalog(config).find((item) => item.id === row.productType)?.variants || []).map((item) => `<option value="${escapeAttribute(item.id)}"${item.id === row.variantType ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("") || `<option value="">Tabela única</option>`}</select></td>
+          <td><input class="cell-input description" name="description" value="${escapeAttribute(row.description)}" placeholder="${escapeAttribute(row.productLabel)}"></td>
+          <td><span class="readonly-value subtle">${escapeHtml(row.fixedWidthLabel || "-")}</span></td>
+          <td><input class="cell-input" name="widthCm" type="number" min="0" step="0.1" value="${row.widthCm || ""}"></td>
+          <td><input class="cell-input" name="heightCm" type="number" min="0" step="0.1" value="${row.heightCm || ""}"></td>
+          <td><input class="cell-input" name="quantity" type="number" min="0" step="1" value="${row.quantity || ""}"></td>
+          <td><span class="readonly-value subtle">${row.columns ? `${row.columns} col. x ${row.rows} lin.${row.rotated ? " | girado" : ""}` : "-"}</span></td>
+          <td><span class="readonly-value subtle">${formatMeasure(row.linearMeters)} m</span></td>
+          <td><span class="readonly-value subtle">${formatCurrency(row.baseTotal)}</span></td>
+          <td><input class="cell-input" name="artCreationFee" type="number" min="0" step="0.01" value="${row.artCreationFee || ""}"></td>
+          <td>${createDiscountTypeSelect(row)}</td><td>${createDiscountValueInput(row)}</td>
+          <td><span class="readonly-value">${formatCurrency(row.total)}</span></td>
+        </tr>`).join("");
+      linearMeterWarningList.innerHTML = linearMeterWorkbook.warnings.length ? linearMeterWorkbook.warnings.map((warning) => `<div class="warning-item">${escapeHtml(warning)}</div>`).join("") : `<div class="warning-item is-success">Sem alertas no momento.</div>`;
+    }
     readyRowsTableBody.innerHTML = readyWorkbook.rows
       .map((row, index) => {
         const productOptions = [
@@ -12824,7 +13002,7 @@ async function initApp() {
       ? resinWorkbook.warnings.map((warning) => `<div class="warning-item">${escapeHtml(warning)}</div>`).join("")
       : `<div class="warning-item is-success">Informe medidas em milímetros para calcular automaticamente a resina, o aproveitamento e o total por A3.</div>`;
     refreshVerticalCalculationTables();
-    quotePreview.innerHTML = createQuoteHtml(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook);
+    quotePreview.innerHTML = createQuoteHtml(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook, linearMeterWorkbook);
     // The new flow orchestrates existing calculators and never recreates pricing rules.
     renderNewQuoteBuilder();
     return { workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook };
@@ -14170,6 +14348,17 @@ async function initApp() {
     renderRowsAndSummary();
   });
 
+  document.getElementById("add-linear-meter-row-button")?.addEventListener("click", () => {
+    state.linearMeterItems.push(createDefaultLinearMeterRow(state.linearMeterItems.length));
+    persist();
+    renderRowsAndSummary();
+  });
+  document.getElementById("clear-linear-meter-rows-button")?.addEventListener("click", () => {
+    state.linearMeterItems = Array.from({ length: 5 }, (_, index) => createDefaultLinearMeterRow(index));
+    persist();
+    renderRowsAndSummary();
+  });
+
   document.getElementById("add-ready-row-button").addEventListener("click", () => {
     state.readyItems.push(createDefaultReadyRow(state.readyItems.length));
     persist();
@@ -14705,6 +14894,24 @@ async function initApp() {
     renderRowsAndSummary();
   });
 
+  linearMeterRowsTableBody?.addEventListener("change", (event) => {
+    const target = event.target;
+    const rowElement = target.closest("tr[data-linear-meter-row-index]");
+    const row = rowElement ? state.linearMeterItems[Number(rowElement.dataset.linearMeterRowIndex)] : null;
+    if (!row || !target.name) return;
+    if (["widthCm", "heightCm", "linearMeters"].includes(target.name)) row[target.name] = toDecimalNumber(target.value);
+    else if (target.name === "quantity") row.quantity = toWholeNumber(target.value);
+    else if (["artCreationFee", "discountValue"].includes(target.name)) row[target.name] = toMoneyNumber(target.value);
+    else if (target.name === "discountType") row.discountType = normalizeDiscountType(target.value);
+    else row[target.name] = target.value;
+    if (["productType", "widthCm", "heightCm", "quantity"].includes(target.name)) {
+      if (target.name === "productType") row.variantType = getLinearMeterCatalog(config).find((item) => item.id === target.value)?.variants?.[0]?.id || "";
+      row.linearMeters = 0;
+    }
+    persist();
+    renderRowsAndSummary();
+  });
+
   readyRowsTableBody.addEventListener("change", (event) => {
     const target = event.target;
     const rowElement = target.closest("tr[data-ready-row-index]");
@@ -15150,6 +15357,20 @@ async function initApp() {
         renderRowsAndSummary();
         setConfigStatus("Produto extra atualizado.", "success");
       }
+      return;
+    }
+
+    if (prefix === "linear-meter") {
+      const path = key.split(".");
+      let destination = config.linearMeterPricing;
+      for (let index = 0; index < path.length - 1; index += 1) destination = destination?.[path[index]];
+      if (!destination || typeof destination !== "object") return;
+      const field = path[path.length - 1];
+      destination[field] = field === "widthLabel" ? target.value : toMoneyNumber(target.value);
+      persist();
+      renderConfig();
+      renderRowsAndSummary();
+      setConfigStatus("Tabela de metro linear atualizada.", "success");
       return;
     }
 
