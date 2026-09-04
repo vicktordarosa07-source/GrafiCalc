@@ -7886,6 +7886,7 @@ async function initApp() {
   const newQuoteBookletEditor = document.getElementById("new-quote-booklet-editor");
   const newQuoteColorEditor = document.getElementById("new-quote-color-editor");
   const newQuoteM2Editor = document.getElementById("new-quote-m2-editor");
+  const newQuoteLinearEditor = document.getElementById("new-quote-linear-editor");
   const newQuoteResinEditor = document.getElementById("new-quote-resin-editor");
   const newQuoteFreeEditor = document.getElementById("new-quote-free-editor");
   let activeNewQuoteCardId = "";
@@ -7896,6 +7897,7 @@ async function initApp() {
   let activeNewQuoteBookletId = "";
   let activeNewQuoteColorId = "";
   let activeNewQuoteM2Id = "";
+  let activeNewQuoteLinearId = "";
   let activeNewQuoteResinId = "";
   let activeNewQuoteFreeId = "";
   const feedback = document.getElementById("import-feedback");
@@ -10150,6 +10152,7 @@ async function initApp() {
     { id: "impresso", label: "Impresso colorido", description: "Tamanho, papel, impressão, corte e complementos", tab: "impressos", icon: "I" },
     { id: "credencial", label: "Credencial", description: "Material, impressão, laminação e cordão", tab: "credenciais", icon: "C" },
     { id: "m2", label: "Adesivo, banner e m²", description: "Medidas, produto, faixa de preço e acabamentos", tab: "m2", icon: "m²" },
+    { id: "metroLinear", label: "Metro linear", description: "DTF, UV, canvas e papéis por metro linear", tab: "metroLinear", icon: "ML" },
     { id: "pronto", label: "Material pronto", description: "Produtos de catálogo e serviços com tabela fixa", tab: "prontos", icon: "P" },
     { id: "resinado", label: "Adesivo resinado", description: "Material, medida, espaçamento e quantidade", tab: "resinados", icon: "R" },
     { id: "cartao", label: "Cartão de visita", description: "Laser ou offset, papel, lados e acabamentos", tab: "cartoes", icon: "CV" },
@@ -10192,6 +10195,7 @@ async function initApp() {
       impresso: { rows: state.colorPrintItems, create: createDefaultColorPrintRow },
       credencial: { rows: state.credentialItems, create: createDefaultCredentialRow },
       m2: { rows: state.m2Items, create: createDefaultM2Row },
+      metroLinear: { rows: state.linearMeterItems, create: createDefaultLinearMeterRow },
       pronto: { rows: state.readyItems, create: createDefaultReadyRow },
       resinado: { rows: state.resinItems, create: createDefaultResinRow },
       cartao: { rows: state.cardItems, create: createDefaultCardRow },
@@ -11301,6 +11305,59 @@ async function initApp() {
         <button class="button button-primary" type="button" data-new-quote-color-action="confirm">Adicionar ao orçamento</button>
       </div>
     `;
+  }
+
+  function getNewQuoteLinearDraft() {
+    return state.linearMeterItems.find((row) => row.id === activeNewQuoteLinearId) || null;
+  }
+
+  function getNewQuoteLinearDraftIndex() {
+    return state.linearMeterItems.findIndex((row) => row.id === activeNewQuoteLinearId);
+  }
+
+  function openNewQuoteLinearEditor() {
+    const index = state.linearMeterItems.findIndex((row) => !row.description?.trim() && !row.quantity && !row.widthCm && !row.heightCm);
+    const targetIndex = index >= 0 ? index : state.linearMeterItems.length;
+    state.linearMeterItems[targetIndex] = createDefaultLinearMeterRow(targetIndex);
+    activeNewQuoteLinearId = state.linearMeterItems[targetIndex].id;
+    renderNewQuoteLinearEditor();
+  }
+
+  function closeNewQuoteLinearEditor(discardDraft = false) {
+    const index = getNewQuoteLinearDraftIndex();
+    if (discardDraft && index >= 0) state.linearMeterItems[index] = createDefaultLinearMeterRow(index);
+    activeNewQuoteLinearId = "";
+    if (newQuoteLinearEditor) {
+      newQuoteLinearEditor.hidden = true;
+      newQuoteLinearEditor.innerHTML = "";
+    }
+  }
+
+  function renderNewQuoteLinearEditor() {
+    if (!newQuoteLinearEditor) return;
+    const draft = getNewQuoteLinearDraft();
+    if (!draft) return;
+    const catalog = getLinearMeterCatalog(config);
+    const product = catalog.find((item) => item.id === draft.productType) || catalog[0];
+    const variants = product?.variants || [];
+    const row = calculateLinearMeterRow(draft, 0, config);
+    newQuoteLinearEditor.hidden = false;
+    newQuoteLinearEditor.innerHTML = `
+      <div class="panel-heading new-quote-inline-heading"><div><span class="new-quote-eyebrow">Editor integrado</span><h2>Metro linear</h2><p class="panel-copy">O material e a tabela vêm das Bases de cálculo. Informe somente as variáveis deste orçamento.</p></div><button class="button button-compact" type="button" data-new-quote-linear-action="cancel">Cancelar</button></div>
+      <div class="new-quote-card-editor-grid">
+        <label><span>Material</span><select name="productType">${catalog.map((item) => `<option value="${escapeAttribute(item.id)}"${item.id === draft.productType ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}</select></label>
+        <label><span>Prazo / tabela</span><select name="variantType">${variants.map((item) => `<option value="${escapeAttribute(item.id)}"${item.id === draft.variantType ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("") || `<option value="">Tabela única</option>`}</select></label>
+        <label><span>Descrição</span><input name="description" value="${escapeAttribute(draft.description)}" placeholder="Ex.: DTF para camisetas" autocomplete="off"></label>
+        <label><span>Largura da peça (cm)</span><input name="widthCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(draft.widthCm || "")}"></label>
+        <label><span>Altura da peça (cm)</span><input name="heightCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(draft.heightCm || "")}"></label>
+        <label><span>Quantidade</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity || "")}"></label>
+        <label><span>Valor de arte</span><input name="artCreationFee" type="number" min="0" step="0.01" value="${escapeAttribute(draft.artCreationFee || "")}" placeholder="0,00"></label>
+        <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, draft.discountType)}</select></label>
+        <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(draft.discountValue || "")}" placeholder="0,00"></label>
+      </div>
+      <div class="new-quote-card-preview"><div><span>Largura fixa</span><strong>${escapeHtml(row.fixedWidthLabel || "-")}</strong></div><div><span>Metro linear</span><strong>${formatMeasure(row.linearMeters)} m</strong></div><div><span>Total do item</span><strong>${formatCurrency(row.total)}</strong></div><div><span>Valor unitário</span><strong>${formatCurrency(row.unitValue)}</strong></div></div>
+      ${row.warning ? `<p class="warning-item">${escapeHtml(row.warning)}</p>` : ""}
+      <div class="toolbar new-quote-card-editor-actions"><button class="button" type="button" data-new-quote-linear-action="cancel">Descartar item</button><button class="button button-primary" type="button" data-new-quote-linear-action="confirm">Adicionar ao orçamento</button></div>`;
   }
 
   function getNewQuoteM2Draft() {
@@ -16192,6 +16249,11 @@ async function initApp() {
       if (!draft.description || draft.description === previousLabel) draft.description = target.value;
       return;
     }
+    if (button.dataset.newQuoteService === "metroLinear") {
+      openNewQuoteLinearEditor();
+      newQuoteLinearEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
     if (target.name === "description") draft.description = target.value;
     if (target.name === "material") draft.material = target.value;
     if (target.name === "manualValue") draft.manualValue = Math.max(0, toMoneyNumber(target.value));
@@ -16737,6 +16799,56 @@ async function initApp() {
     persist();
     renderRowsAndSummary();
     setMainFeedback("Impresso colorido adicionado ao orçamento atual.", "success");
+  });
+
+  newQuoteLinearEditor?.addEventListener("input", (event) => {
+    const draft = getNewQuoteLinearDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement)) return;
+    if (target.name === "description") draft.description = target.value;
+    if (["widthCm", "heightCm"].includes(target.name)) draft[target.name] = toDecimalNumber(target.value);
+    if (target.name === "quantity") draft.quantity = toWholeNumber(target.value);
+    if (target.name === "artCreationFee") draft.artCreationFee = toMoneyNumber(target.value);
+    if (target.name === "discountValue") draft.discountValue = normalizeDiscountValue(target.value);
+    renderNewQuoteLinearEditor();
+  });
+
+  newQuoteLinearEditor?.addEventListener("change", (event) => {
+    const draft = getNewQuoteLinearDraft();
+    const target = event.target;
+    if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+    if (target.name === "productType") {
+      draft.productType = target.value;
+      draft.variantType = getLinearMeterCatalog(config).find((item) => item.id === target.value)?.variants?.[0]?.id || "";
+    }
+    if (target.name === "variantType") draft.variantType = target.value;
+    if (target.name === "discountType") draft.discountType = normalizeDiscountType(target.value);
+    renderNewQuoteLinearEditor();
+  });
+
+  newQuoteLinearEditor?.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-new-quote-linear-action]")?.dataset.newQuoteLinearAction;
+    if (!action) return;
+    const draft = getNewQuoteLinearDraft();
+    if (!draft) return;
+    if (action === "cancel") {
+      closeNewQuoteLinearEditor(true);
+      return;
+    }
+    if (draft.widthCm <= 0 || draft.heightCm <= 0 || draft.quantity <= 0) {
+      setMainFeedback("Informe largura, altura e quantidade para calcular o metro linear.", "warning");
+      return;
+    }
+    const calculated = calculateLinearMeterRow(draft, 0, config);
+    if (!calculated.valid || calculated.total <= 0) {
+      setMainFeedback(calculated.warning || "Não foi possível calcular este item de metro linear.", "warning");
+      return;
+    }
+    closeNewQuoteLinearEditor(false);
+    persist();
+    renderRowsAndSummary();
+    renderNewQuoteBuilder();
+    setMainFeedback("Metro linear adicionado ao orçamento atual.", "success");
   });
 
   newQuoteM2Editor?.addEventListener("input", (event) => {
