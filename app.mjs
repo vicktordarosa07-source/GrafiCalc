@@ -16195,6 +16195,11 @@ async function initApp() {
       newQuoteReadyEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
+    if (button.dataset.newQuoteService === "metroLinear") {
+      openNewQuoteLinearEditor();
+      newQuoteLinearEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      return;
+    }
     if (button.dataset.newQuoteService === "m2") {
       openNewQuoteM2Editor();
       newQuoteM2Editor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -16253,11 +16258,6 @@ async function initApp() {
       const previousLabel = draft.product.label;
       draft.product.label = target.value;
       if (!draft.description || draft.description === previousLabel) draft.description = target.value;
-      return;
-    }
-    if (button.dataset.newQuoteService === "metroLinear") {
-      openNewQuoteLinearEditor();
-      newQuoteLinearEditor?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       return;
     }
     if (target.name === "description") draft.description = target.value;
