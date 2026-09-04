@@ -1093,7 +1093,8 @@ function calculateLinearMeterRow(source, index, config) {
   if (meters > 0) {
     if (product.id === "dtf-textil") {
       const tier = (variant?.tiers || []).find((item) => meters <= Number(item.upTo ?? Infinity)) || variant?.tiers?.[variant.tiers.length - 1];
-      baseTotal = Math.max(toMoneyNumber(variant?.minimumOrder), meters * (toMoneyNumber(tier?.rate) + toMoneyNumber(tier?.applicationRate)));
+      const materialTotal = Math.max(toMoneyNumber(variant?.minimumOrder), meters * toMoneyNumber(tier?.rate));
+      baseTotal = materialTotal + meters * toMoneyNumber(tier?.applicationRate);
     } else if (product.id === "dtf-uv") {
       baseTotal = meters <= 0.5 ? toMoneyNumber(variant?.minimumHalfMeter) : meters <= 1 ? toMoneyNumber(variant?.oneMeterTotal) : meters <= 3 ? meters * toMoneyNumber(variant?.rateUpTo3m) : meters * toMoneyNumber(variant?.rateAbove3m);
     } else {
@@ -1102,14 +1103,20 @@ function calculateLinearMeterRow(source, index, config) {
   }
   const artFee = toMoneyNumber(source.artCreationFee);
   const discount = calculateDiscount(baseTotal + artFee, source);
-  return { ...source, active: Boolean(source.description?.trim() || hasDimensions || meters > 0 || artFee > 0), valid: meters > 0 && (!hasDimensions || Boolean(layout)), productLabel: product.label, variantLabel: variant?.label || "", fixedWidthLabel: product.widthLabel, columns: layout?.columns || 0, rows: layout?.rows || 0, rotated: Boolean(layout?.rotated), linearMeters: meters, baseTotal, artFee, discount: discount.discountAmount, total: discount.totalAfterDiscount, unitValue: quantity > 0 ? discount.totalAfterDiscount / quantity : discount.totalAfterDiscount, warning: hasDimensions && !layout ? `Item ${String(index + 1).padStart(2, "0")}: a peça não cabe na largura de ${product.widthLabel}.` : "" };
+  const warning = hasDimensions && (widthCm <= 0 || heightCm <= 0 || quantity <= 0)
+    ? `Item ${String(index + 1).padStart(2, "0")}: informe largura, altura e quantidade maiores que zero.`
+    : hasDimensions && !layout
+      ? `Item ${String(index + 1).padStart(2, "0")}: a peça não cabe na largura de ${product.widthLabel}.`
+      : "";
+  return { ...source, active: Boolean(source.description?.trim() || hasDimensions || meters > 0 || artFee > 0 || toMoneyNumber(source.discountValue) > 0), valid: meters > 0 && (!hasDimensions || Boolean(layout)), productLabel: product.label, variantLabel: variant?.label || "", fixedWidthLabel: product.widthLabel, columns: layout?.columns || 0, rows: layout?.rows || 0, rotated: Boolean(layout?.rotated), linearMeters: meters, baseTotal, artFee, discount: discount.discountAmount, total: discount.totalAfterDiscount, unitValue: quantity > 0 ? discount.totalAfterDiscount / quantity : discount.totalAfterDiscount, warning };
 }
 
 function calculateLinearMeterWorkbook(state, config) {
   const rows = (state.linearMeterItems || []).map((row, index) => calculateLinearMeterRow({ ...createDefaultLinearMeterRow(index), ...row }, index, config));
   const activeRows = rows.filter((row) => row.active);
   const total = activeRows.reduce((sum, row) => sum + row.total, 0);
-  return { rows, activeRows, warnings: activeRows.filter((row) => row.warning).map((row) => row.warning), totals: { activeLines: activeRows.length, totalQuantity: activeRows.reduce((sum, row) => sum + row.linearMeters, 0), totalGeneral: total, averageValue: activeRows.length ? total / activeRows.length : 0 } };
+  const totalQuantity = activeRows.reduce((sum, row) => sum + row.linearMeters, 0);
+  return { rows, activeRows, warnings: activeRows.filter((row) => row.warning).map((row) => row.warning), totals: { activeLines: activeRows.length, totalQuantity, totalGeneral: total, averageValue: totalQuantity > 0 ? total / totalQuantity : 0 } };
 }
 
 function createDefaultM2Row(index) {
@@ -10195,7 +10202,7 @@ async function initApp() {
       impresso: { rows: state.colorPrintItems, create: createDefaultColorPrintRow },
       credencial: { rows: state.credentialItems, create: createDefaultCredentialRow },
       m2: { rows: state.m2Items, create: createDefaultM2Row },
-      metroLinear: { rows: state.linearMeterItems, create: createDefaultLinearMeterRow },
+      "metro-linear": { rows: state.linearMeterItems, create: createDefaultLinearMeterRow },
       pronto: { rows: state.readyItems, create: createDefaultReadyRow },
       resinado: { rows: state.resinItems, create: createDefaultResinRow },
       cartao: { rows: state.cardItems, create: createDefaultCardRow },
@@ -11361,9 +11368,26 @@ async function initApp() {
           <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(draft.discountValue || "")}" placeholder="0,00"></label>
         </div></section>
       </div>
-      <div class="new-quote-card-preview"><div><span>Largura fixa</span><strong>${escapeHtml(row.fixedWidthLabel || "-")}</strong></div><div><span>Metro linear</span><strong>${formatMeasure(row.linearMeters)} m</strong></div><div><span>Total do item</span><strong>${formatCurrency(row.total)}</strong></div><div><span>Valor unitário</span><strong>${formatCurrency(row.unitValue)}</strong></div></div>
-      ${row.warning ? `<p class="warning-item">${escapeHtml(row.warning)}</p>` : ""}
+      <div class="new-quote-card-preview"><div><span>Largura fixa</span><strong data-linear-preview="fixed-width">${escapeHtml(row.fixedWidthLabel || "-")}</strong></div><div><span>Metro linear</span><strong data-linear-preview="meters">${formatMeasure(row.linearMeters)} m</strong></div><div><span>Total do item</span><strong data-linear-preview="total">${formatCurrency(row.total)}</strong></div><div><span>Valor unitário</span><strong data-linear-preview="unit-value">${formatCurrency(row.unitValue)}</strong></div></div>
+      <div data-linear-preview="warning">${row.warning ? `<p class="warning-item">${escapeHtml(row.warning)}</p>` : ""}</div>
       <div class="toolbar new-quote-card-editor-actions"><button class="button" type="button" data-new-quote-linear-action="cancel">Descartar item</button><button class="button button-primary" type="button" data-new-quote-linear-action="confirm">Adicionar ao orçamento</button></div>`;
+  }
+
+  function updateNewQuoteLinearPreview() {
+    const draft = getNewQuoteLinearDraft();
+    if (!draft || !newQuoteLinearEditor) return;
+    const row = calculateLinearMeterRow(draft, 0, config);
+    const preview = (name) => newQuoteLinearEditor.querySelector(`[data-linear-preview="${name}"]`);
+    const fixedWidth = preview("fixed-width");
+    const meters = preview("meters");
+    const total = preview("total");
+    const unitValue = preview("unit-value");
+    const warning = preview("warning");
+    if (fixedWidth) fixedWidth.textContent = row.fixedWidthLabel || "-";
+    if (meters) meters.textContent = `${formatMeasure(row.linearMeters)} m`;
+    if (total) total.textContent = formatCurrency(row.total);
+    if (unitValue) unitValue.textContent = formatCurrency(row.unitValue);
+    if (warning) warning.innerHTML = row.warning ? `<p class="warning-item">${escapeHtml(row.warning)}</p>` : "";
   }
 
   function getNewQuoteM2Draft() {
@@ -16816,17 +16840,7 @@ async function initApp() {
     if (target.name === "quantity") draft.quantity = toWholeNumber(target.value);
     if (target.name === "artCreationFee") draft.artCreationFee = toMoneyNumber(target.value);
     if (target.name === "discountValue") draft.discountValue = normalizeDiscountValue(target.value);
-    const fieldName = target.name;
-    const selectionStart = target.selectionStart;
-    const selectionEnd = target.selectionEnd;
-    renderNewQuoteLinearEditor();
-    const nextField = newQuoteLinearEditor.querySelector(`[name="${fieldName}"]`);
-    if (nextField instanceof HTMLInputElement) {
-      nextField.focus({ preventScroll: true });
-      if (selectionStart !== null && selectionEnd !== null) {
-        nextField.setSelectionRange(selectionStart, selectionEnd);
-      }
-    }
+    updateNewQuoteLinearPreview();
   });
 
   newQuoteLinearEditor?.addEventListener("change", (event) => {
