@@ -11344,16 +11344,22 @@ async function initApp() {
     newQuoteLinearEditor.hidden = false;
     newQuoteLinearEditor.innerHTML = `
       <div class="panel-heading new-quote-inline-heading"><div><span class="new-quote-eyebrow">Editor integrado</span><h2>Metro linear</h2><p class="panel-copy">O material e a tabela vêm das Bases de cálculo. Informe somente as variáveis deste orçamento.</p></div><button class="button button-compact" type="button" data-new-quote-linear-action="cancel">Cancelar</button></div>
-      <div class="new-quote-card-editor-grid">
-        <label><span>Material</span><select name="productType">${catalog.map((item) => `<option value="${escapeAttribute(item.id)}"${item.id === draft.productType ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}</select></label>
-        <label><span>Prazo / tabela</span><select name="variantType">${variants.map((item) => `<option value="${escapeAttribute(item.id)}"${item.id === draft.variantType ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("") || `<option value="">Tabela única</option>`}</select></label>
-        <label><span>Descrição</span><input name="description" value="${escapeAttribute(draft.description)}" placeholder="Ex.: DTF para camisetas" autocomplete="off"></label>
-        <label><span>Largura da peça (cm)</span><input name="widthCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(draft.widthCm || "")}"></label>
-        <label><span>Altura da peça (cm)</span><input name="heightCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(draft.heightCm || "")}"></label>
-        <label><span>Quantidade</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity || "")}"></label>
-        <label><span>Valor de arte</span><input name="artCreationFee" type="number" min="0" step="0.01" value="${escapeAttribute(draft.artCreationFee || "")}" placeholder="0,00"></label>
-        <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, draft.discountType)}</select></label>
-        <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(draft.discountValue || "")}" placeholder="0,00"></label>
+      <div class="new-quote-linear-fields">
+        <section class="new-quote-linear-group"><div class="new-quote-linear-group-heading"><strong>Material e tabela</strong><span>Selecione a base configurada para o cálculo.</span></div><div class="new-quote-card-editor-grid">
+          <label><span>Material</span><select name="productType">${catalog.map((item) => `<option value="${escapeAttribute(item.id)}"${item.id === draft.productType ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}</select></label>
+          <label><span>Prazo / tabela</span><select name="variantType">${variants.map((item) => `<option value="${escapeAttribute(item.id)}"${item.id === draft.variantType ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("") || `<option value="">Tabela única</option>`}</select></label>
+          <label class="new-quote-linear-description"><span>Descrição</span><input name="description" value="${escapeAttribute(draft.description)}" placeholder="Ex.: DTF para camisetas" autocomplete="off"></label>
+        </div></section>
+        <section class="new-quote-linear-group"><div class="new-quote-linear-group-heading"><strong>Medidas e quantidade</strong><span>O sistema calcula o aproveitamento na largura fixa do material.</span></div><div class="new-quote-card-editor-grid new-quote-linear-measure-grid">
+          <label><span>Largura da peça (cm)</span><input name="widthCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(draft.widthCm || "")}"></label>
+          <label><span>Altura da peça (cm)</span><input name="heightCm" type="number" min="0.1" step="0.1" value="${escapeAttribute(draft.heightCm || "")}"></label>
+          <label><span>Quantidade</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity || "")}"></label>
+        </div></section>
+        <section class="new-quote-linear-group"><div class="new-quote-linear-group-heading"><strong>Valores adicionais</strong><span>Aplicados somente a este item do orçamento.</span></div><div class="new-quote-card-editor-grid new-quote-linear-adjustment-grid">
+          <label><span>Valor de arte</span><input name="artCreationFee" type="number" min="0" step="0.01" value="${escapeAttribute(draft.artCreationFee || "")}" placeholder="0,00"></label>
+          <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, draft.discountType)}</select></label>
+          <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(draft.discountValue || "")}" placeholder="0,00"></label>
+        </div></section>
       </div>
       <div class="new-quote-card-preview"><div><span>Largura fixa</span><strong>${escapeHtml(row.fixedWidthLabel || "-")}</strong></div><div><span>Metro linear</span><strong>${formatMeasure(row.linearMeters)} m</strong></div><div><span>Total do item</span><strong>${formatCurrency(row.total)}</strong></div><div><span>Valor unitário</span><strong>${formatCurrency(row.unitValue)}</strong></div></div>
       ${row.warning ? `<p class="warning-item">${escapeHtml(row.warning)}</p>` : ""}

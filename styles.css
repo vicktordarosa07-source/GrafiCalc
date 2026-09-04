@@ -8815,6 +8815,47 @@ body::before {
   align-items: flex-start;
 }
 
+.new-quote-linear-fields {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.new-quote-linear-group {
+  padding: 14px;
+  border: 1px solid rgba(83, 163, 143, 0.2);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.new-quote-linear-group-heading {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 12px;
+}
+
+.new-quote-linear-group-heading strong {
+  color: #173a40;
+  font-size: 0.88rem;
+}
+
+.new-quote-linear-group-heading span {
+  color: #64827f;
+  font-size: 0.78rem;
+}
+
+.new-quote-linear-description {
+  grid-column: 1 / -1;
+}
+
+.new-quote-linear-group .new-quote-card-editor-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.new-quote-linear-group .new-quote-card-editor-grid label:first-child {
+  grid-column: auto;
+}
+
 .new-quote-free-choice-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
