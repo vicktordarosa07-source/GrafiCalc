@@ -82,7 +82,7 @@ const EMPLOYEE_OPERATION_TABS = new Set([
 
 const OPTIONS = {
   printTypes: ["Preto e branco", "Colorido jato de tinta", "Colorido laser"],
-  sizes: ["A4", "A5"],
+  sizes: ["A4", "A5", "A6"],
   printModes: ["Só frente", "Frente e verso"],
   bleedModes: ["Sem sangra", "Com sangra"],
   finishing: ["Sem acabamento", "Encadernação espiral", "Encadernação wire-o", "Livreto", "Capa dura", "Capa mole laminada"],
@@ -1008,11 +1008,14 @@ function createDefaultRow(index) {
     bindingGroup: "",
     quantity: 0,
     pages: 0,
+    pagesPerSheet: 1,
+    colorPages: 0,
     coverType: "Sem capa",
     coverPaper: "Sulfite 75g",
     backCoverType: "Sem contracapa",
     backCoverPaper: "Sulfite 75g",
     spiralOption: "Completa",
+    artCreationFee: 0,
     discountType: "R$",
     discountValue: 0,
   };
@@ -1920,6 +1923,9 @@ function mergeState(candidate, configCandidate = null) {
       ...row,
       quantity: toWholeNumber(row?.quantity),
       pages: toWholeNumber(row?.pages),
+      pagesPerSheet: [1, 2, 4, 6].includes(toWholeNumber(row?.pagesPerSheet)) ? toWholeNumber(row.pagesPerSheet) : 1,
+      colorPages: toWholeNumber(row?.colorPages),
+      artCreationFee: toMoneyNumber(row?.artCreationFee),
       discountType: normalizeDiscountType(row?.discountType),
       discountValue: normalizeDiscountValue(row?.discountValue),
       id: row?.id || `row-${index + 1}`,
@@ -3308,8 +3314,29 @@ function getCoverImpressions(row, kind) {
   }
 
   const sides = type === "Colorida frente e verso" ? 2 : 1;
-  const baseCopies = row.size === "A5" && row.finishing !== "Livreto" ? Math.ceil(copies / 2) : copies;
+  const pagesPerSheet = getApostilaPagesPerSheet(row.size);
+  const baseCopies = pagesPerSheet > 1 && row.finishing !== "Livreto" ? Math.ceil(copies / pagesPerSheet) : copies;
   return baseCopies * sides;
+}
+
+function getApostilaPagesPerSheet(size) {
+  if (size === "A6") return 4;
+  if (size === "A5") return 2;
+  return 1;
+}
+
+function getApostilaInnerPagesPerSheet(row) {
+  if (row?.size !== "A4") return getApostilaPagesPerSheet(row?.size);
+  const pagesPerSheet = toWholeNumber(row?.pagesPerSheet);
+  return [1, 2, 4, 6].includes(pagesPerSheet) ? pagesPerSheet : 1;
+}
+
+function getApostilaSizeDetail(row) {
+  const size = row.size || "A4";
+  const pagesPerSheet = getApostilaInnerPagesPerSheet(row);
+  return size === "A4" && pagesPerSheet > 1
+    ? `Apostila tamanho ${size} impressa com ${pagesPerSheet} páginas por folha`
+    : `Tamanho ${size}`;
 }
 
 function getBindingSheetsPerCopy(row) {
@@ -3317,7 +3344,8 @@ function getBindingSheetsPerCopy(row) {
   if (pages <= 0) {
     return 0;
   }
-  return row.printMode === "Frente e verso" ? Math.ceil(pages / 2) : pages;
+  const imposedPages = Math.ceil(pages / getApostilaInnerPagesPerSheet(row));
+  return row.printMode === "Frente e verso" ? Math.ceil(imposedPages / 2) : imposedPages;
 }
 
 function getInnerImpressions(row) {
@@ -3326,7 +3354,7 @@ function getInnerImpressions(row) {
   if (copies <= 0 || pages <= 0) {
     return 0;
   }
-  const pagesPerA4 = row.size === "A5" ? Math.ceil(pages / 2) : pages;
+  const pagesPerA4 = Math.ceil(pages / getApostilaInnerPagesPerSheet(row));
   return copies * pagesPerA4;
 }
 
@@ -3438,6 +3466,49 @@ function isRowActive(row) {
   return Boolean(row.description?.trim() || Number(row.quantity) > 0 || Number(row.pages) > 0);
 }
 
+function getNormalizedColorPages(row) {
+  const totalPages = Math.max(0, toWholeNumber(row.pages));
+  const colorPages = Math.max(0, toWholeNumber(row.colorPages));
+  return Math.min(colorPages, totalPages);
+}
+
+function getPagesPerA4(pageCount, row) {
+  if (pageCount <= 0) return 0;
+  return Math.ceil(pageCount / getApostilaInnerPagesPerSheet(row));
+}
+
+function getInnerImpressionBreakdown(row) {
+  const copies = Math.max(0, row.quantity);
+  const totalPages = Math.max(0, row.pages);
+  const colorPages = getNormalizedColorPages(row);
+  if (copies <= 0 || totalPages <= 0) {
+    return { totalImpressions: 0, blackWhiteImpressions: 0, colorImpressions: 0, blackWhitePagesPerCopy: 0, colorPagesPerCopy: 0, normalizedColorPages: 0 };
+  }
+
+  const fullColorMode = row.printType !== "Preto e branco" && colorPages === 0;
+  const colorPagesPerCopy = fullColorMode ? totalPages : colorPages;
+  const blackWhitePagesPerCopy = fullColorMode ? 0 : Math.max(0, totalPages - colorPagesPerCopy);
+  const colorImpressions = copies * getPagesPerA4(colorPagesPerCopy, row);
+  const blackWhiteImpressions = copies * getPagesPerA4(blackWhitePagesPerCopy, row);
+  return {
+    totalImpressions: colorImpressions + blackWhiteImpressions,
+    blackWhiteImpressions,
+    colorImpressions,
+    blackWhitePagesPerCopy,
+    colorPagesPerCopy,
+    normalizedColorPages: colorPages,
+  };
+}
+
+function buildApostilaPrintDetail(row) {
+  const totalPages = Math.max(0, toWholeNumber(row.pages));
+  const colorPages = getNormalizedColorPages(row);
+  const blackWhitePages = Math.max(0, totalPages - colorPages);
+  if (colorPages > 0) return `${blackWhitePages} PB + ${colorPages} coloridas (tabela da capa em Sulfite 75g)`;
+  if (row.printType === "Preto e branco") return "Preto e branco";
+  return row.printType;
+}
+
 function isColorPrintRowActive(row) {
   return Boolean(
     row.description?.trim() ||
@@ -3462,22 +3533,33 @@ function calculateWorkbook(state, config) {
     ...row,
     quantity: toWholeNumber(row.quantity),
     pages: toWholeNumber(row.pages),
+    pagesPerSheet: [1, 2, 4, 6].includes(toWholeNumber(row.pagesPerSheet)) ? toWholeNumber(row.pagesPerSheet) : 1,
+    colorPages: toWholeNumber(row.colorPages),
   }));
 
   const rowBase = rows.map((row) => {
-    const innerImpressions = getInnerImpressions(row);
+    const innerBreakdown = getInnerImpressionBreakdown(row);
     const bindingSheetsPerCopy = getBindingSheetsPerCopy(row);
     const coverImpressions = getCoverImpressions(row, "cover");
     const backImpressions = getCoverImpressions(row, "back");
-    return { row, innerImpressions, bindingSheetsPerCopy, coverImpressions, backImpressions };
+    return { row, innerBreakdown, bindingSheetsPerCopy, coverImpressions, backImpressions };
   });
 
   const aggregateInnerByKey = {};
   const aggregateCoverByPaper = {};
+  let aggregateColorPagesOnSulfite = 0;
 
   for (const item of rowBase) {
-    const innerKey = getPrintAggregationKey(item.row.printType, item.row.printMode);
-    aggregateInnerByKey[innerKey] = (aggregateInnerByKey[innerKey] || 0) + item.innerImpressions;
+    const blackWhiteKey = getPrintAggregationKey("Preto e branco", item.row.printMode);
+    if (item.innerBreakdown.blackWhiteImpressions > 0) {
+      aggregateInnerByKey[blackWhiteKey] = (aggregateInnerByKey[blackWhiteKey] || 0) + item.innerBreakdown.blackWhiteImpressions;
+    }
+    if (item.innerBreakdown.colorImpressions > 0 && item.innerBreakdown.normalizedColorPages > 0) {
+      aggregateColorPagesOnSulfite += item.innerBreakdown.colorImpressions;
+    } else if (item.innerBreakdown.colorImpressions > 0 && item.row.printType !== "Preto e branco") {
+      const colorKey = getPrintAggregationKey(item.row.printType, item.row.printMode);
+      aggregateInnerByKey[colorKey] = (aggregateInnerByKey[colorKey] || 0) + item.innerBreakdown.colorImpressions;
+    }
 
     if (item.coverImpressions > 0) {
       aggregateCoverByPaper[item.row.coverPaper] = (aggregateCoverByPaper[item.row.coverPaper] || 0) + item.coverImpressions;
@@ -3568,9 +3650,15 @@ function calculateWorkbook(state, config) {
   }
 
   const computedRows = rowBase.map((item, index) => {
-    const { row, innerImpressions, bindingSheetsPerCopy, coverImpressions, backImpressions } = item;
-    const effectiveInnerQty =
-      state.calcMode === "Somar quantidades" ? aggregateInnerByKey[getPrintAggregationKey(row.printType, row.printMode)] || 0 : innerImpressions;
+    const { row, innerBreakdown, bindingSheetsPerCopy, coverImpressions, backImpressions } = item;
+    const effectiveBlackWhiteQty = state.calcMode === "Somar quantidades"
+      ? aggregateInnerByKey[getPrintAggregationKey("Preto e branco", row.printMode)] || 0
+      : innerBreakdown.blackWhiteImpressions;
+    const effectiveColorQty = row.printType !== "Preto e branco" && innerBreakdown.normalizedColorPages === 0
+      ? state.calcMode === "Somar quantidades"
+        ? aggregateInnerByKey[getPrintAggregationKey(row.printType, row.printMode)] || 0
+        : innerBreakdown.colorImpressions
+      : 0;
 
     const samePaper = row.coverPaper === row.backCoverPaper;
     const coverPricingQty =
@@ -3586,7 +3674,18 @@ function calculateWorkbook(state, config) {
           ? coverImpressions + backImpressions
           : backImpressions;
 
-    const innerTotal = getPrintTotalByType(row.printType, innerImpressions, effectiveInnerQty, config, row.printMode);
+    let innerTotal = 0;
+    if (innerBreakdown.blackWhiteImpressions > 0) {
+      innerTotal += getBlackWhiteTotal(innerBreakdown.blackWhiteImpressions, effectiveBlackWhiteQty, config, row.printMode);
+    }
+    if (innerBreakdown.colorImpressions > 0) {
+      if (innerBreakdown.normalizedColorPages > 0) {
+        const sulfitePricingQty = state.calcMode === "Somar quantidades" ? aggregateColorPagesOnSulfite : innerBreakdown.colorImpressions;
+        innerTotal += innerBreakdown.colorImpressions * lookupTier(config.coverPricing["Sulfite 75g"], sulfitePricingQty);
+      } else {
+        innerTotal += getPrintTotalByType(row.printType, innerBreakdown.colorImpressions, effectiveColorQty, config, row.printMode);
+      }
+    }
     const coverUnit = coverImpressions > 0 ? lookupTier(config.coverPricing[row.coverPaper], coverPricingQty) : 0;
     const backUnit = backImpressions > 0 ? lookupTier(config.coverPricing[row.backCoverPaper], backPricingQty) : 0;
     const coverTotal = coverImpressions * coverUnit;
@@ -3623,15 +3722,24 @@ function calculateWorkbook(state, config) {
       finishingTotal = row.quantity * finishingUnit;
     }
 
-    const totalBeforeDiscount = innerTotal + coverTotal + backTotal + finishingTotal;
+    const artCreationFee = toMoneyNumber(row.artCreationFee);
+    const totalBeforeDiscount = innerTotal + coverTotal + backTotal + finishingTotal + artCreationFee;
     const discount = calculateDiscount(totalBeforeDiscount, row);
     const total = discount.totalAfterDiscount;
     const unitValue = row.quantity > 0 ? total / row.quantity : 0;
 
+    if (row.colorPages > row.pages && isRowActive(row)) {
+      warnings.push(`Item ${index + 1}: as páginas coloridas não podem ser maiores que o total de páginas. O app usou o limite da quantidade total.`);
+    }
+
     return {
       ...row,
       active: isRowActive(row),
-      innerImpressions,
+      innerImpressions: innerBreakdown.totalImpressions,
+      blackWhiteImpressions: innerBreakdown.blackWhiteImpressions,
+      colorImpressions: innerBreakdown.colorImpressions,
+      colorPages: innerBreakdown.normalizedColorPages,
+      blackWhitePages: innerBreakdown.blackWhitePagesPerCopy,
       bindingSheetsPerCopy,
       coverImpressions,
       backImpressions,
@@ -3645,6 +3753,7 @@ function calculateWorkbook(state, config) {
       groupedQuantity: groupMeta?.groupQuantity || 0,
       finishingUnit,
       finishingTotal,
+      artCreationFee,
       totalBeforeDiscount,
       discountType: discount.discountType,
       discountValue: discount.discountValue,
@@ -7496,8 +7605,8 @@ function createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, 
         sourceId: row.id,
         kind: "Apostila",
         description: row.description,
-        detail: `${formatInteger(row.quantity)} apostilas | ${formatInteger(row.pages)} páginas | ${row.printType} | ${row.finishing}${row.bindingGroup ? ` | Grupo ${row.bindingGroup}` : ""}`,
-        extraDetail: [coverDetail, discountDetail].filter(Boolean).join(" | "),
+        detail: `${formatInteger(row.quantity)} apostilas | ${getApostilaSizeDetail(row)} | ${formatInteger(row.pages)} páginas${row.colorPages > 0 ? ` (${formatInteger(row.blackWhitePages)} PB + ${formatInteger(row.colorPages)} coloridas)` : ""} | ${buildApostilaPrintDetail(row)} | ${row.finishing}${row.bindingGroup ? ` | Grupo ${row.bindingGroup}` : ""}`,
+        extraDetail: [coverDetail, row.artCreationFee > 0 ? `Arte: ${formatCurrency(row.artCreationFee)}` : "", discountDetail].filter(Boolean).join(" | "),
         total: row.total,
       };
     }),
@@ -7709,7 +7818,7 @@ function createQuoteText(state, workbook, colorWorkbook, credentialWorkbook, m2W
       const coverDetail = buildApostilaCoverDetail(row);
       const discountDetail = getDiscountQuoteDetail(row);
       return {
-        text: `- ${row.description || `Apostila ${index + 1}`} | ${row.quantity} apostilas | ${row.pages} páginas | ${row.printType} | ${row.finishing}${row.bindingGroup ? ` | Grupo ${row.bindingGroup}` : ""}${coverDetail ? ` | ${coverDetail}` : ""}${discountDetail ? ` | ${discountDetail}` : ""} | ${formatCurrency(row.total)}`,
+        text: `- ${row.description || `Apostila ${index + 1}`} | ${row.quantity} apostilas | ${getApostilaSizeDetail(row)} | ${row.pages} páginas${row.colorPages > 0 ? ` (${row.blackWhitePages} PB + ${row.colorPages} coloridas)` : ""} | ${buildApostilaPrintDetail(row)} | ${row.finishing}${row.bindingGroup ? ` | Grupo ${row.bindingGroup}` : ""}${coverDetail ? ` | ${coverDetail}` : ""}${row.artCreationFee > 0 ? ` | Arte: ${formatCurrency(row.artCreationFee)}` : ""}${discountDetail ? ` | ${discountDetail}` : ""} | ${formatCurrency(row.total)}`,
       };
     }),
     ...colorWorkbook.activeRows.map((row, index) => ({
@@ -11190,6 +11299,8 @@ async function initApp() {
         <label><span>Tamanho</span><select name="size">${selectOptions(OPTIONS.sizes, draft.size)}</select></label>
         <label><span>Lados</span><select name="printMode">${selectOptions(OPTIONS.printModes, draft.printMode)}</select></label>
         <label><span>Páginas</span><input name="pages" type="number" min="1" step="1" value="${escapeAttribute(draft.pages)}"></label>
+        <label><span>Páginas por folha (A4)</span><select name="pagesPerSheet">${selectOptions(["1", "2", "4", "6"], String(draft.pagesPerSheet || 1))}</select></label>
+        <label><span>Páginas coloridas</span><input name="colorPages" type="number" min="0" step="1" value="${escapeAttribute(draft.colorPages || "")}" placeholder="0 se todas forem coloridas"></label>
         <label><span>Quantidade</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity)}"></label>
         <label><span>Acabamento</span><select name="finishing">${selectOptions(OPTIONS.finishing, draft.finishing)}</select></label>
         ${hasSpiralOption ? `<label><span>Opção de encadernação</span><select name="spiralOption">${selectOptions(OPTIONS.spiralOptions, draft.spiralOption)}</select></label>` : ""}
@@ -11197,12 +11308,14 @@ async function initApp() {
         ${draft.coverType !== "Sem capa" ? `<label><span>Papel da capa</span><select name="coverPaper">${selectOptions(OPTIONS.coverPapers, draft.coverPaper)}</select></label>` : ""}
         <label><span>Contracapa</span><select name="backCoverType">${selectOptions(OPTIONS.backCoverTypes, draft.backCoverType)}</select></label>
         ${draft.backCoverType !== "Sem contracapa" ? `<label><span>Papel da contracapa</span><select name="backCoverPaper">${selectOptions(OPTIONS.coverPapers, draft.backCoverPaper)}</select></label>` : ""}
+        <label><span>Valor de arte</span><input name="artCreationFee" type="number" min="0" step="0.01" value="${escapeAttribute(draft.artCreationFee || "")}" placeholder="0,00"></label>
         <label><span>Tipo de desconto</span><select name="discountType">${buildOptions(OPTIONS.discountTypes, normalizeDiscountType(draft.discountType))}</select></label>
         <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(normalizeDiscountValue(draft.discountValue))}" placeholder="0,00"></label>
       </div>
       <div class="new-quote-card-preview" aria-label="Resumo da apostila">
         <div><span>Impressão interna</span><strong>${formatCurrency(row.innerTotal || 0)}</strong></div>
         <div><span>Capas</span><strong>${formatCurrency((row.coverTotal || 0) + (row.backTotal || 0))}</strong></div>
+        <div><span>Arte</span><strong>${formatCurrency(row.artCreationFee || 0)}</strong></div>
         <div><span>Total do item</span><strong>${formatCurrency(row.total || 0)}</strong></div>
         <div><span>Valor unitário</span><strong>${formatCurrency(row.unitValue || 0)}</strong></div>
       </div>
@@ -12875,6 +12988,8 @@ async function initApp() {
             <td><input class="cell-input" name="bindingGroup" value="${escapeHtml(row.bindingGroup)}" placeholder="Ex.: Grupo A"></td>
             <td><input class="cell-input" name="quantity" type="number" min="0" step="1" value="${escapeHtml(row.quantity)}"></td>
             <td><input class="cell-input" name="pages" type="number" min="0" step="1" value="${escapeHtml(row.pages)}"></td>
+            <td><select class="cell-select" name="pagesPerSheet">${buildOptions(["1", "2", "4", "6"], String(row.pagesPerSheet || 1))}</select></td>
+            <td><input class="cell-input" name="colorPages" type="number" min="0" step="1" value="${row.colorPages > 0 ? escapeHtml(row.colorPages) : ""}"></td>
             <td><select class="cell-select" name="coverType">${buildOptions(OPTIONS.coverTypes, row.coverType)}</select></td>
             <td><select class="cell-select" name="coverPaper">${buildOptions(OPTIONS.coverPapers, row.coverPaper)}</select></td>
             <td><select class="cell-select" name="backCoverType">${buildOptions(OPTIONS.backCoverTypes, row.backCoverType)}</select></td>
@@ -12884,6 +12999,7 @@ async function initApp() {
             <td><span class="readonly-value subtle">${formatCurrency(row.coverTotal)}</span></td>
             <td><span class="readonly-value subtle">${formatCurrency(row.backTotal)}</span></td>
             <td><span class="readonly-value subtle">${formatCurrency(row.finishingTotal)}${row.groupedFinishing ? `<br><small>${row.bindingGroupLeader ? `Grupo ${escapeHtml(row.bindingGroup)}` : `Grupo ${escapeHtml(row.bindingGroup)} (na 1a linha)`}</small>` : ""}</span></td>
+            <td><input class="cell-input compact-money" name="artCreationFee" type="number" min="0" step="0.01" value="${escapeHtml(row.artCreationFee ?? 0)}" placeholder="0,00"></td>
             <td>${createDiscountTypeSelect(row)}</td>
             <td>${createDiscountValueInput(row)}</td>
             <td><span class="readonly-value">${formatCurrency(row.total)}</span></td>
@@ -14853,8 +14969,13 @@ async function initApp() {
     if (!field || !row) {
       return;
     }
-    if (field === "quantity" || field === "pages") {
+    if (field === "quantity" || field === "pages" || field === "colorPages") {
       row[field] = toWholeNumber(target.value);
+    } else if (field === "pagesPerSheet") {
+      const pagesPerSheet = toWholeNumber(target.value);
+      row.pagesPerSheet = [1, 2, 4, 6].includes(pagesPerSheet) ? pagesPerSheet : 1;
+    } else if (field === "artCreationFee") {
+      row.artCreationFee = toMoneyNumber(target.value);
     } else if (field === "discountValue") {
       row.discountValue = normalizeDiscountValue(target.value);
     } else if (field === "discountType") {
@@ -16733,8 +16854,13 @@ async function initApp() {
     const draft = getNewQuoteBookletDraft();
     const target = event.target;
     if (!draft || !(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
-    if (["pages", "quantity"].includes(target.name)) {
+    if (["pages", "quantity", "colorPages"].includes(target.name)) {
       draft[target.name] = Math.max(0, toWholeNumber(target.value));
+    } else if (target.name === "pagesPerSheet") {
+      const pagesPerSheet = toWholeNumber(target.value);
+      draft.pagesPerSheet = [1, 2, 4, 6].includes(pagesPerSheet) ? pagesPerSheet : 1;
+    } else if (target.name === "artCreationFee") {
+      draft.artCreationFee = toMoneyNumber(target.value);
     } else if (target.name === "discountType") {
       draft.discountType = normalizeDiscountType(target.value);
     } else if (target.name === "discountValue") {
