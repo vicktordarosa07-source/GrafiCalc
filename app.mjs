@@ -16816,7 +16816,17 @@ async function initApp() {
     if (target.name === "quantity") draft.quantity = toWholeNumber(target.value);
     if (target.name === "artCreationFee") draft.artCreationFee = toMoneyNumber(target.value);
     if (target.name === "discountValue") draft.discountValue = normalizeDiscountValue(target.value);
+    const fieldName = target.name;
+    const selectionStart = target.selectionStart;
+    const selectionEnd = target.selectionEnd;
     renderNewQuoteLinearEditor();
+    const nextField = newQuoteLinearEditor.querySelector(`[name="${fieldName}"]`);
+    if (nextField instanceof HTMLInputElement) {
+      nextField.focus({ preventScroll: true });
+      if (selectionStart !== null && selectionEnd !== null) {
+        nextField.setSelectionRange(selectionStart, selectionEnd);
+      }
+    }
   });
 
   newQuoteLinearEditor?.addEventListener("change", (event) => {
