@@ -6,7 +6,7 @@ export async function GET() {
   if (!user || !user.email_confirmed_at) return Response.json({ error: "unauthorized" }, { status: 401 });
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("id,nome,empresa,cpf_cnpj,email,papel,criado_em")
+    .select("id,tenant_id,nome,empresa,cpf_cnpj,email,papel,criado_em")
     .eq("id", user.id)
     .maybeSingle();
 

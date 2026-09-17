@@ -15,8 +15,8 @@ const SESSION_KEYS = {
 };
 
 const DEVELOPER_ACCOUNT = {
-  id: "developer-helder",
-  username: "Helder Pedro da Rosa",
+  id: "developer-system",
+  username: "Administrador do sistema",
   company: "GrafiCalc",
   role: "developer",
   status: "active",
@@ -2214,6 +2214,27 @@ function saveToStorage(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function getAccountStorageKey(key, user) {
+  const accountId = String(user?.id || "anonymous").trim();
+  const safeAccountId = accountId.replace(/[^a-zA-Z0-9._-]/g, "_") || "anonymous";
+  return `${key}:${safeAccountId}`;
+}
+
+function loadAccountState(user, config) {
+  return loadFromStorage(
+    getAccountStorageKey(STORAGE_KEYS.state, user),
+    (candidate) => mergeState(candidate, config),
+  );
+}
+
+function saveAccountState(user, state) {
+  saveToStorage(getAccountStorageKey(STORAGE_KEYS.state, user), state);
+}
+
+function saveAccountConfig(user, config) {
+  saveToStorage(getAccountStorageKey(STORAGE_KEYS.config, user), config);
+}
+
 function createTabPermissionMap(enabled = true, developerEnabled = false) {
   return Object.fromEntries(
     APP_TAB_LABELS.map((tab) => [tab.id, tab.developerOnly ? developerEnabled : enabled])
@@ -2322,7 +2343,6 @@ function normalizeUserRecord(user, index = 0) {
   return {
     id: user?.id || `user-${Date.now()}-${index}`,
     username: typeof user?.username === "string" ? user.username.trim() : "",
-    password: typeof user?.password === "string" ? user.password : "",
     email,
     document,
     birthDate,
@@ -2330,8 +2350,6 @@ function normalizeUserRecord(user, index = 0) {
     role: ["developer", "employee"].includes(user?.role) ? user.role : "user",
     status: ["active", "pending", "blocked"].includes(user?.status) ? user.status : "pending",
     mustChangePassword: Boolean(user?.mustChangePassword),
-    passwordMode: user?.passwordMode === "temporary" ? "temporary" : "permanent",
-    temporaryPasswordIssuedAt: typeof user?.temporaryPasswordIssuedAt === "string" ? user.temporaryPasswordIssuedAt : "",
     groupId: typeof user?.groupId === "string" ? user.groupId : "profissional",
     emailVerification: normalizeEmailVerification(user?.emailVerification, email),
     documentVerification: normalizeDocumentVerification(user?.documentVerification, document, birthDate),
@@ -2431,6 +2449,9 @@ function hasStoredAuthSession(userId = "") {
 }
 
 function loadDeveloperPersistentLogin() {
+  if (typeof window !== "undefined" && window.grafiCalcRemoteAuth?.userId) {
+    return false;
+  }
   return loadFromStorage(
     STORAGE_KEYS.developerPersistentLogin,
     (candidate) => Boolean(candidate && typeof candidate === "object" && candidate.enabled === true)
@@ -2974,7 +2995,8 @@ async function requestDeveloperLogin(username, password) {
     throw new Error("fetch-unavailable");
   }
 
-  const response = await fetch(AUTH_DEVELOPER_LOGIN_API_PATH, {
+  const endpoint = window.grafiCalcRemoteAuth?.userId ? "/api/auth/health" : AUTH_DEVELOPER_LOGIN_API_PATH;
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -2997,7 +3019,8 @@ async function requestServerAuthSession() {
     throw new Error("fetch-unavailable");
   }
 
-  const response = await fetch(AUTH_SESSION_API_PATH, {
+  const endpoint = window.grafiCalcRemoteAuth?.userId ? "/api/auth/health" : AUTH_SESSION_API_PATH;
+  const response = await fetch(endpoint, {
     method: "GET",
     cache: "no-store",
   });
@@ -7749,7 +7772,7 @@ function createQuoteHtml(state, workbook, colorWorkbook, credentialWorkbook, m2W
     : "";
 
   const logoMarkup = state.company.logoDataUrl
-    ? `<div class="logo-box"><img src="${state.company.logoDataUrl}" alt="Logo da empresa"></div>`
+    ? `<div class="logo-box"><img src="${escapeAttribute(state.company.logoDataUrl)}" alt="Logo da empresa"></div>`
     : document.getElementById("logo-placeholder-template").innerHTML;
 
   return `
@@ -7878,24 +7901,29 @@ function createQuoteText(state, workbook, colorWorkbook, credentialWorkbook, m2W
 
 async function initApp() {
   await loadStoreMasterSeed();
-  const config = loadFromStorage(STORAGE_KEYS.config, mergeConfig);
-  const hiddenCleanupChanged = cleanupHiddenImpressosEntries(config);
-  const seedCoverageChanged = ensureSeedCatalogCoverage(config);
-  if (hiddenCleanupChanged || seedCoverageChanged) {
-    saveToStorage(STORAGE_KEYS.config, config);
-  }
-  const state = loadFromStorage(STORAGE_KEYS.state, (candidate) => mergeState(candidate, config));
   let authUsers = loadAuthUsers();
   let accessControl = loadAccessControl();
   let currentUser = loadAuthSession(authUsers);
-  if (!currentUser && loadDeveloperPersistentLogin()) {
+  if (!currentUser && !window.grafiCalcRemoteAuth?.userId && loadDeveloperPersistentLogin()) {
     currentUser = authUsers.find((user) => user.id === DEVELOPER_ACCOUNT.id && user.status === "active")
       || normalizeUserRecord(DEVELOPER_ACCOUNT);
     saveAuthSession(currentUser);
   }
+  const config = loadFromStorage(
+    getAccountStorageKey(STORAGE_KEYS.config, currentUser),
+    mergeConfig,
+  );
+  const hiddenCleanupChanged = cleanupHiddenImpressosEntries(config);
+  const seedCoverageChanged = ensureSeedCatalogCoverage(config);
+  if (hiddenCleanupChanged || seedCoverageChanged) {
+    saveAccountConfig(currentUser, config);
+  }
+  // The old unscoped state has no trustworthy owner. Never load it as a
+  // fallback, otherwise an empty account could inherit another account's data.
+  let state = loadAccountState(currentUser, config);
   let pendingVerificationEmail = loadPendingVerificationEmail();
   const previewParams = new URLSearchParams(window.location.search);
-  const isPreviewHomeMode = previewParams.get("preview-home") === "1";
+  const isPreviewHomeMode = false;
   const previewTabName = previewParams.get("preview-tab") || "";
   if (isPreviewHomeMode) {
     saveAuthSession(DEVELOPER_ACCOUNT);
@@ -7903,8 +7931,8 @@ async function initApp() {
   }
   const hiddenStateCleanupChanged = cleanupHiddenImpressosEntries(config, state);
   if (hiddenStateCleanupChanged) {
-    saveToStorage(STORAGE_KEYS.state, state);
-    saveToStorage(STORAGE_KEYS.config, config);
+    saveAccountState(currentUser, state);
+    saveAccountConfig(currentUser, config);
   }
   let configViewMode = loadConfigViewMode();
   let activeConfigSection = loadConfigSection();
@@ -7923,6 +7951,7 @@ async function initApp() {
   let selectedDeveloperUserId = "";
   let serverSecuritySession = {
     developerLoggedIn: false,
+    developerEligible: false,
     configUnlocked: false,
     username: "",
   };
@@ -8044,6 +8073,12 @@ async function initApp() {
   const passwordChangeInput = document.getElementById("password-change-input");
   const passwordChangeConfirmInput = document.getElementById("password-change-confirm-input");
   const passwordChangeStatus = document.getElementById("password-change-status");
+  const developerAccessButton = document.getElementById("developer-access-button");
+  const developerAccessModal = document.getElementById("developer-access-modal");
+  const developerAccessForm = document.getElementById("developer-access-form");
+  const developerAccessUsername = document.getElementById("developer-access-username");
+  const developerAccessPassword = document.getElementById("developer-access-password");
+  const developerAccessStatus = document.getElementById("developer-access-status");
   const appShell = document.getElementById("app-shell");
   const authStatus = document.getElementById("auth-status");
   const emailVerificationForm = document.getElementById("email-verification-form");
@@ -8505,12 +8540,22 @@ async function initApp() {
     if (!resolved?.status || resolved.status !== "active") {
       return null;
     }
-    currentUser = resolved;
-    saveAuthSession(currentUser);
+    const transientDeveloperAccess = Boolean(
+      serverSecuritySession.developerLoggedIn && fallbackUser?.developerAccess
+    );
+    currentUser = transientDeveloperAccess
+      ? { ...resolved, role: "developer", groupId: "developer", developerAccess: true }
+      : resolved;
+    saveAuthSession(transientDeveloperAccess
+      ? { ...currentUser, role: "user", groupId: "profissional", developerAccess: false }
+      : currentUser);
     return currentUser;
   }
 
   function forceDeveloperAuthenticatedState() {
+    if (window.grafiCalcRemoteAuth?.userId) {
+      return null;
+    }
     if (!serverSecuritySession?.developerLoggedIn) {
       return null;
     }
@@ -8518,6 +8563,19 @@ async function initApp() {
     saveAuthSession(currentUser);
     clearPendingVerificationStep();
     return currentUser;
+  }
+
+  function openDeveloperAccessModal() {
+    if (!developerAccessModal) return;
+    developerAccessModal.hidden = false;
+    if (developerAccessUsername) developerAccessUsername.value = "";
+    if (developerAccessPassword) developerAccessPassword.value = "";
+    setStatusMessage(developerAccessStatus, "Informe a credencial administrativa do servidor.", "neutral");
+    developerAccessUsername?.focus();
+  }
+
+  function closeDeveloperAccessModal() {
+    if (developerAccessModal) developerAccessModal.hidden = true;
   }
 
   function getFirstAllowedLoggedTab(user = currentUser) {
@@ -8601,6 +8659,7 @@ async function initApp() {
     if (isPreviewHomeMode) {
       serverSecuritySession = {
         developerLoggedIn: true,
+        developerEligible: true,
         configUnlocked: true,
         available: true,
         username: DEVELOPER_ACCOUNT.username,
@@ -8616,6 +8675,7 @@ async function initApp() {
       const result = await requestServerAuthSession();
       serverSecuritySession = {
         developerLoggedIn: Boolean(result?.developerLoggedIn) || hasLocalDeveloperSession,
+        developerEligible: Boolean(result?.developerEligible),
         configUnlocked: Boolean(result?.configUnlocked) || (hasLocalDeveloperSession && previousConfigUnlocked),
         username: typeof result?.username === "string" ? result.username : (currentDeveloper ? currentUser?.username || DEVELOPER_ACCOUNT.username : ""),
         available: true,
@@ -8623,17 +8683,20 @@ async function initApp() {
     } catch {
       serverSecuritySession = {
         developerLoggedIn: hasLocalDeveloperSession,
+        developerEligible: false,
         configUnlocked: currentDeveloper ? previousConfigUnlocked : false,
         username: currentDeveloper ? currentUser?.username || DEVELOPER_ACCOUNT.username : "",
         available: false,
       };
     }
 
-    if (
-      serverSecuritySession.developerLoggedIn
-      && (!currentUser || currentUser.status !== "active" || currentUser.role !== "developer")
-    ) {
-      forceDeveloperAuthenticatedState();
+    if (serverSecuritySession.developerLoggedIn && currentUser?.status === "active") {
+      currentUser = {
+        ...currentUser,
+        role: "developer",
+        groupId: "developer",
+        developerAccess: true,
+      };
     }
 
     isConfigUnlocked = Boolean(
@@ -8659,12 +8722,14 @@ async function initApp() {
     isConfigUnlocked = false;
     serverSecuritySession = {
       developerLoggedIn: false,
+      developerEligible: false,
       configUnlocked: false,
       username: "",
     };
     saveAuthSession(null);
     saveSessionFlag(SESSION_KEYS.configUnlocked, false);
     closePasswordChangeModal();
+    closeDeveloperAccessModal();
     applyAccessRules();
     setAuthStatus("Sessão encerrada com segurança.", "success");
     selectTab("login");
@@ -8684,6 +8749,11 @@ async function initApp() {
       currentUserLabel.textContent = logged
         ? `${currentUser.username}${isDeveloperSession() ? " | Desenvolvedor" : ""}`
         : "Nenhum usuário conectado";
+    }
+    if (developerAccessButton) {
+      developerAccessButton.hidden = !logged || !Boolean(
+        serverSecuritySession.developerEligible || serverSecuritySession.developerLoggedIn
+      );
     }
     if (syncStatus) {
       syncStatus.hidden = !logged;
@@ -8994,6 +9064,7 @@ async function initApp() {
         const result = await requestDeveloperLogin(username, password);
         serverSecuritySession = {
           developerLoggedIn: Boolean(result?.developerLoggedIn),
+          developerEligible: true,
           configUnlocked: Boolean(result?.configUnlocked),
           username: typeof result?.username === "string" ? result.username : user.username,
         };
@@ -9020,10 +9091,8 @@ async function initApp() {
       selectTab("home");
       return;
     }
-    if (user.password !== password) {
-      setAuthStatus("Usuário ou senha inválidos.", "error");
-      return;
-    }
+    setAuthStatus("O login de usuários é feito pelo acesso seguro do Supabase.", "error");
+    return;
     if (user.emailVerification?.status !== "verified") {
       openEmailVerificationStep(
         user,
@@ -9684,8 +9753,8 @@ async function initApp() {
   }
 
   function persistLocalOnly() {
-    saveToStorage(STORAGE_KEYS.state, state);
-    saveToStorage(STORAGE_KEYS.config, config);
+    saveAccountState(currentUser, state);
+    saveAccountConfig(currentUser, config);
     saveAuthUsers(authUsers);
     saveAccessControl(accessControl);
   }
@@ -14376,31 +14445,8 @@ async function initApp() {
       setConfigStatus("Selecione um usuário antes de resetar a senha.", "warning");
       return;
     }
-    const temporaryPassword = generateTemporaryPassword(10);
-    lastGeneratedTemporaryPassword = temporaryPassword;
-    selectedUser.password = temporaryPassword;
-    selectedUser.mustChangePassword = true;
-    selectedUser.passwordMode = "temporary";
-    selectedUser.temporaryPasswordIssuedAt = new Date().toISOString();
-    selectedUser.updatedAt = new Date().toISOString();
-    refreshAuthStorage();
-    let emailPrepared = false;
-    if (selectedUser.email && typeof window !== "undefined") {
-      try {
-        window.location.href = buildPasswordResetMailto(selectedUser, temporaryPassword);
-        emailPrepared = true;
-      } catch {
-        emailPrepared = false;
-      }
-    }
-    renderDeveloperArea();
-    if (emailPrepared) {
-      setConfigStatus(`Senha temporária de ${selectedUser.username} gerada. O app preparou o envio do e-mail no cliente padrão desta máquina.`, "success");
-    } else if (selectedUser.email) {
-      setConfigStatus(`Senha temporária de ${selectedUser.username} gerada, mas o envio automático do e-mail não pôde ser iniciado nesta máquina. Senha temporária: ${temporaryPassword}`, "warning");
-    } else {
-      setConfigStatus(`Senha temporária de ${selectedUser.username} gerada. Este usuário não possui e-mail cadastrado. Senha temporária: ${temporaryPassword}`, "warning");
-    }
+    setConfigStatus("A redefinição de senha deve ser feita pelo fluxo seguro do Supabase.", "warning");
+    return;
   });
 
   developerPasswordSaveButton?.addEventListener("click", async () => {
@@ -14474,22 +14520,54 @@ async function initApp() {
       passwordChangeInput?.focus();
       return;
     }
-    currentUser.password = newPassword;
-    currentUser.mustChangePassword = false;
-    currentUser.passwordMode = "permanent";
-    currentUser.temporaryPasswordIssuedAt = "";
-    currentUser.updatedAt = new Date().toISOString();
-    const authIndex = authUsers.findIndex((user) => user.id === currentUser.id);
-    if (authIndex >= 0) {
-      authUsers[authIndex] = normalizeUserRecord(currentUser, authIndex);
-      currentUser = authUsers[authIndex];
+    setPasswordChangeStatus("A senha é gerenciada pelo Supabase. Use o fluxo seguro de recuperação.", "warning");
+    return;
+  });
+
+  developerAccessButton?.addEventListener("click", openDeveloperAccessModal);
+
+  developerAccessForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!currentUser || !serverSecuritySession.developerEligible) {
+      setStatusMessage(developerAccessStatus, "Esta conta não está autorizada para a área do desenvolvedor.", "error");
+      return;
     }
-    refreshAuthStorage();
-    saveAuthSession(currentUser);
-    closePasswordChangeModal();
-    renderAll();
-    selectTab("home");
-    setMainFeedback("Nova senha salva com sucesso. Acesso liberado.", "success");
+    const username = developerAccessUsername?.value?.trim() || "";
+    const password = developerAccessPassword?.value || "";
+    if (!username || !password) {
+      setStatusMessage(developerAccessStatus, "Informe usuário e senha para continuar.", "warning");
+      return;
+    }
+    try {
+      const result = await requestDeveloperLogin(username, password);
+      serverSecuritySession = {
+        ...serverSecuritySession,
+        developerLoggedIn: Boolean(result?.developerLoggedIn),
+        configUnlocked: Boolean(result?.configUnlocked),
+        username: typeof result?.username === "string" ? result.username : username,
+      };
+      currentUser = { ...currentUser, role: "developer", groupId: "developer", developerAccess: true };
+      saveAuthSession({ ...currentUser, role: "user", groupId: "profissional", developerAccess: false });
+      saveSessionFlag(SESSION_KEYS.configUnlocked, Boolean(serverSecuritySession.configUnlocked));
+      closeDeveloperAccessModal();
+      applyAccessRules();
+      renderAll();
+      selectTab("desenvolvedor");
+    } catch (error) {
+      const message = error?.message === "developer-auth-not-configured"
+        ? "O acesso administrativo ainda não foi configurado no servidor."
+        : error?.message === "developer-access-denied"
+          ? "Esta conta não está autorizada para a área do desenvolvedor."
+          : "Credenciais administrativas inválidas.";
+      setStatusMessage(developerAccessStatus, message, "error");
+      developerAccessPassword?.select();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-developer-modal-close]")) {
+      closeDeveloperAccessModal();
+    }
   });
 
   document.addEventListener("click", (event) => {
@@ -14835,38 +14913,7 @@ async function initApp() {
       return;
     }
 
-    const currentPassword = document.getElementById("account-current-password")?.value || "";
-    const newPassword = document.getElementById("account-new-password")?.value || "";
-    const confirmPassword = document.getElementById("account-confirm-password")?.value || "";
-
-    if (currentPassword !== currentUser.password) {
-      setAccountSettingsStatus("A senha atual não confere.", "error");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setAccountSettingsStatus("A nova senha e a confirmação precisam ser iguais.", "warning");
-      return;
-    }
-    const passwordError = validateSecurePassword(newPassword);
-    if (passwordError) {
-      setAccountSettingsStatus(passwordError, "warning");
-      return;
-    }
-
-    currentUser.password = newPassword;
-    currentUser.passwordMode = "permanent";
-    currentUser.mustChangePassword = false;
-    currentUser.temporaryPasswordIssuedAt = "";
-    currentUser.updatedAt = new Date().toISOString();
-    const authIndex = authUsers.findIndex((user) => user.id === currentUser.id);
-    if (authIndex >= 0) {
-      authUsers[authIndex] = normalizeUserRecord(currentUser, authIndex);
-      currentUser = authUsers[authIndex];
-    }
-    saveAuthSession(currentUser);
-    await saveSecuritySharedNow();
-    event.currentTarget.reset();
-    setAccountSettingsStatus("Senha alterada com sucesso.", "success");
+    setAccountSettingsStatus("A senha é gerenciada pelo Supabase. Use o fluxo seguro de recuperação.", "warning");
   });
 
   document.getElementById("account-company-form")?.addEventListener("submit", async (event) => {
@@ -14923,7 +14970,7 @@ async function initApp() {
       saveSessionFlag(SESSION_KEYS.configUnlocked, false);
     }
 
-    saveToStorage(STORAGE_KEYS.config, config);
+    saveAccountConfig(currentUser, config);
     renderAll();
     await saveSharedNow(true);
     setAccountSettingsStatus(mode === "open"

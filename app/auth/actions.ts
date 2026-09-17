@@ -51,19 +51,13 @@ function isValidOtp(value: string) {
   return /^\d{6,8}$/.test(value);
 }
 
-async function authRedirectOrigin() {
-  const requestHeaders = await headers();
-  const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
-  if (host) {
-    const protocol = requestHeaders.get("x-forwarded-proto") || (host.startsWith("localhost") ? "http" : "https");
-    const requestOrigin = sanitizedOrigin(`${protocol}://${host}`);
-    // On Vercel, the current public host is the only reliable callback target.
-    // A stale NEXT_PUBLIC_SITE_URL must never send a customer back to localhost.
-    if (requestOrigin && !isLocalOrigin(requestOrigin)) return requestOrigin;
-  }
+function requiresCaptcha() {
+  return Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim());
+}
 
+async function authRedirectOrigin() {
   const configuredOrigin = sanitizedOrigin(process.env.NEXT_PUBLIC_SITE_URL);
-  if (configuredOrigin && !isLocalOrigin(configuredOrigin)) return configuredOrigin;
+  if (configuredOrigin) return configuredOrigin;
 
   const vercelOrigin = sanitizedOrigin(
     process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
@@ -160,6 +154,7 @@ async function isDocumentAlreadyRegistered(document: string) {
 export async function loginAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = loginSchema.safeParse(fields(formData));
   if (!parsed.success) return { ok: false, message: "Revise os campos informados.", fieldErrors: parsed.error.flatten().fieldErrors };
+  if (requiresCaptcha() && !parsed.data.captchaToken) return { ok: false, message: "Conclua a verificacao de seguranca antes de entrar." };
 
   if (!(await isLoginAllowed(parsed.data.email))) {
     return { ok: false, message: "Muitas tentativas. Aguarde 15 minutos e tente novamente." };
@@ -190,6 +185,7 @@ export async function loginAction(_: ActionState, formData: FormData): Promise<A
 export async function signupAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = signupSchema.safeParse(fields(formData));
   if (!parsed.success) return { ok: false, message: "Revise os campos do cadastro.", fieldErrors: parsed.error.flatten().fieldErrors };
+  if (requiresCaptcha() && !parsed.data.captchaToken) return { ok: false, message: "Conclua a verificacao de seguranca antes de criar sua conta." };
 
   const document = onlyDigits(parsed.data.cpfCnpj);
   if (await isDocumentAlreadyRegistered(document)) {
@@ -230,6 +226,7 @@ export async function signupAction(_: ActionState, formData: FormData): Promise<
 export async function requestPasswordResetAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const email = String(formData.get("email") || "").trim();
   const captchaToken = String(formData.get("cf-turnstile-response") || formData.get("captchaToken") || "");
+  if (requiresCaptcha() && !captchaToken) return { ok: false, message: "Conclua a verificacao de seguranca antes de continuar." };
   if (!/^\S+@\S+\.\S+$/.test(email)) return { ok: false, message: "Informe um e-mail válido." };
   const supabase = await createClient();
   const siteUrl = await authRedirectOrigin();
@@ -247,6 +244,7 @@ export async function requestPasswordResetAction(_: ActionState, formData: FormD
 export async function resendConfirmationAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const email = String(formData.get("email") || "").trim();
   const captchaToken = String(formData.get("cf-turnstile-response") || formData.get("captchaToken") || "");
+  if (requiresCaptcha() && !captchaToken) return { ok: false, message: "Conclua a verificacao de seguranca antes de continuar." };
   if (!/^\S+@\S+\.\S+$/.test(email)) return { ok: false, message: "Informe o e-mail usado no cadastro." };
   const supabase = await createClient();
   const siteUrl = await authRedirectOrigin();

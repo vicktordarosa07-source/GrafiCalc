@@ -11,15 +11,20 @@ async function prepareLegacySession() {
 
   const user = await response.json();
   const now = new Date().toISOString();
+  // A sessao Supabase e a fonte de identidade em producao. Nao deixe um
+  // login legado persistente do desenvolvedor substituir a conta atual.
+  localStorage.removeItem("graficalc-developer-persistent-login-v1");
+  sessionStorage.removeItem("graficalc-config-unlocked-v1");
+  window.grafiCalcRemoteAuth = { userId: user.id, tenantId: user.tenant_id || "" };
   const legacyUser = {
     id: user.id,
     username: user.nome || user.email,
     email: user.email,
     document: user.cpf_cnpj || "",
     company: user.empresa || "",
-    role: user.papel === "admin" ? "developer" : user.papel === "funcionario" ? "employee" : "user",
+    role: user.papel === "funcionario" ? "employee" : "user",
     status: "active",
-    groupId: user.papel === "admin" ? "developer" : user.papel === "funcionario" ? "funcionarios" : "profissional",
+    groupId: user.papel === "funcionario" ? "funcionarios" : "profissional",
     emailVerification: { status: "verified", code: "", verifiedAt: now, sentAt: "", expiresAt: "", resendAvailableAt: "", lastDeliveryMode: "supabase" },
     documentVerification: { status: "local-valid", source: "local", checkedAt: now, verifiedAt: now, message: "Documento validado no cadastro." },
     createdAt: user.criado_em || now,
@@ -34,9 +39,6 @@ async function prepareLegacySession() {
     loggedAt: now,
   }));
 
-  if (legacyUser.role === "developer") {
-    sessionStorage.setItem("graficalc-config-unlocked-v1", "true");
-  }
 }
 
 window.grafiCalcLegacyAuthReady = prepareLegacySession();

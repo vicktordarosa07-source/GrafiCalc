@@ -32,7 +32,7 @@ function loadGrafiCalcLocalEnv() {
 loadGrafiCalcLocalEnv();
 
 const PORT = Number(process.env.PORT || 3210);
-const HOST = process.env.HOST || "0.0.0.0";
+const HOST = process.env.HOST || "127.0.0.1";
 const ROOT_DIR = __dirname;
 const DATA_DIR = process.env.GRAFICALC_DATA_DIR
   ? path.resolve(process.env.GRAFICALC_DATA_DIR)
@@ -1652,8 +1652,13 @@ module.exports = handleRequest;
 module.exports.server = server;
 
 if (require.main === module) {
+  if (IS_DEPLOYED_RUNTIME) {
+    console.error("O servidor legado está desativado em ambientes de produção. Use o runtime Next/Supabase.");
+    process.exitCode = 1;
+  } else {
   server.listen(PORT, HOST, () => {
     ensureDataFile();
     console.log(`GrafiCalc local integration server on http://localhost:${PORT}`);
   });
+  }
 }

@@ -86,6 +86,7 @@
             <span aria-hidden="true">↗</span>
             <strong>Sair</strong>
           </button>
+          <button class="button menu-developer-access-button" id="developer-access-button" type="button" hidden>Acesso restrito</button>
         </div>
         <button class="tab-button is-active" data-tab-target="login"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-login"></use></svg><span class="tab-button-label">Login</span></button>
         <div class="tab-menu-section-label">Configuradores</div>
@@ -2167,6 +2168,36 @@
         <button class="button button-primary" type="submit">Salvar nova senha</button>
       </form>
       <p class="helper-text" id="password-change-status">Use pelo menos 8 caracteres, com letras e números.</p>
+    </div>
+  </div>
+
+  <div class="app-modal" id="developer-access-modal" hidden>
+    <div class="app-modal-backdrop" data-developer-modal-close></div>
+    <div class="app-modal-dialog app-modal-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="developer-access-title">
+      <div class="app-modal-icon">!</div>
+      <div class="app-modal-copy">
+        <span class="app-modal-kicker">Acesso protegido</span>
+        <h3 id="developer-access-title">Área do desenvolvedor</h3>
+        <p>A autorização exige a credencial administrativa do servidor e vale somente nesta sessão.</p>
+      </div>
+      <form class="password-change-form" id="developer-access-form">
+        <label>
+          <span>Usuário administrativo</span>
+          <input id="developer-access-username" type="text" autocomplete="username" required>
+        </label>
+        <label>
+          <span>Senha administrativa</span>
+          <span class="password-input-wrap">
+            <input id="developer-access-password" type="password" autocomplete="current-password" required>
+            <button class="password-eye-button" type="button" data-password-toggle="developer-access-password" aria-label="Mostrar senha" aria-pressed="false">◐</button>
+          </span>
+        </label>
+        <p class="helper-text" id="developer-access-status">A sessão será encerrada ao sair ou após 30 minutos.</p>
+        <div class="app-modal-actions">
+          <button class="button" type="button" data-developer-modal-close>Cancelar</button>
+          <button class="button button-primary" type="submit">Autorizar acesso</button>
+        </div>
+      </form>
     </div>
   </div>
 

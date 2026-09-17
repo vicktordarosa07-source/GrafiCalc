@@ -133,10 +133,11 @@ async function main() {
     assert.equal(unknownApi.status, 404);
     assert.doesNotMatch(unknownApi.body, /server\.js|shared-state|supabase|tenant/i);
 
-    productionServer = await startServer({ NODE_ENV: "production", VERCEL: "1" });
-    const productionHealth = await request(productionServer.port, "GET", "/api/health");
-    assert.equal(productionHealth.status, 200);
-    assert.equal(productionHealth.headers["strict-transport-security"], "max-age=31536000");
+    await assert.rejects(
+      () => startServer({ NODE_ENV: "production", VERCEL: "1" }),
+      /legacy-server-did-not-start/,
+      "the legacy server must stay disabled in production",
+    );
 
     process.stdout.write("stage-final-security-tests: passed\n");
   } finally {

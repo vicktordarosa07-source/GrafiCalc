@@ -63,17 +63,23 @@ export async function POST(request: NextRequest) {
     console.error("graficalc_login_admin_client_failure", { message: error instanceof Error ? error.message : "unknown" });
   }
 
-  if (admin) {
-    try {
-      const { data: allowed, error: limitError } = await admin.rpc("graficalc_auth_attempt_allowed", { p_key: rateLimitKey });
-      if (limitError) {
-        console.error("graficalc_login_rate_limit_failure", { message: limitError.message });
-      } else if (!allowed) {
-        return redirectToLogin(request, "limite");
-      }
-    } catch (error) {
-      console.error("graficalc_login_rate_limit_exception", { message: error instanceof Error ? error.message : "unknown" });
+  if (!admin) {
+    console.error("graficalc_login_rate_limit_unavailable");
+    return redirectToLogin(request, "rate-limit");
+  }
+
+  try {
+    const { data: allowed, error: limitError } = await admin.rpc("graficalc_auth_attempt_allowed", { p_key: rateLimitKey });
+    if (limitError) {
+      console.error("graficalc_login_rate_limit_failure", { message: limitError.message });
+      return redirectToLogin(request, "rate-limit");
     }
+    if (!allowed) {
+      return redirectToLogin(request, "limite");
+    }
+  } catch (error) {
+    console.error("graficalc_login_rate_limit_exception", { message: error instanceof Error ? error.message : "unknown" });
+    return redirectToLogin(request, "rate-limit");
   }
 
   const { url, publishableKey: key } = getSupabaseServerEnvironment();

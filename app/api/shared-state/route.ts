@@ -22,8 +22,13 @@ async function context() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || !user.email_confirmed_at) return null;
-  const { data: profile } = await supabase.from("profiles").select("tenant_id,papel").eq("id", user.id).single();
-  return profile ? { profile } : null;
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("id,tenant_id,papel")
+    .eq("id", user.id)
+    .single();
+  if (error || !profile?.tenant_id) return null;
+  return { userId: user.id, profile };
 }
 
 function hasValidOrigin(request: Request) {
@@ -67,11 +72,18 @@ export async function PUT(request: Request) {
       return null;
     }
   })();
-  if (!incoming || typeof incoming !== "object") return Response.json({ error: "invalid-payload" }, { status: 400 });
+  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
+    return Response.json({ error: "invalid-payload" }, { status: 400 });
+  }
   const admin = createAdminClient();
   let payload = sanitizeLegacyCredentials(incoming) as Record<string, unknown>;
   if (auth.profile.papel !== "admin") {
-    const { data: current } = await admin.from("graficalc_runtime_state").select("payload").eq("tenant_id", auth.profile.tenant_id).maybeSingle();
+    const { data: current, error: currentError } = await admin
+      .from("graficalc_runtime_state")
+      .select("payload")
+      .eq("tenant_id", auth.profile.tenant_id)
+      .maybeSingle();
+    if (currentError) return Response.json({ error: "shared-state-read-failed" }, { status: 500 });
     const previous = sanitizeLegacyCredentials(current?.payload || {}) as Record<string, unknown>;
     const protectedKeys = ["config", "security", "users", "userDirectory", "accessGroups", "dashboardOverrides"];
     payload = { ...payload };
