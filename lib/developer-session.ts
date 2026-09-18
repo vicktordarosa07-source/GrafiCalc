@@ -2,7 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 export const DEVELOPER_COOKIE = "graficalc_developer_session";
 export const DEVELOPER_SESSION_TTL_SECONDS = 30 * 60;
-export const DEVELOPER_EMAIL = "hprvisual@gmail.com";
+export const DEVELOPER_EMAIL = "hprvisual@hotmail.com";
 
 type DeveloperSession = {
   role: "developer";
