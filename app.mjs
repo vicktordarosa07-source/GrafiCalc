@@ -8557,12 +8557,23 @@ async function initApp() {
   }
 
   function forceDeveloperAuthenticatedState() {
-    if (window.grafiCalcRemoteAuth?.userId) {
-      return null;
-    }
     if (!serverSecuritySession?.developerLoggedIn) {
       return null;
     }
+
+    // Remote Supabase users keep their real identity and tenant. Developer
+    // access is elevated only for the current authenticated browser session.
+    if (window.grafiCalcRemoteAuth?.userId) {
+      if (currentUser?.status !== "active") return null;
+      currentUser = {
+        ...currentUser,
+        role: "developer",
+        groupId: "developer",
+        developerAccess: true,
+      };
+      return currentUser;
+    }
+
     currentUser = restoreDeveloperSession(authUsers, currentUser);
     saveAuthSession(currentUser);
     clearPendingVerificationStep();
@@ -13757,7 +13768,7 @@ async function initApp() {
 
   function renderAll() {
     forceDeveloperAuthenticatedState();
-    currentUser = resolvePersistentSession(authUsers, currentUser);
+    currentUser = ensureCurrentSessionResolved(currentUser);
     if (currentUser?.status === "active") {
       saveAuthSession(currentUser);
     }
