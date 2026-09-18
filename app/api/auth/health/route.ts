@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { timingSafeEqual } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
-import { createDeveloperSession, DEVELOPER_COOKIE, isDeveloperEligible, readDeveloperSession } from "@/lib/developer-session";
+import { createDeveloperSession, DEVELOPER_COOKIE, DEVELOPER_EMAIL, isDeveloperEligible, readDeveloperSession } from "@/lib/developer-session";
 
 export const dynamic = "force-dynamic";
 const attempts = new Map<string, { count: number; resetAt: number }>();
@@ -71,7 +71,10 @@ export async function POST(request: Request) {
   if (previous && previous.resetAt > now && previous.count >= MAX_ATTEMPTS) {
     return Response.json({ ok: false, error: "too-many-attempts" }, { status: 429, headers: { "Retry-After": String(Math.ceil((previous.resetAt - now) / 1000)) } });
   }
-  const usernameMatches = secureEqual(username.toLowerCase(), expectedUsername.toLowerCase());
+  // The creator can authenticate with the authorized account email even when
+  // the internal developer username remains different in Vercel.
+  const usernameMatches = secureEqual(username.toLowerCase(), expectedUsername.toLowerCase())
+    || secureEqual(username.toLowerCase(), DEVELOPER_EMAIL);
   const passwordMatches = secureEqual(password, expectedPassword);
   if (!usernameMatches || !passwordMatches) {
     const current = previous && previous.resetAt > now
