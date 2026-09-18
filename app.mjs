@@ -8786,10 +8786,13 @@ async function initApp() {
       button.hidden = !allowed || settingsOnlyTabs.has(tab);
       button.disabled = !allowed;
       if (button.dataset.devOnly !== undefined) {
-        button.classList.toggle(
-          "developer-navigation-visible",
-          allowed && isDeveloperSession() && !settingsOnlyTabs.has(tab),
-        );
+        const developerNavigationVisible = allowed && isDeveloperSession() && !settingsOnlyTabs.has(tab);
+        button.classList.toggle("developer-navigation-visible", developerNavigationVisible);
+        if (developerNavigationVisible) {
+          button.style.removeProperty("display");
+        } else {
+          button.style.setProperty("display", "none", "important");
+        }
       }
     });
     tabPanels.forEach((panel) => {
