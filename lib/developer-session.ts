@@ -2,6 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 export const DEVELOPER_COOKIE = "graficalc_developer_session";
 export const DEVELOPER_SESSION_TTL_SECONDS = 30 * 60;
+export const DEVELOPER_EMAIL = "hprvisual@gmail.com";
 
 type DeveloperSession = {
   role: "developer";
@@ -22,11 +23,8 @@ function configuredDeveloperUsername() {
 }
 
 export function isDeveloperEligible(user: { id?: string; email?: string | null } | null | undefined) {
-  const allowedId = String(process.env.GRAFICALC_DEVELOPER_USER_ID || "").trim();
-  const allowedEmail = String(process.env.GRAFICALC_DEVELOPER_EMAIL || "").trim().toLowerCase();
-  if (!user || (!allowedId && !allowedEmail)) return false;
-  if (allowedId) return user.id === allowedId;
-  return String(user.email || "").trim().toLowerCase() === allowedEmail;
+  if (!user) return false;
+  return String(user.email || "").trim().toLowerCase() === DEVELOPER_EMAIL;
 }
 
 function sign(value: string) {
