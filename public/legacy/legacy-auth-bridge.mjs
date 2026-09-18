@@ -31,7 +31,20 @@ async function prepareLegacySession() {
     updatedAt: now,
   };
 
-  localStorage.setItem("graficalc-auth-users-v1", JSON.stringify([legacyUser]));
+  let existingUsers = [];
+  try {
+    const storedUsers = JSON.parse(localStorage.getItem("graficalc-auth-users-v1") || "[]");
+    existingUsers = Array.isArray(storedUsers) ? storedUsers : [];
+  } catch {
+    existingUsers = [];
+  }
+  const currentEmail = String(legacyUser.email || "").trim().toLowerCase();
+  const mergedUsers = existingUsers.filter((item) => (
+    String(item?.id || "") !== String(legacyUser.id || "")
+    && String(item?.email || "").trim().toLowerCase() !== currentEmail
+  ));
+  mergedUsers.push(legacyUser);
+  localStorage.setItem("graficalc-auth-users-v1", JSON.stringify(mergedUsers));
   localStorage.setItem("graficalc-auth-session-v1", JSON.stringify({
     userId: user.id,
     username: legacyUser.username,

@@ -1,5 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { DEVELOPER_EMAIL } from "@/lib/developer-session";
+
+const configuredTenantSlug = String(process.env.GRAFICALC_TENANT_SLUG || "").trim().toLowerCase();
 
 const LEGACY_CREDENTIAL_KEYS = new Set([
   "password",
@@ -22,13 +25,36 @@ async function context() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || !user.email_confirmed_at) return null;
+  const isCreator = String(user.email || "").trim().toLowerCase() === DEVELOPER_EMAIL;
   const { data: profile, error } = await supabase
     .from("profiles")
     .select("id,tenant_id,papel")
     .eq("id", user.id)
     .single();
-  if (error || !profile?.tenant_id) return null;
-  return { userId: user.id, profile };
+  if (error && !isCreator) return null;
+
+  const admin = createAdminClient();
+  let tenantId = profile?.tenant_id || "";
+  // The creator owns the legacy shared workspace. Prefer its configured tenant
+  // so a profile created by a later auth migration cannot hide that snapshot.
+  if (isCreator && configuredTenantSlug) {
+    const { data: configuredTenant } = await admin
+      .from("graficalc_tenants")
+      .select("id")
+      .eq("slug", configuredTenantSlug)
+      .maybeSingle();
+    tenantId = configuredTenant?.id || tenantId;
+  }
+
+  if (!tenantId) return null;
+  return {
+    userId: user.id,
+    profile: {
+      ...(profile || {}),
+      tenant_id: tenantId,
+      papel: isCreator ? "admin" : profile?.papel,
+    },
+  };
 }
 
 function hasValidOrigin(request: Request) {
