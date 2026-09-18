@@ -7,5 +7,5 @@ export default async function WorkspacePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/entrar");
-  return <main className="workspace-shell"><InactivityGuard /><div className="workspace-bar"><Link href="/perfil">Minha conta</Link></div><iframe title="Área de trabalho GrafiCalc" src="/legacy/index.html" /></main>;
+  return <main className="workspace-shell"><InactivityGuard /><div className="workspace-bar"><Link href="/perfil">Minha conta</Link></div><iframe title="Área de trabalho GrafiCalc" src="/legacy/index.html?v=20260917-dev-access-fix" /></main>;
 }
