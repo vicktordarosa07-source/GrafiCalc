@@ -8785,6 +8785,12 @@ async function initApp() {
       }
       button.hidden = !allowed || settingsOnlyTabs.has(tab);
       button.disabled = !allowed;
+      if (button.dataset.devOnly !== undefined) {
+        button.classList.toggle(
+          "developer-navigation-visible",
+          allowed && isDeveloperSession() && !settingsOnlyTabs.has(tab),
+        );
+      }
     });
     tabPanels.forEach((panel) => {
       const tab = panel.dataset.tabPanel;

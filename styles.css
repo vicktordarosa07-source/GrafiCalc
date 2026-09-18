@@ -309,6 +309,15 @@
   display: none !important;
 }
 
+/* Developer-only navigation stays absent until the server-authorized session enables it. */
+.tab-button[data-dev-only] {
+  display: none !important;
+}
+
+.tab-button[data-dev-only].developer-navigation-visible {
+  display: flex !important;
+}
+
 html,
 body {
   margin: 0;
