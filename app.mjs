@@ -16,9 +16,10 @@ const SESSION_KEYS = {
 
 const DEVELOPER_ACCOUNT = {
   id: "developer-system",
-  username: "Administrador do sistema",
+  username: "Helder Pedro da Rosa",
   company: "GrafiCalc",
   role: "developer",
+  developerAccess: true,
   status: "active",
   groupId: "developer",
   emailVerification: {
@@ -2348,6 +2349,7 @@ function normalizeUserRecord(user, index = 0) {
     birthDate,
     company: typeof user?.company === "string" ? user.company.trim() : "",
     role: ["developer", "employee"].includes(user?.role) ? user.role : "user",
+    developerAccess: Boolean(user?.developerAccess),
     status: ["active", "pending", "blocked"].includes(user?.status) ? user.status : "pending",
     mustChangePassword: Boolean(user?.mustChangePassword),
     groupId: typeof user?.groupId === "string" ? user.groupId : "profissional",
@@ -2582,7 +2584,7 @@ function getUserTabPermissions(accessControl, user) {
   if (!user) {
     return createTabPermissionMap(false, false);
   }
-  if (user.role === "developer") {
+  if (user.role === "developer" && user.developerAccess === true) {
     return createTabPermissionMap(true, true);
   }
   const group = getGroupForUser(accessControl, user);
@@ -2594,7 +2596,7 @@ function getUserDashboardPermissions(accessControl, user) {
   if (!user) {
     return createDashboardPermissionMap(false);
   }
-  if (user.role === "developer") {
+  if (user.role === "developer" && user.developerAccess === true) {
     return createDashboardPermissionMap(true);
   }
   const group = getGroupForUser(accessControl, user);
@@ -2608,7 +2610,7 @@ function getUserDashboardPermissions(accessControl, user) {
 }
 
 function getUserRoleLabel(user) {
-  if (user?.role === "developer") return "Desenvolvedor";
+  if (user?.role === "developer" && user?.developerAccess === true) return "Desenvolvedor";
   if (user?.role === "employee") return "Funcionário";
   return "Usuário";
 }
@@ -8519,11 +8521,13 @@ async function initApp() {
   }
 
   function isDeveloperSession() {
-    return currentUser?.role === "developer" && currentUser?.status === "active";
+    return currentUser?.role === "developer"
+      && currentUser?.developerAccess === true
+      && currentUser?.status === "active";
   }
 
   function ensureDeveloperSessionFromPersistence() {
-    if (currentUser?.role === "developer" && currentUser?.status === "active") {
+    if (currentUser?.role === "developer" && currentUser?.developerAccess === true && currentUser?.status === "active") {
       return true;
     }
     if (!loadDeveloperPersistentLogin()) {
@@ -8668,7 +8672,7 @@ async function initApp() {
       saveSessionFlag(SESSION_KEYS.configUnlocked, true);
       return;
     }
-    const currentDeveloper = currentUser?.role === "developer";
+    const currentDeveloper = currentUser?.role === "developer" && currentUser?.developerAccess === true;
     const hasLocalDeveloperSession = currentDeveloper && hasStoredAuthSession(currentUser?.id);
     const previousConfigUnlocked = loadSessionFlag(SESSION_KEYS.configUnlocked);
     try {
