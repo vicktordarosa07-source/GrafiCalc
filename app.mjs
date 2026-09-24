@@ -712,8 +712,11 @@ function createDefaultConfig() {
   return {
     security: {
       configAccess: {
-        mode: "password",
+        mode: "open",
         password: "",
+        pinHash: "",
+        temporaryPinHash: "",
+        temporaryPinExpiresAt: "",
       },
     },
     blockCatalog: getDefaultBlockCatalog(),
@@ -1594,10 +1597,11 @@ function mergeConfig(candidate) {
       : {};
     const storedPassword = typeof configAccess.password === "string" ? configAccess.password : "";
     merged.security.configAccess = {
-      // A legacy/partial configuration with no password must remain usable;
-      // an empty password cannot protect the area and would create a deadlock.
-      mode: configAccess.mode === "open" || !storedPassword ? "open" : "password",
+      mode: "open",
       password: storedPassword,
+      pinHash: typeof configAccess.pinHash === "string" ? configAccess.pinHash : "",
+      temporaryPinHash: typeof configAccess.temporaryPinHash === "string" ? configAccess.temporaryPinHash : "",
+      temporaryPinExpiresAt: typeof configAccess.temporaryPinExpiresAt === "string" ? configAccess.temporaryPinExpiresAt : "",
     };
   }
 
@@ -2172,6 +2176,7 @@ function normalizeAccessControlCandidate(candidate) {
     groups,
     userOverrides: candidate?.userOverrides && typeof candidate.userOverrides === "object" ? candidate.userOverrides : {},
     dashboardOverrides: candidate?.dashboardOverrides && typeof candidate.dashboardOverrides === "object" ? candidate.dashboardOverrides : {},
+    configPermissions: candidate?.configPermissions && typeof candidate.configPermissions === "object" ? candidate.configPermissions : {},
   };
 }
 
@@ -2359,6 +2364,7 @@ function normalizeUserRecord(user, index = 0) {
     birthDate,
     company: typeof user?.company === "string" ? user.company.trim() : "",
     role: ["developer", "employee"].includes(user?.role) ? user.role : "user",
+    teamLeader: Boolean(user?.teamLeader),
     developerAccess: Boolean(user?.developerAccess),
     status: ["active", "pending", "blocked"].includes(user?.status) ? user.status : "pending",
     mustChangePassword: Boolean(user?.mustChangePassword),
@@ -3104,6 +3110,27 @@ async function requestConfigUnlock(password) {
     throw new Error(result?.error || `config-unlock-http-${response.status}`);
   }
 
+  return result;
+}
+
+async function requestPinChange(currentPin, newPin, confirmPin) {
+  const response = await fetch("/api/config/pin/change", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPin, newPin, confirmPin }), cache: "no-store" });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result?.ok) throw new Error(result?.error || "pin-change-failed");
+  return result;
+}
+
+async function requestPinRecovery() {
+  const response = await fetch("/api/config/pin/recover", { method: "POST", cache: "no-store" });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result?.ok) throw new Error(result?.error || "pin-recovery-failed");
+  return result;
+}
+
+async function requestPinVerify(pin) {
+  const response = await fetch("/api/config/pin/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }), cache: "no-store" });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result?.ok) throw new Error(result?.error || "invalid-pin");
   return result;
 }
 
@@ -7982,6 +8009,8 @@ async function initApp() {
   let sharedUpdatedAt = "";
   let lastSharedSnapshot = "";
   let sharedRefreshHandle = null;
+  let committedConfigSnapshot = deepClone(config);
+  let configSaveAuthorized = false;
   let editingClientId = "";
   let editingClientPersonType = "individual";
   let selectedDeveloperUserId = "";
@@ -8558,6 +8587,19 @@ async function initApp() {
     return currentUser?.role === "developer"
       && currentUser?.developerAccess === true
       && currentUser?.status === "active";
+  }
+
+  function isTeamLeader() {
+    return isDeveloperSession() || currentUser?.teamLeader === true || String(currentUser?.email || "").trim().toLowerCase() === DEVELOPER_EMAIL;
+  }
+
+  function getConfigPermissions() {
+    const delegated = accessControl?.configPermissions?.[currentUser?.id] || {};
+    return {
+      use: isTeamLeader() || delegated.use === true,
+      edit: isTeamLeader() || delegated.edit === true,
+      managePin: isTeamLeader() || delegated.managePin === true,
+    };
   }
 
   function ensureDeveloperSessionFromPersistence() {
@@ -9828,7 +9870,7 @@ async function initApp() {
         authUsers: deepClone(authUsers),
         accessControl: deepClone(accessControl),
       },
-      config: deepClone(config),
+      config: deepClone(configSaveAuthorized ? config : committedConfigSnapshot),
     };
   }
 
@@ -9852,6 +9894,7 @@ async function initApp() {
     }
     if (payload.config && typeof payload.config === "object") {
       Object.assign(config, mergeConfig(payload.config));
+      committedConfigSnapshot = deepClone(config);
       cleanupHiddenImpressosEntries(config, state);
       ensureAutomaticPlastificationService(config);
     }
@@ -9894,18 +9937,18 @@ async function initApp() {
 
   async function flushSharedSave(force = false) {
     if (!sharedBootstrapComplete && !force) {
-      return;
+      return false;
     }
 
     if (sharedSyncInFlight) {
       sharedSyncQueued = true;
-      return;
+      return false;
     }
 
     const payload = createSharedPayload();
     const serialized = JSON.stringify(payload);
     if (!force && serialized === lastSharedSnapshot) {
-      return;
+      return true;
     }
 
     sharedSyncInFlight = true;
@@ -9916,8 +9959,10 @@ async function initApp() {
       lastSharedSnapshot = serialized;
       sharedUpdatedAt = result.updatedAt || new Date().toISOString();
       setSyncStatus("Tudo salvo e compartilhado entre os computadores.", "success");
+      return true;
     } catch {
       setSyncStatus("Não foi possível atualizar a base compartilhada agora. O app continua funcionando nesta máquina.", "error");
+      return false;
     } finally {
       sharedSyncInFlight = false;
       if (sharedSyncQueued) {
@@ -9937,7 +9982,7 @@ async function initApp() {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
-    await flushSharedSave(force);
+    return flushSharedSave(force);
   }
 
   async function saveSecuritySharedNow() {
@@ -10130,8 +10175,7 @@ async function initApp() {
   }
 
   function updateConfigAccessUi() {
-    syncConfigLockWithMode();
-    const locked = !isConfigUnlocked;
+    const locked = !getConfigPermissions().edit;
     const configButtons = [
       document.getElementById("save-config-button"),
       document.getElementById("export-config-button"),
@@ -10150,7 +10194,7 @@ async function initApp() {
     }
 
     if (lockConfigButton) {
-      lockConfigButton.hidden = locked;
+      lockConfigButton.hidden = true;
       lockConfigButton.disabled = false;
     }
   }
@@ -10252,13 +10296,12 @@ async function initApp() {
     collapseDesktopMenuAfterNavigation();
 
     if (tabName === "configuracao") {
+      if (!getConfigPermissions().use) {
+        tabName = getFirstAllowedLoggedTab(currentUser);
+      }
       activeConfigSection = CONFIG_SECTIONS.includes(lastConfigSourceTab) ? lastConfigSourceTab : "calculo";
       saveConfigSection(activeConfigSection);
       renderConfig();
-      if (!isConfigUnlocked) {
-        setConfigStatus("Digite a senha para acessar a configuração.", "warning");
-        focusConfigPasswordField();
-      }
     } else {
       const configSectionByTab = {
         calculo: "calculo",
@@ -10280,6 +10323,7 @@ async function initApp() {
 
   function persist() {
     persistLocalOnly();
+    if (configSections?.contains(document.activeElement) && !configSaveAuthorized) return;
     queueSharedSave(false);
   }
 
@@ -10299,9 +10343,6 @@ async function initApp() {
       companyContact: document.getElementById("account-company-contact"),
       companyAddress: document.getElementById("account-company-address"),
       logoPreview: document.getElementById("account-company-logo-preview"),
-      protectedMode: document.getElementById("account-config-protected"),
-      openMode: document.getElementById("account-config-open"),
-      configPassword: document.getElementById("account-config-password"),
     };
 
     if (fields.username) fields.username.value = currentUser?.username || "";
@@ -10320,15 +10361,33 @@ async function initApp() {
         : `<span>Nenhuma logo personalizada cadastrada.</span>`;
     }
 
-    const accessSettings = getConfigAccessSettings();
-    if (fields.protectedMode) fields.protectedMode.checked = accessSettings.mode !== "open";
-    if (fields.openMode) fields.openMode.checked = accessSettings.mode === "open";
-    if (fields.configPassword) {
-      fields.configPassword.value = "";
-      fields.configPassword.placeholder = accessSettings.password
-        ? "Senha personalizada já cadastrada. Digite uma nova para trocar."
-        : "Digite uma senha para proteger a configuração";
+    const pinForm = document.getElementById("account-config-access-form");
+    if (pinForm) pinForm.hidden = !getConfigPermissions().managePin;
+    renderTeamConfigPermissions();
+  }
+
+  function renderTeamConfigPermissions() {
+    const panel = document.getElementById("team-config-permissions-panel");
+    const container = document.getElementById("team-config-permissions");
+    if (!panel || !container) return;
+    const leader = isTeamLeader();
+    panel.hidden = !leader;
+    if (!leader) return;
+    const users = authUsers.filter((user) => user.status !== "blocked" && user.id !== currentUser?.id && user.role !== "developer");
+    if (!users.length) {
+      container.innerHTML = `<p class="helper-text">Nenhum usuário da equipe disponível para receber permissões.</p>`;
+      return;
     }
+    container.innerHTML = users.map((user) => {
+      const permissions = accessControl.configPermissions?.[user.id] || {};
+      return `<article class="list-card" data-config-permission-user="${escapeAttribute(user.id)}">
+        <strong>${escapeHtml(user.username || user.email || "Usuário")}</strong>
+        <span class="list-meta">${escapeHtml(user.email || "Sem e-mail")}</span>
+        <label><input type="checkbox" data-config-permission="use" ${permissions.use ? "checked" : ""}> Usar configurações</label>
+        <label><input type="checkbox" data-config-permission="edit" ${permissions.edit ? "checked" : ""}> Editar e salvar</label>
+        <label><input type="checkbox" data-config-permission="managePin" ${permissions.managePin ? "checked" : ""}> Criar, trocar ou recuperar PIN</label>
+      </article>`;
+    }).join("");
   }
 
   function renderPresetControls() {
@@ -11854,9 +11913,9 @@ async function initApp() {
 
   function renderConfig() {
     try {
-      configSections.innerHTML = isConfigUnlocked
+      configSections.innerHTML = getConfigPermissions().use
         ? createConfigSectionsMarkup(config, configViewMode, activeConfigSection)
-        : createConfigLockedMarkup();
+        : `<div class="warning-item">Você não tem permissão para utilizar as configurações desta equipe.</div>`;
     } catch (error) {
       console.error("Falha ao renderizar a aba de configuração.", error);
       configSections.innerHTML = createConfigErrorMarkup(error?.message || "Erro inesperado ao montar a configuração.");
@@ -11868,8 +11927,31 @@ async function initApp() {
     updateConfigAccessUi();
   }
 
-  function saveConfiguration() {
-    persist();
+  async function saveConfiguration() {
+    if (!getConfigPermissions().edit) {
+      setConfigStatus("Somente usuários autorizados pela liderança podem salvar configurações.", "warning");
+      return;
+    }
+    const pin = window.prompt("Digite o PIN de segurança para salvar as alterações:");
+    if (pin === null) return;
+    try {
+      await requestPinVerify(pin);
+    } catch {
+      setConfigStatus("PIN incorreto. As alterações continuam apenas como rascunho.", "error");
+      return;
+    }
+    configSaveAuthorized = true;
+    try {
+      persist();
+      const saved = await saveSharedNow(true);
+      if (!saved) throw new Error("config-save-failed");
+      committedConfigSnapshot = deepClone(config);
+    } catch {
+      setConfigStatus("Não foi possível salvar as configurações. Elas continuam apenas como rascunho.", "error");
+      return;
+    } finally {
+      configSaveAuthorized = false;
+    }
     renderAll();
     setConfigStatus("Alterações salvas com sucesso.", "success");
     const button = document.getElementById("save-config-button");
@@ -15033,37 +15115,49 @@ async function initApp() {
     event.target.value = "";
   });
 
+  document.getElementById("team-config-permissions")?.addEventListener("change", async (event) => {
+    if (!isTeamLeader()) return;
+    const checkbox = event.target.closest("[data-config-permission]");
+    const card = checkbox?.closest("[data-config-permission-user]");
+    const userId = card?.dataset.configPermissionUser;
+    const permission = checkbox?.dataset.configPermission;
+    if (!userId || !permission) return;
+    accessControl.configPermissions = accessControl.configPermissions || {};
+    accessControl.configPermissions[userId] = {
+      ...(accessControl.configPermissions[userId] || {}),
+      [permission]: checkbox.checked,
+    };
+    await saveSecuritySharedNow();
+    renderTeamConfigPermissions();
+  });
+
   document.getElementById("account-config-access-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const mode = document.getElementById("account-config-open")?.checked ? "open" : "password";
-    const passwordInput = document.getElementById("account-config-password");
-    const currentSettings = getConfigAccessSettings();
-    const nextPassword = passwordInput?.value || "";
-
-    if (mode === "password" && !currentSettings.password && !nextPassword.trim()) {
-      setAccountSettingsStatus("Digite uma senha para proteger a configuração ou deixe a configuração em modo livre.", "warning");
+    const currentPin = document.getElementById("account-config-current-pin")?.value || "";
+    const newPin = document.getElementById("account-config-new-pin")?.value || "";
+    const confirmPin = document.getElementById("account-config-confirm-pin")?.value || "";
+    if (!/^\d{4,6}$/.test(newPin) || newPin !== confirmPin) {
+      setAccountSettingsStatus("Informe um novo PIN de 4 a 6 dígitos e confirme-o corretamente.", "warning");
       return;
     }
-
-    config.security = config.security || {};
-    config.security.configAccess = {
-      mode,
-      password: nextPassword.trim() ? nextPassword : currentSettings.password,
-    };
-    if (mode === "open") {
-      isConfigUnlocked = true;
-      saveSessionFlag(SESSION_KEYS.configUnlocked, true);
-    } else {
-      isConfigUnlocked = false;
-      saveSessionFlag(SESSION_KEYS.configUnlocked, false);
+    try {
+      await requestPinChange(currentPin, newPin, confirmPin);
+      config.security = config.security || {};
+      await refreshSharedState(true);
+      setAccountSettingsStatus("PIN de segurança alterado com sucesso.", "success");
+      event.currentTarget.reset();
+    } catch (error) {
+      setAccountSettingsStatus(error?.message === "invalid-current-pin" ? "PIN atual incorreto." : "Não foi possível alterar o PIN agora.", "error");
     }
+  });
 
-    saveAccountConfig(currentUser, config);
-    renderAll();
-    await saveSharedNow(true);
-    setAccountSettingsStatus(mode === "open"
-      ? "Configuração liberada sem senha."
-      : "Configuração protegida por senha.", "success");
+  document.getElementById("account-config-recover-pin")?.addEventListener("click", async () => {
+    try {
+      await requestPinRecovery();
+      setAccountSettingsStatus("Enviamos um PIN temporário para o e-mail da sua conta. Ele expira em 10 minutos.", "success");
+    } catch {
+      setAccountSettingsStatus("Não foi possível enviar o PIN temporário. Verifique o e-mail e o Resend.", "error");
+    }
   });
 
   [
@@ -16323,10 +16417,6 @@ async function initApp() {
     persist();
     renderAll();
     setConfigStatus("Nova faixa de preço adicionada.", "success");
-  });
-
-  document.getElementById("save-config-button")?.addEventListener("click", () => {
-    saveConfiguration();
   });
 
   lockConfigButton?.addEventListener("click", () => {

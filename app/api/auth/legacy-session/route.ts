@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { DEVELOPER_EMAIL } from "@/lib/developer-session";
 
 export async function GET() {
   const supabase = await createClient();
@@ -24,7 +26,16 @@ export async function GET() {
     email: user.email || "",
     papel: "usuario",
     criado_em: user.created_at,
+    tenant_id: "",
   };
 
-  return Response.json(safeProfile, { headers: { "Cache-Control": "no-store" } });
+  const admin = createAdminClient();
+  const { data: tenant } = safeProfile.tenant_id
+    ? await admin.from("graficalc_tenants").select("owner_id").eq("id", safeProfile.tenant_id).maybeSingle()
+    : { data: null };
+
+  return Response.json({
+    ...safeProfile,
+    teamLeader: String(user.email || "").trim().toLowerCase() === DEVELOPER_EMAIL || tenant?.owner_id === user.id,
+  }, { headers: { "Cache-Control": "no-store" } });
 }

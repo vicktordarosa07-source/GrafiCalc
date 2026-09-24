@@ -557,6 +557,16 @@
               </div>
             </form>
           </article>
+
+          <article class="panel full-width" id="team-config-permissions-panel" hidden>
+            <div class="panel-heading">
+              <div>
+                <h2>Permissões da equipe</h2>
+                <p class="panel-copy">A liderança define quem pode usar, editar configurações e administrar o PIN de segurança.</p>
+              </div>
+            </div>
+            <div id="team-config-permissions" class="stack-list"></div>
+          </article>
         </div>
 
         <div class="workspace-grid account-settings-grid">
@@ -600,35 +610,16 @@
             <div class="panel-heading">
               <div>
                 <h2>Proteção das configurações</h2>
-                <p class="panel-copy">Escolha se a aba Configuração fica livre ou protegida por senha.</p>
+              <p class="panel-copy">A configuração abre para edição e pede o PIN somente no momento de salvar. No primeiro cadastro, deixe o PIN atual vazio.</p>
               </div>
             </div>
 
             <form class="quote-form-grid" id="account-config-access-form">
-              <div class="account-choice-list full-width">
-                <label class="account-choice">
-                  <input id="account-config-protected" name="account-config-mode" type="radio" value="password">
-                  <span>
-                    <strong>Exigir senha para alterar configurações</strong>
-                    <small>Mais seguro para equipes com vários usuários.</small>
-                  </span>
-                </label>
-                <label class="account-choice">
-                  <input id="account-config-open" name="account-config-mode" type="radio" value="open">
-                  <span>
-                    <strong>Deixar configurações livres</strong>
-                    <small>Ideal para uso individual ou ambiente de teste.</small>
-                  </span>
-                </label>
-              </div>
-              <label class="full-width">
-                <span>Senha para liberar alterações</span>
-                <span class="password-input-wrap">
-                  <input id="account-config-password" type="password" autocomplete="new-password" placeholder="Digite uma senha para proteger a configuração">
-                  <button class="password-eye-button" type="button" data-password-toggle="account-config-password" aria-label="Mostrar senha" aria-pressed="false">◐</button>
-                </span>
-              </label>
-              <p class="helper-text full-width">Se a senha ficar em branco, o sistema continuará aceitando a senha configurada no servidor.</p>
+              <label class="full-width"><span>PIN atual (vazio no primeiro cadastro)</span><input id="account-config-current-pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="current-password"></label>
+              <label><span>Novo PIN</span><input id="account-config-new-pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="new-password"></label>
+              <label><span>Confirmar novo PIN</span><input id="account-config-confirm-pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="new-password"></label>
+              <p class="helper-text full-width">O PIN deve ter de 4 a 6 dígitos. Ele é solicitado somente ao salvar alterações da configuração.</p>
+              <button id="account-config-recover-pin" class="button full-width" type="button">Esqueci meu PIN</button>
               <div class="toolbar full-width">
                 <button class="button button-primary" type="submit">Salvar proteção</button>
               </div>

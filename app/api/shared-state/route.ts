@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { DEVELOPER_EMAIL } from "@/lib/developer-session";
+import { getPinContext, hasValidPinVerification } from "@/lib/config-pin";
 
 const configuredTenantSlug = String(process.env.GRAFICALC_TENANT_SLUG || "").trim().toLowerCase();
 
@@ -47,6 +48,11 @@ async function context() {
   }
 
   if (!tenantId) return null;
+  const { data: tenant } = await admin
+    .from("graficalc_tenants")
+    .select("owner_id")
+    .eq("id", tenantId)
+    .maybeSingle();
   return {
     userId: user.id,
     profile: {
@@ -54,6 +60,8 @@ async function context() {
       tenant_id: tenantId,
       papel: isCreator ? "admin" : profile?.papel,
     },
+    isCreator,
+    isLeader: isCreator || tenant?.owner_id === user.id,
   };
 }
 
@@ -103,14 +111,21 @@ export async function PUT(request: Request) {
   }
   const admin = createAdminClient();
   let payload = sanitizeLegacyCredentials(incoming) as Record<string, unknown>;
-  if (auth.profile.papel !== "admin") {
-    const { data: current, error: currentError } = await admin
+  const { data: current, error: currentError } = await admin
       .from("graficalc_runtime_state")
       .select("payload")
       .eq("tenant_id", auth.profile.tenant_id)
       .maybeSingle();
-    if (currentError) return Response.json({ error: "shared-state-read-failed" }, { status: 500 });
-    const previous = sanitizeLegacyCredentials(current?.payload || {}) as Record<string, unknown>;
+  if (currentError) return Response.json({ error: "shared-state-read-failed" }, { status: 500 });
+  const previous = sanitizeLegacyCredentials(current?.payload || {}) as Record<string, unknown>;
+  const configChanged = JSON.stringify(previous.config || null) !== JSON.stringify(payload.config || null);
+  if (configChanged) {
+    const pinContext = await getPinContext();
+    const canEdit = Boolean(pinContext && pinContext.profile.tenant_id === auth.profile.tenant_id && pinContext.permissions.edit);
+    const pinVerified = pinContext ? Boolean(canEdit && await hasValidPinVerification(auth.userId, auth.profile.tenant_id)) : false;
+    if (!pinVerified) return Response.json({ error: "config-pin-required" }, { status: 403 });
+  }
+  if (!auth.isLeader) {
     const protectedKeys = ["config", "security", "users", "userDirectory", "accessGroups", "dashboardOverrides"];
     payload = { ...payload };
     protectedKeys.forEach((key) => {

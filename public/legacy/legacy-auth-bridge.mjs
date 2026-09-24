@@ -16,7 +16,7 @@ async function prepareLegacySession() {
   // login legado persistente do desenvolvedor substituir a conta atual.
   localStorage.removeItem("graficalc-developer-persistent-login-v1");
   sessionStorage.removeItem("graficalc-config-unlocked-v1");
-  window.grafiCalcRemoteAuth = { userId: user.id, tenantId: user.tenant_id || "" };
+  window.grafiCalcRemoteAuth = { userId: user.id, tenantId: user.tenant_id || "", teamLeader: user.teamLeader === true };
   const legacyUser = {
     id: user.id,
     username: user.nome || user.email,
@@ -26,6 +26,7 @@ async function prepareLegacySession() {
     role: user.papel === "funcionario" ? "employee" : "user",
     status: "active",
     groupId: user.papel === "funcionario" ? "funcionarios" : "profissional",
+    teamLeader: user.teamLeader === true,
     emailVerification: { status: "verified", code: "", verifiedAt: now, sentAt: "", expiresAt: "", resendAvailableAt: "", lastDeliveryMode: "supabase" },
     documentVerification: { status: "local-valid", source: "local", checkedAt: now, verifiedAt: now, message: "Documento validado no cadastro." },
     createdAt: user.criado_em || now,
