@@ -313,6 +313,37 @@ export async function updatePasswordAction(_: ActionState, formData: FormData): 
   return { ok: true, message: "Senha alterada com sucesso." };
 }
 
+export async function changePasswordAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  const currentPassword = String(formData.get("currentPassword") || "");
+  const password = String(formData.get("password") || "");
+  const confirmation = String(formData.get("confirmPassword") || "");
+
+  if (!currentPassword) {
+    return { ok: false, message: "Informe sua senha atual." };
+  }
+  const parsed = passwordSchema.safeParse(password);
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message || "Senha inválida." };
+  if (password !== confirmation) return { ok: false, message: "As novas senhas não coincidem." };
+  if (currentPassword === password) return { ok: false, message: "A nova senha deve ser diferente da senha atual." };
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const email = String(user?.email || "").trim();
+  if (!user || !email) return { ok: false, message: "Sua sessão expirou. Entre novamente." };
+
+  const { data: reauthenticated, error: reauthenticationError } = await supabase.auth.signInWithPassword({
+    email,
+    password: currentPassword,
+  });
+  if (reauthenticationError || !reauthenticated.user || reauthenticated.user.id !== user.id) {
+    return { ok: false, message: "A senha atual está incorreta." };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) return { ok: false, message: "Não foi possível alterar a senha. Tente novamente." };
+  return { ok: true, message: "Senha alterada com sucesso." };
+}
+
 export async function updateProfileAction(_: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = profileSchema.safeParse(fields(formData));
   if (!parsed.success) return { ok: false, message: "Revise os dados informados.", fieldErrors: parsed.error.flatten().fieldErrors };
