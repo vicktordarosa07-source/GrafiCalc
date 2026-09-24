@@ -4,6 +4,7 @@ import { logoutAction } from "@/app/auth/actions";
 import { InactivityGuard } from "@/components/auth/inactivity-guard";
 import { ProfileForm } from "@/components/profile/profile-form";
 import { ChangePasswordForm } from "@/components/profile/change-password-form";
+import { ConfigPinForm } from "@/components/profile/config-pin-form";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ProfilePage() {
@@ -35,6 +36,7 @@ export default async function ProfilePage() {
         <p>Confirme sua senha atual e informe a nova senha duas vezes.</p>
         <ChangePasswordForm />
       </section>
+      <ConfigPinForm />
     </main>
   );
 }

@@ -16419,6 +16419,10 @@ async function initApp() {
     setConfigStatus("Nova faixa de preço adicionada.", "success");
   });
 
+  document.getElementById("save-config-button")?.addEventListener("click", () => {
+    void saveConfiguration();
+  });
+
   lockConfigButton?.addEventListener("click", () => {
     lockConfiguration();
   });
