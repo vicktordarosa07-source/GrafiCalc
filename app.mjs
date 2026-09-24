@@ -8602,6 +8602,10 @@ async function initApp() {
     };
   }
 
+  function canUseConfigTab() {
+    return getConfigPermissions().use;
+  }
+
   function ensureDeveloperSessionFromPersistence() {
     if (currentUser?.role === "developer" && currentUser?.developerAccess === true && currentUser?.status === "active") {
       return true;
@@ -8868,7 +8872,7 @@ async function initApp() {
         allowed = logged && Boolean(getUserTabPermissions(accessControl, currentUser).home);
       } else if (logged) {
         const permissions = getUserTabPermissions(accessControl, currentUser);
-        allowed = Boolean(permissions[tab]);
+        allowed = tab === "configuracao" ? canUseConfigTab() : Boolean(permissions[tab]);
       }
       button.hidden = !allowed || settingsOnlyTabs.has(tab);
       button.disabled = !allowed;
@@ -8891,7 +8895,7 @@ async function initApp() {
         allowed = logged && Boolean(getUserTabPermissions(accessControl, currentUser).home);
       } else if (logged) {
         const permissions = getUserTabPermissions(accessControl, currentUser);
-        allowed = Boolean(permissions[tab]);
+        allowed = tab === "configuracao" ? canUseConfigTab() : Boolean(permissions[tab]);
       }
       panel.hidden = !allowed;
       if (!allowed) {
@@ -10274,7 +10278,7 @@ async function initApp() {
       tabName = getFirstAllowedLoggedTab(currentUser);
     } else if (logged) {
       const permissions = getUserTabPermissions(accessControl, currentUser);
-      if (!permissions[tabName]) {
+      if (tabName === "configuracao" ? !canUseConfigTab() : !permissions[tabName]) {
         tabName = getFirstAllowedLoggedTab(currentUser);
       }
     }
