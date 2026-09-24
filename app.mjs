@@ -17,6 +17,7 @@ const SESSION_KEYS = {
 const DEVELOPER_ACCOUNT = {
   id: "developer-system",
   username: "Helder Pedro da Rosa",
+  email: "hprvisual@hotmail.com",
   company: "GrafiCalc",
   role: "developer",
   developerAccess: true,
@@ -31,6 +32,7 @@ const DEVELOPER_ACCOUNT = {
     lastDeliveryMode: "developer-bypass",
   },
 };
+const DEVELOPER_EMAIL = "hprvisual@hotmail.com";
 const SHARED_API_PATH = "/api/shared-state";
 const AUTH_EMAIL_API_PATH = "/api/auth/send-verification-code";
 const AUTH_VERIFY_EMAIL_API_PATH = "/api/auth/verify-verification-code";
@@ -2172,7 +2174,12 @@ function normalizeAccessControlCandidate(candidate) {
 
 function normalizeSharedSecurity(candidate) {
   const users = Array.isArray(candidate?.authUsers)
-    ? candidate.authUsers.map(normalizeUserRecord).filter((user) => user.username)
+    ? candidate.authUsers
+      .map(normalizeUserRecord)
+      .filter((user) => user.username && user.email.toLowerCase() !== DEVELOPER_EMAIL)
+      .map((user) => user.role === "developer"
+        ? { ...user, role: "user", developerAccess: false, groupId: "profissional" }
+        : user)
     : [];
   const developerIndex = users.findIndex((user) => user.id === DEVELOPER_ACCOUNT.id || user.username.toLowerCase() === DEVELOPER_ACCOUNT.username.toLowerCase());
   const developerUser = normalizeUserRecord({
@@ -2362,7 +2369,12 @@ function normalizeUserRecord(user, index = 0) {
 
 function loadAuthUsers() {
   const saved = loadFromStorage(STORAGE_KEYS.authUsers, (candidate) => Array.isArray(candidate) ? candidate : []);
-  const users = saved.map(normalizeUserRecord).filter((user) => user.username);
+  const users = saved
+    .map(normalizeUserRecord)
+    .filter((user) => user.username && user.email.toLowerCase() !== DEVELOPER_EMAIL)
+    .map((user) => user.role === "developer"
+      ? { ...user, role: "user", developerAccess: false, groupId: "profissional" }
+      : user);
   const developerIndex = users.findIndex((user) => user.id === DEVELOPER_ACCOUNT.id || user.username.toLowerCase() === DEVELOPER_ACCOUNT.username.toLowerCase());
   const developerUser = normalizeUserRecord({
     ...DEVELOPER_ACCOUNT,
@@ -2394,7 +2406,10 @@ function mergeAuthUserCollections(localUsers, sharedUsers) {
   const makeKey = (user) => user?.id || normalizeLookupEmail(user?.email) || String(user?.username || "").trim().toLowerCase();
   [...(Array.isArray(sharedUsers) ? sharedUsers : []), ...(Array.isArray(localUsers) ? localUsers : [])]
     .map(normalizeUserRecord)
-    .filter((user) => user.username)
+    .filter((user) => user.username && user.email.toLowerCase() !== DEVELOPER_EMAIL)
+    .map((user) => user.role === "developer"
+      ? { ...user, role: "user", developerAccess: false, groupId: "profissional" }
+      : user)
     .forEach((user) => {
       const key = makeKey(user);
       const current = merged.get(key);

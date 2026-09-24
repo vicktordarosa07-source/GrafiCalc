@@ -11,6 +11,7 @@ async function prepareLegacySession() {
 
   const user = await response.json();
   const now = new Date().toISOString();
+  const developerEmail = "hprvisual@hotmail.com";
   // A sessao Supabase e a fonte de identidade em producao. Nao deixe um
   // login legado persistente do desenvolvedor substituir a conta atual.
   localStorage.removeItem("graficalc-developer-persistent-login-v1");
@@ -43,12 +44,14 @@ async function prepareLegacySession() {
     String(item?.id || "") !== String(legacyUser.id || "")
     && String(item?.email || "").trim().toLowerCase() !== currentEmail
   ));
-  mergedUsers.push(legacyUser);
+  if (currentEmail !== developerEmail) {
+    mergedUsers.push(legacyUser);
+  }
   localStorage.setItem("graficalc-auth-users-v1", JSON.stringify(mergedUsers));
   localStorage.setItem("graficalc-auth-session-v1", JSON.stringify({
     userId: user.id,
-    username: legacyUser.username,
-    role: legacyUser.role,
+    username: currentEmail === developerEmail ? "Helder Pedro da Rosa" : legacyUser.username,
+    role: currentEmail === developerEmail ? "developer" : legacyUser.role,
     loggedAt: now,
   }));
 
