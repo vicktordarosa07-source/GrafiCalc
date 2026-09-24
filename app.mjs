@@ -1592,9 +1592,12 @@ function mergeConfig(candidate) {
     const configAccess = candidate.security.configAccess && typeof candidate.security.configAccess === "object"
       ? candidate.security.configAccess
       : {};
+    const storedPassword = typeof configAccess.password === "string" ? configAccess.password : "";
     merged.security.configAccess = {
-      mode: configAccess.mode === "open" ? "open" : "password",
-      password: typeof configAccess.password === "string" ? configAccess.password : "",
+      // A legacy/partial configuration with no password must remain usable;
+      // an empty password cannot protect the area and would create a deadlock.
+      mode: configAccess.mode === "open" || !storedPassword ? "open" : "password",
+      password: storedPassword,
     };
   }
 
