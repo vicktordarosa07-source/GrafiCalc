@@ -15,8 +15,8 @@ const messages: Record<string, string> = {
   "conexao-supabase": "A Vercel nao conseguiu alcancar a autenticacao do Supabase. Verifique a URL e a chave publicavel.",
 };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ erro?: string }> }) {
-  const { erro } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ erro?: string; confirmado?: string }> }) {
+  const { erro, confirmado } = await searchParams;
   const message = erro ? messages[erro] : undefined;
 
   return (
@@ -25,7 +25,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       title="Entrar no GrafiCalc"
       description="Use seu e-mail e senha para abrir sua area de trabalho."
     >
-      <LoginBrowserForm message={message} />
+      <LoginBrowserForm message={message} successMessage={confirmado === "1" ? "E-mail confirmado. Agora entre com seu e-mail e senha." : undefined} />
     </AuthShell>
   );
 }
