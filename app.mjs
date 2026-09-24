@@ -2992,6 +2992,22 @@ async function requestAuthUserSave(user, accessControl) {
   return response.json();
 }
 
+async function requestManagedUsers() {
+  if (typeof fetch !== "function") {
+    throw new Error("fetch-unavailable");
+  }
+
+  const response = await fetch(AUTH_USERS_API_PATH, {
+    method: "GET",
+    cache: "no-store",
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result?.ok) {
+    throw new Error(result?.error || `auth-users-http-${response.status}`);
+  }
+  return Array.isArray(result.users) ? result.users : [];
+}
+
 async function requestDeveloperLogin(username, password) {
   if (typeof fetch !== "function") {
     throw new Error("fetch-unavailable");
@@ -9829,16 +9845,31 @@ async function initApp() {
   }
 
   async function refreshSecurityFromSharedSource() {
+    let managedUsers = [];
+    try {
+      managedUsers = await requestManagedUsers();
+    } catch {
+      managedUsers = [];
+    }
+
     try {
       const shared = await requestSharedState("GET");
       const payload = shared?.payload && typeof shared.payload === "object" ? shared.payload : shared;
       const sharedSecurity = normalizeSharedSecurity(payload?.security || {});
-      authUsers = mergeAuthUserCollections(authUsers, sharedSecurity.authUsers);
+      authUsers = mergeAuthUserCollections(
+        mergeAuthUserCollections(authUsers, sharedSecurity.authUsers),
+        managedUsers,
+      );
       accessControl = sharedSecurity.accessControl;
       persistLocalOnly();
       sharedUpdatedAt = shared?.updatedAt || sharedUpdatedAt;
       return true;
     } catch {
+      if (managedUsers.length > 0) {
+        authUsers = mergeAuthUserCollections(authUsers, managedUsers);
+        persistLocalOnly();
+        return true;
+      }
       return false;
     }
   }
@@ -14495,6 +14526,13 @@ async function initApp() {
     }
     setConfigStatus("Sincronizando usuários e permissões com a base compartilhada...", "warning");
     reloadAuthContextFromStorage();
+    try {
+      const managedUsers = await requestManagedUsers();
+      authUsers = mergeAuthUserCollections(authUsers, managedUsers);
+      saveAuthUsers(authUsers);
+    } catch {
+      // The legacy shared-state sync below remains available as a fallback.
+    }
     const syncResult = await refreshSharedState(true);
     renderDeveloperArea();
     if (syncResult?.status === "updated") {
@@ -14573,6 +14611,14 @@ async function initApp() {
       currentUser = { ...currentUser, role: "developer", groupId: "developer", developerAccess: true };
       saveAuthSession({ ...currentUser, role: "user", groupId: "profissional", developerAccess: false });
       saveSessionFlag(SESSION_KEYS.configUnlocked, Boolean(serverSecuritySession.configUnlocked));
+      try {
+        const managedUsers = await requestManagedUsers();
+        authUsers = mergeAuthUserCollections(authUsers, managedUsers);
+        saveAuthUsers(authUsers);
+      } catch {
+        // The manual synchronization action remains available if the directory
+        // endpoint is temporarily unavailable after authentication.
+      }
       closeDeveloperAccessModal();
       applyAccessRules();
       renderAll();
