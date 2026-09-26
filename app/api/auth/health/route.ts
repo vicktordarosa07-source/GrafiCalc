@@ -30,7 +30,7 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser();
     developerEligible = Boolean(user?.email_confirmed_at && isDeveloperEligible(user));
     const session = developerEligible ? readDeveloperSession((await cookies()).get(DEVELOPER_COOKIE)?.value) : null;
-    developerLoggedIn = Boolean(session?.userId === user?.id);
+    developerLoggedIn = Boolean(user && session && session.userId === user.id);
     username = session?.username || "";
   } catch {
     // Health remains public even when Supabase is not configured.

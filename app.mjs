@@ -2181,6 +2181,12 @@ function normalizeAccessControlCandidate(candidate) {
 }
 
 function normalizeSharedSecurity(candidate) {
+  if (typeof window !== "undefined" && window.grafiCalcRemoteAuth) {
+    return {
+      authUsers: (candidate?.authUsers || []).map(normalizeUserRecord),
+      accessControl: normalizeAccessControlCandidate(candidate?.accessControl || {}),
+    };
+  }
   const users = Array.isArray(candidate?.authUsers)
     ? candidate.authUsers
       .map(normalizeUserRecord)
@@ -2206,13 +2212,19 @@ function normalizeSharedSecurity(candidate) {
   };
 }
 
+function scopedStorageKey(key) {
+  const remote = typeof window !== "undefined" ? window.grafiCalcRemoteAuth : null;
+  if (!remote || key === STORAGE_KEYS.state || key === STORAGE_KEYS.config || key.includes(":")) return key;
+  return `${key}:${remote.tenantId}:${remote.userId}`;
+}
+
 function loadFromStorage(key, merger) {
   if (typeof localStorage === "undefined") {
     return merger(null);
   }
 
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(scopedStorageKey(key));
     if (!raw) {
       return merger(null);
     }
@@ -2227,10 +2239,12 @@ function saveToStorage(key, value) {
     return;
   }
 
-  localStorage.setItem(key, JSON.stringify(value));
+  localStorage.setItem(scopedStorageKey(key), JSON.stringify(value));
 }
 
 function getAccountStorageKey(key, user) {
+  const remote = typeof window !== "undefined" ? window.grafiCalcRemoteAuth : null;
+  if (remote) return `${key}:${remote.tenantId}:${remote.userId}`;
   const accountId = String(user?.id || "anonymous").trim();
   const safeAccountId = accountId.replace(/[^a-zA-Z0-9._-]/g, "_") || "anonymous";
   return `${key}:${safeAccountId}`;
@@ -2377,6 +2391,10 @@ function normalizeUserRecord(user, index = 0) {
 }
 
 function loadAuthUsers() {
+  if (typeof window !== "undefined" && window.grafiCalcRemoteAuth) {
+    const remote = window.grafiCalcRemoteAuth;
+    return [...remote.members.filter(user => user.id !== remote.userId), remote.user].map(normalizeUserRecord);
+  }
   const saved = loadFromStorage(STORAGE_KEYS.authUsers, (candidate) => Array.isArray(candidate) ? candidate : []);
   const users = saved
     .map(normalizeUserRecord)
@@ -2402,6 +2420,11 @@ function loadAuthUsers() {
 }
 
 function saveAuthUsers(users) {
+  if (typeof window !== "undefined" && window.grafiCalcRemoteAuth) {
+    const remote = window.grafiCalcRemoteAuth;
+    const members = new Set([...remote.members.map(user => user.id), remote.userId]);
+    users = users.filter(user => members.has(user.id));
+  }
   saveToStorage(STORAGE_KEYS.authUsers, users.map(normalizeUserRecord));
 }
 
@@ -2439,6 +2462,7 @@ function saveAccessControl(accessControl) {
 }
 
 function loadAuthSession(users) {
+  if (typeof window !== "undefined" && window.grafiCalcRemoteAuth) return normalizeUserRecord(window.grafiCalcRemoteAuth.user);
   const session = loadFromStorage(STORAGE_KEYS.authSession, (candidate) => candidate && typeof candidate === "object" ? candidate : null);
   if (!session?.userId && !session?.username) {
     return null;
@@ -2497,6 +2521,7 @@ function saveDeveloperPersistentLogin(enabled) {
 }
 
 function saveAuthSession(user) {
+  if (typeof window !== "undefined" && window.grafiCalcRemoteAuth) return;
   if (!user) {
     localStorage.removeItem(STORAGE_KEYS.authSession);
     saveDeveloperPersistentLogin(false);
@@ -2984,11 +3009,9 @@ async function requestSharedState(method = "GET", payload) {
     cache: "no-store",
   });
 
-  if (!response.ok) {
-    throw new Error(`shared-http-${response.status}`);
-  }
-
-  return response.json();
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `shared-http-${response.status}`);
+  return result;
 }
 
 async function requestAuthUserSave(user, accessControl) {
@@ -8006,10 +8029,19 @@ async function initApp() {
   let sharedSyncInFlight = false;
   let sharedSyncQueued = false;
   let sharedBootstrapComplete = false;
-  let sharedUpdatedAt = "";
+  let sharedUpdatedAt = null;
   let lastSharedSnapshot = "";
   let sharedRefreshHandle = null;
   let committedConfigSnapshot = deepClone(config);
+  let configDraft = deepClone(config);
+  let configDraftState = deepClone(state);
+  let configDraftDirty = false;
+  let configDraftBase = "";
+  let configDraftConflict = false;
+  let configSaving = false;
+  let sharedDirty = false;
+  let sharedMutation = 0;
+  let sharedConflict = false;
   let configSaveAuthorized = false;
   let editingClientId = "";
   let editingClientPersonType = "individual";
@@ -8584,16 +8616,19 @@ async function initApp() {
   }
 
   function isDeveloperSession() {
+    if (window.grafiCalcRemoteAuth) return serverSecuritySession.developerEligible && serverSecuritySession.developerLoggedIn;
     return currentUser?.role === "developer"
       && currentUser?.developerAccess === true
       && currentUser?.status === "active";
   }
 
   function isTeamLeader() {
+    if (window.grafiCalcRemoteAuth) return window.grafiCalcRemoteAuth.teamLeader === true;
     return isDeveloperSession() || currentUser?.teamLeader === true || String(currentUser?.email || "").trim().toLowerCase() === DEVELOPER_EMAIL;
   }
 
   function getConfigPermissions() {
+    if (window.grafiCalcRemoteAuth) return window.grafiCalcRemoteAuth.configPermissions || { use: false, edit: false, managePin: false };
     const delegated = accessControl?.configPermissions?.[currentUser?.id] || {};
     return {
       use: isTeamLeader() || delegated.use === true,
@@ -8607,6 +8642,7 @@ async function initApp() {
   }
 
   function ensureDeveloperSessionFromPersistence() {
+    if (window.grafiCalcRemoteAuth) return isDeveloperSession();
     if (currentUser?.role === "developer" && currentUser?.developerAccess === true && currentUser?.status === "active") {
       return true;
     }
@@ -8764,7 +8800,7 @@ async function initApp() {
       return;
     }
     const currentDeveloper = currentUser?.role === "developer" && currentUser?.developerAccess === true;
-    const hasLocalDeveloperSession = currentDeveloper && hasStoredAuthSession(currentUser?.id);
+    const hasLocalDeveloperSession = !window.grafiCalcRemoteAuth && currentDeveloper && hasStoredAuthSession(currentUser?.id);
     const previousConfigUnlocked = loadSessionFlag(SESSION_KEYS.configUnlocked);
     try {
       const result = await requestServerAuthSession();
@@ -9863,9 +9899,19 @@ async function initApp() {
     saveAccessControl(accessControl);
   }
 
+  function persistConfigDraft() {
+    if (!configDraftDirty) configDraftBase = JSON.stringify(committedConfigSnapshot);
+    configDraftDirty = true;
+    saveToStorage(getAccountStorageKey("graficalc-config-draft-v2", currentUser), { config: configDraft, baseConfig: configDraftBase });
+    setConfigStatus("Rascunho pendente. Salve com o PIN para aplicar.", "warning");
+  }
+
   function createSharedPayload() {
     return {
+      baseUpdatedAt: sharedUpdatedAt,
+      publishConfig: configSaveAuthorized,
       sharedState: {
+        company: deepClone(state.company),
         clients: deepClone(state.clients),
         quoteHistory: deepClone(state.quoteHistory),
         workOrders: deepClone(state.workOrders),
@@ -9874,7 +9920,7 @@ async function initApp() {
         authUsers: deepClone(authUsers),
         accessControl: deepClone(accessControl),
       },
-      config: deepClone(configSaveAuthorized ? config : committedConfigSnapshot),
+      ...(configSaveAuthorized ? { config: deepClone(configDraft) } : {}),
     };
   }
 
@@ -9889,8 +9935,9 @@ async function initApp() {
     state.clients = sharedCollections.clients;
     state.quoteHistory = sharedCollections.quoteHistory;
     state.workOrders = sharedCollections.workOrders;
+    if (sourceState.company) state.company = { ...state.company, ...deepClone(sourceState.company) };
     const sharedSecurity = normalizeSharedSecurity(payload.security || {});
-    authUsers = mergeAuthUserCollections(authUsers, sharedSecurity.authUsers);
+    authUsers = window.grafiCalcRemoteAuth ? sharedSecurity.authUsers : mergeAuthUserCollections(authUsers, sharedSecurity.authUsers);
     accessControl = sharedSecurity.accessControl;
     currentUser = resolvePersistentSession(authUsers, previousCurrentUser);
     if (currentUser?.status === "active") {
@@ -9899,8 +9946,13 @@ async function initApp() {
     if (payload.config && typeof payload.config === "object") {
       Object.assign(config, mergeConfig(payload.config));
       committedConfigSnapshot = deepClone(config);
+      configDraftConflict = configDraftDirty && configDraftBase !== JSON.stringify(committedConfigSnapshot);
       cleanupHiddenImpressosEntries(config, state);
       ensureAutomaticPlastificationService(config);
+      if (!configDraftDirty) {
+        configDraft = deepClone(config);
+        configDraftState = deepClone(state);
+      }
     }
     persistLocalOnly();
     renderAll();
@@ -9927,7 +9979,7 @@ async function initApp() {
       );
       accessControl = sharedSecurity.accessControl;
       persistLocalOnly();
-      sharedUpdatedAt = shared?.updatedAt || sharedUpdatedAt;
+      // A security-only refresh must not advance the revision of stale business data.
       return true;
     } catch {
       if (managedUsers.length > 0) {
@@ -9940,7 +9992,7 @@ async function initApp() {
   }
 
   async function flushSharedSave(force = false) {
-    if (!sharedBootstrapComplete && !force) {
+    if (!sharedBootstrapComplete || sharedConflict) {
       return false;
     }
 
@@ -9956,16 +10008,20 @@ async function initApp() {
     }
 
     sharedSyncInFlight = true;
+    const mutation = sharedMutation;
     setSyncStatus("Salvando alterações na base compartilhada...", "warning");
 
     try {
       const result = await requestSharedState("PUT", payload);
       lastSharedSnapshot = serialized;
-      sharedUpdatedAt = result.updatedAt || new Date().toISOString();
+      sharedUpdatedAt = result.updatedAt || null;
+      sharedDirty = mutation !== sharedMutation;
+      if (sharedDirty) sharedSyncQueued = true;
       setSyncStatus("Tudo salvo e compartilhado entre os computadores.", "success");
       return true;
-    } catch {
-      setSyncStatus("Não foi possível atualizar a base compartilhada agora. O app continua funcionando nesta máquina.", "error");
+    } catch (error) {
+      sharedConflict = error?.message === "workspace-conflict";
+      setSyncStatus(sharedConflict ? "Outra sessão alterou os dados. Suas alterações locais foram preservadas. Recarregue para revisar antes de salvar novamente." : "Não foi possível salvar no servidor. As alterações continuam somente nesta máquina.", "error");
       return false;
     } finally {
       sharedSyncInFlight = false;
@@ -9990,6 +10046,17 @@ async function initApp() {
   }
 
   async function saveSecuritySharedNow() {
+    if (window.grafiCalcRemoteAuth) {
+      try {
+        const result = await requestSharedState("PUT", { baseUpdatedAt: sharedUpdatedAt, security: { accessControl } });
+        sharedUpdatedAt = result.updatedAt;
+        saveAccessControl(accessControl);
+        return true;
+      } catch {
+        setSyncStatus("As permissões não foram salvas. Atualize a página antes de tentar novamente.", "error");
+        return false;
+      }
+    }
     saveAuthUsers(authUsers);
     saveAccessControl(accessControl);
 
@@ -10073,12 +10140,14 @@ async function initApp() {
   }
 
   async function refreshSharedState(showMessage = false) {
-    if (!sharedBootstrapComplete || sharedSyncInFlight) {
+    if (!sharedBootstrapComplete || sharedSyncInFlight || sharedDirty || sharedConflict || configSaving) {
       return { status: "skipped" };
     }
 
     try {
       const result = await requestSharedState("GET");
+      if (sharedSyncInFlight || sharedDirty || sharedConflict || configSaving) return { status: "skipped" };
+      if (window.grafiCalcRemoteAuth && result.permissions) window.grafiCalcRemoteAuth.configPermissions = result.permissions;
       if (!result?.exists || !result.payload) {
         return { status: "empty" };
       }
@@ -10088,7 +10157,7 @@ async function initApp() {
         return { status: "unchanged" };
       }
 
-      sharedUpdatedAt = result.updatedAt || "";
+      sharedUpdatedAt = result.updatedAt || null;
       lastSharedSnapshot = serialized;
       applySharedPayload(
         result.payload,
@@ -10111,17 +10180,26 @@ async function initApp() {
       sharedBootstrapComplete = true;
 
       if (result?.exists && result.payload) {
-        sharedUpdatedAt = result.updatedAt || "";
+        sharedUpdatedAt = result.updatedAt || null;
         lastSharedSnapshot = JSON.stringify(result.payload);
         applySharedPayload(result.payload, "Base compartilhada conectada com sucesso.");
+        const savedDraft = loadFromStorage(getAccountStorageKey("graficalc-config-draft-v2", currentUser), (value) => value);
+        if (savedDraft?.config) {
+          configDraft = mergeConfig(savedDraft.config);
+          configDraftDirty = true;
+          configDraftBase = savedDraft.baseConfig || "";
+          configDraftConflict = configDraftBase !== JSON.stringify(committedConfigSnapshot);
+          renderConfig();
+          setConfigStatus(configDraftConflict ? "O rascunho foi recuperado, mas a configuração mudou em outra sessão. Exporte o rascunho antes de descartá-lo e refazer as alterações." : "Rascunho recuperado. Salve com o PIN para aplicar.", "warning");
+        }
         return;
       }
 
       persistLocalOnly();
       await flushSharedSave(true);
     } catch {
-      sharedBootstrapComplete = true;
-      setSyncStatus("Não foi possível conectar a base compartilhada agora. O app segue disponível nesta máquina.", "error");
+      sharedBootstrapComplete = false;
+      setSyncStatus("Não foi possível validar a base da sua conta. O envio de alterações está bloqueado até reconectar.", "error");
     }
   }
 
@@ -10179,7 +10257,10 @@ async function initApp() {
   }
 
   function updateConfigAccessUi() {
-    const locked = !getConfigPermissions().edit;
+    const locked = configSaving || !getConfigPermissions().edit;
+    configSections.querySelectorAll("input,select,textarea,button").forEach(control => {
+      if (!control.matches("[data-config-section],[data-config-view-mode]")) control.disabled = locked;
+    });
     const configButtons = [
       document.getElementById("save-config-button"),
       document.getElementById("export-config-button"),
@@ -10326,8 +10407,9 @@ async function initApp() {
   }
 
   function persist() {
+    sharedMutation += 1;
     persistLocalOnly();
-    if (configSections?.contains(document.activeElement) && !configSaveAuthorized) return;
+    sharedDirty = true;
     queueSharedSave(false);
   }
 
@@ -10377,7 +10459,7 @@ async function initApp() {
     const leader = isTeamLeader();
     panel.hidden = !leader;
     if (!leader) return;
-    const users = authUsers.filter((user) => user.status !== "blocked" && user.id !== currentUser?.id && user.role !== "developer");
+    const users = (window.grafiCalcRemoteAuth?.members || authUsers).filter((user) => user.status !== "blocked" && user.id !== currentUser?.id && user.role !== "developer");
     if (!users.length) {
       container.innerHTML = `<p class="helper-text">Nenhum usuário da equipe disponível para receber permissões.</p>`;
       return;
@@ -11175,7 +11257,8 @@ async function initApp() {
     }
   }
 
-  function saveFreeProductFromDraft(draft) {
+  async function saveFreeProductFromDraft(draft) {
+    if (!getConfigPermissions().edit) return false;
     if (!draft || draft.entryMode !== "saved") return false;
     syncNewQuoteFreeDraftFromForm(draft);
     const label = String(draft.product.label || "").trim();
@@ -11197,19 +11280,20 @@ async function initApp() {
         setMainFeedback("Informe o nome da nova categoria.", "warning");
         return false;
       }
-      const existing = (config.freeProductCategories || []).find((category) => normalizeLookupText(category.label) === normalizeLookupText(categoryLabel));
-      if (!existing) config.freeProductCategories.push({ id: `categoria-livre-${Date.now()}`, label: categoryLabel, icon: "+" });
-      draft.product.categoryId = existing?.id || config.freeProductCategories[config.freeProductCategories.length - 1].id;
+      const existing = (configDraft.freeProductCategories || []).find((category) => normalizeLookupText(category.label) === normalizeLookupText(categoryLabel));
+      if (!existing) configDraft.freeProductCategories.push({ id: `categoria-livre-${Date.now()}`, label: categoryLabel, icon: "+" });
+      draft.product.categoryId = existing?.id || configDraft.freeProductCategories[configDraft.freeProductCategories.length - 1].id;
     }
     const productId = draft.catalogProductId || draft.product.id || `produto-livre-${Date.now()}`;
     const product = { ...deepClone(draft.product), id: productId, artFee: 0, createdAt: draft.product.createdAt || new Date().toISOString() };
-    const index = (config.freeProducts || []).findIndex((item) => item.id === productId);
-    if (index >= 0) config.freeProducts[index] = product;
-    else config.freeProducts.push(product);
+    const index = (configDraft.freeProducts || []).findIndex((item) => item.id === productId);
+    if (index >= 0) configDraft.freeProducts[index] = product;
+    else configDraft.freeProducts.push(product);
     draft.product = deepClone(product);
     draft.catalogProductId = productId;
     draft.product.priceTiers = normalizeFreePriceTiers(draft.product.priceTiers);
-    persist();
+    persistConfigDraft();
+    if (!(await saveConfiguration())) return false;
     renderNewQuoteServices();
     closeNewQuoteFreeEditor(true);
     renderNewQuoteBuilder();
@@ -11218,7 +11302,8 @@ async function initApp() {
   }
 
   async function deleteFreeProduct(productId) {
-    const product = (config.freeProducts || []).find((item) => item.id === productId);
+    if (!getConfigPermissions().edit) return;
+    const product = (configDraft.freeProducts || []).find((item) => item.id === productId);
     if (!product) return;
     const confirmed = await confirmAppAction({
       kicker: "Produto salvo",
@@ -11228,10 +11313,15 @@ async function initApp() {
       danger: true,
     });
     if (!confirmed) return;
-    config.freeProducts = (config.freeProducts || []).filter((item) => item.id !== productId);
+    configDraft.freeProducts = (configDraft.freeProducts || []).filter((item) => item.id !== productId);
     const draft = getNewQuoteFreeDraft();
     if (draft?.catalogProductId === productId) closeNewQuoteFreeEditor(true);
-    persist();
+    persistConfigDraft();
+    if (document.querySelector('[data-tab-panel="configuracao"].is-active')) {
+      renderConfig();
+      return;
+    }
+    if (!(await saveConfiguration())) return;
     renderNewQuoteServices();
     renderNewQuoteBuilder();
     setMainFeedback("Produto excluído do catálogo.", "success");
@@ -11918,7 +12008,7 @@ async function initApp() {
   function renderConfig() {
     try {
       configSections.innerHTML = getConfigPermissions().use
-        ? createConfigSectionsMarkup(config, configViewMode, activeConfigSection)
+        ? createConfigSectionsMarkup(configDraft, configViewMode, activeConfigSection)
         : `<div class="warning-item">Você não tem permissão para utilizar as configurações desta equipe.</div>`;
     } catch (error) {
       console.error("Falha ao renderizar a aba de configuração.", error);
@@ -11926,50 +12016,58 @@ async function initApp() {
       setConfigStatus("A configuração encontrou um erro de renderização, mas o restante do app continua ativo.", "error");
     }
     if (spiralDiscountInput) {
-      spiralDiscountInput.value = config.spiralPlasticDiscount;
+      spiralDiscountInput.value = configDraft.spiralPlasticDiscount;
     }
     updateConfigAccessUi();
   }
 
   async function saveConfiguration() {
-    if (!getConfigPermissions().edit) {
-      setConfigStatus("Somente usuários autorizados pela liderança podem salvar configurações.", "warning");
-      return;
+    if (configSaving || !getConfigPermissions().edit) return false;
+    if (configDraftConflict) {
+      setConfigStatus("A configuração foi alterada em outra sessão. Exporte este rascunho antes de descartá-lo e refazer as alterações.", "error");
+      return false;
     }
+    if (!sharedBootstrapComplete || sharedConflict) {
+      setConfigStatus("Reconecte a conta antes de salvar. O rascunho foi preservado.", "error");
+      return false;
+    }
+    if (sharedDirty && !(await saveSharedNow(true))) return false;
     const pin = window.prompt("Digite o PIN de segurança para salvar as alterações:");
-    if (pin === null) return;
+    if (pin === null) return false;
+    configSaving = true;
+    updateConfigAccessUi();
     try {
-      await requestPinVerify(pin);
-    } catch {
-      setConfigStatus("PIN incorreto. As alterações continuam apenas como rascunho.", "error");
-      return;
-    }
-    configSaveAuthorized = true;
-    try {
-      persist();
-      const saved = await saveSharedNow(true);
-      if (!saved) throw new Error("config-save-failed");
+      const verification = await requestPinVerify(pin);
+      if (verification.updatedAt !== sharedUpdatedAt) throw new Error("workspace-conflict");
+      configSaveAuthorized = true;
+      if (!(await saveSharedNow(true))) throw new Error("config-save-failed");
+      Object.assign(config, mergeConfig(configDraft));
       committedConfigSnapshot = deepClone(config);
-    } catch {
-      setConfigStatus("Não foi possível salvar as configurações. Elas continuam apenas como rascunho.", "error");
-      return;
+      configDraftDirty = false;
+      configDraftBase = "";
+      localStorage.removeItem(getAccountStorageKey("graficalc-config-draft-v2", currentUser));
+      persistLocalOnly();
+      setConfigStatus("Alterações salvas com sucesso.", "success");
+      return true;
+    } catch (error) {
+      const message = error?.message === "pin-not-configured"
+        ? "Crie seu PIN de segurança em Minha conta antes de salvar."
+        : error?.message === "workspace-conflict"
+          ? "Outra sessão atualizou os dados. O rascunho continua salvo nesta máquina; atualize a página para revisar."
+          : error?.message === "too-many-attempts"
+            ? "Limite de tentativas atingido. Aguarde 15 minutos."
+            : "Não foi possível salvar. Confira o PIN; suas alterações continuam em rascunho.";
+      setConfigStatus(message, "error");
+      return false;
     } finally {
       configSaveAuthorized = false;
-    }
-    renderAll();
-    setConfigStatus("Alterações salvas com sucesso.", "success");
-    const button = document.getElementById("save-config-button");
-    if (button) {
-      const original = button.textContent;
-      button.textContent = "Alterações salvas";
-      setTimeout(() => {
-        button.textContent = original;
-      }, 1500);
+      configSaving = false;
+      renderAll();
     }
   }
 
   function removeConfigRow(prefix, rowIndex) {
-    const array = getConfigArrayByPrefix(config, prefix);
+    const array = getConfigArrayByPrefix(configDraft, prefix);
     if (!Array.isArray(array) || array.length <= 1 || !array[rowIndex]) {
       return false;
     }
@@ -11978,12 +12076,12 @@ async function initApp() {
   }
 
   function removeM2Finish(rowIndex) {
-    const finish = config.m2Finishes?.[rowIndex];
-    if (!finish || config.m2Finishes.length <= 1) {
+    const finish = configDraft.m2Finishes?.[rowIndex];
+    if (!finish || configDraft.m2Finishes.length <= 1) {
       return false;
     }
-    config.m2Finishes.splice(rowIndex, 1);
-    state.m2Items.forEach((row) => {
+    configDraft.m2Finishes.splice(rowIndex, 1);
+    configDraftState.m2Items.forEach((row) => {
       row.finishIds = Array.isArray(row.finishIds) ? row.finishIds.filter((id) => id !== finish.id) : [];
       if (row.finishOverrides && typeof row.finishOverrides === "object") {
         delete row.finishOverrides[finish.id];
@@ -11993,25 +12091,25 @@ async function initApp() {
   }
 
   function removeCatalogProduct(tab, visibleIndex) {
-    const products = config.catalogSections.filter((item) => item?.tab === tab);
+    const products = configDraft.catalogSections.filter((item) => item?.tab === tab);
     const product = products[visibleIndex];
     if (!product) {
       return false;
     }
 
-    const sourceIndex = config.catalogSections.findIndex((item) => item?.id === product.id && item?.tab === tab);
+    const sourceIndex = configDraft.catalogSections.findIndex((item) => item?.id === product.id && item?.tab === tab);
     if (sourceIndex === -1) {
       return false;
     }
 
-    config.catalogSections.splice(sourceIndex, 1);
+    configDraft.catalogSections.splice(sourceIndex, 1);
     if (tab === "m2") {
       const removedPricingKey = product.pricingKey;
       const isBaseKey = M2_CATALOG.some((item) => item.configKey === removedPricingKey);
       if (removedPricingKey && !isBaseKey) {
-        delete config.m2Pricing[removedPricingKey];
+        delete configDraft.m2Pricing[removedPricingKey];
       }
-      state.m2Items.forEach((row) => {
+      configDraftState.m2Items.forEach((row) => {
         if (row.productId === product.id) {
           row.productId = M2_CATALOG[0].id;
         }
@@ -12020,9 +12118,9 @@ async function initApp() {
     if (tab === "impressos") {
       const removedPricingKey = product.customPricingKey;
       if (removedPricingKey) {
-        delete config.colorProductPricing[removedPricingKey];
+        delete configDraft.colorProductPricing[removedPricingKey];
       }
-      state.colorPrintItems.forEach((row) => {
+      configDraftState.colorPrintItems.forEach((row) => {
         if (row.productPresetId === product.id) {
           row.productPresetId = "";
         }
@@ -12031,9 +12129,9 @@ async function initApp() {
     if (tab === "prontos") {
       const removedPricingKey = product.readyPricingKey;
       if (removedPricingKey) {
-        delete config.readyProductPricing[removedPricingKey];
+        delete configDraft.readyProductPricing[removedPricingKey];
       }
-      state.readyItems.forEach((row) => {
+      configDraftState.readyItems.forEach((row) => {
         if (row.productId === product.id) {
           row.productId = "";
           row.variantIndex = 0;
@@ -12044,12 +12142,12 @@ async function initApp() {
   }
 
   function removeCombinationService(index) {
-    const service = config.combinationServices?.[index];
+    const service = configDraft.combinationServices?.[index];
     if (!service) {
       return false;
     }
-    config.combinationServices.splice(index, 1);
-    state.colorPrintItems.forEach((row) => {
+    configDraft.combinationServices.splice(index, 1);
+    configDraftState.colorPrintItems.forEach((row) => {
       row.serviceIds = Array.isArray(row.serviceIds) ? row.serviceIds.filter((id) => id !== service.id) : [];
       if (row.serviceOverrides && typeof row.serviceOverrides === "object") {
         delete row.serviceOverrides[service.id];
@@ -15704,12 +15802,12 @@ async function initApp() {
   });
 
   spiralDiscountInput.addEventListener("input", (event) => {
-    if (!isConfigUnlocked) {
-      event.target.value = config.spiralPlasticDiscount;
+    if (!getConfigPermissions().edit) {
+      event.target.value = configDraft.spiralPlasticDiscount;
       return;
     }
-    config.spiralPlasticDiscount = toMoneyNumber(event.target.value);
-    persist();
+    configDraft.spiralPlasticDiscount = toMoneyNumber(event.target.value);
+    persistConfigDraft();
     renderRowsAndSummary();
     setConfigStatus("Desconto da espiral atualizado.", "success");
   });
@@ -15728,7 +15826,7 @@ async function initApp() {
   });
 
   configSections.addEventListener("input", (event) => {
-    if (!isConfigUnlocked) {
+    if (!getConfigPermissions().edit || configSaving) {
       return;
     }
 
@@ -15745,44 +15843,44 @@ async function initApp() {
     const serviceKey = target.dataset.serviceKey;
     if (!prefix || !key) {
       if (target.dataset.blockColorMarkup !== undefined) {
-        config.blockColorMarkupPercent = Math.max(0, toDecimalNumber(target.value));
-        persist();
+        configDraft.blockColorMarkupPercent = Math.max(0, toDecimalNumber(target.value));
+        persistConfigDraft();
         renderRowsAndSummary();
         setConfigStatus("Acréscimo da impressão colorida atualizado.", "success");
         return;
       }
       if (resinConfigKey) {
-        config.resinPricing[resinConfigKey] = resinConfigKey === "spacingMm"
+        configDraft.resinPricing[resinConfigKey] = resinConfigKey === "spacingMm"
           ? Math.max(0, toDecimalNumber(target.value))
           : toMoneyNumber(target.value);
-        persist();
+        persistConfigDraft();
         renderRowsAndSummary();
         setConfigStatus("Configuração de resinados atualizada.", "success");
         return;
       }
       if (m2BleedProductId) {
-        if (!config.m2BleedByProduct || typeof config.m2BleedByProduct !== "object") {
-          config.m2BleedByProduct = { ...DEFAULT_M2_BLEED_BY_PRODUCT };
+        if (!configDraft.m2BleedByProduct || typeof configDraft.m2BleedByProduct !== "object") {
+          configDraft.m2BleedByProduct = { ...DEFAULT_M2_BLEED_BY_PRODUCT };
         }
-        config.m2BleedByProduct[m2BleedProductId] = Math.max(0, toDecimalNumber(target.value));
-        persist();
+        configDraft.m2BleedByProduct[m2BleedProductId] = Math.max(0, toDecimalNumber(target.value));
+        persistConfigDraft();
         renderRowsAndSummary();
         setConfigStatus("Sangra dos adesivos de m² atualizada.", "success");
         return;
       }
       if (serviceKey && Number.isFinite(serviceIndex)) {
-        const service = config.combinationServices?.[serviceIndex];
+        const service = configDraft.combinationServices?.[serviceIndex];
         if (!service) {
           return;
         }
         service[serviceKey] = serviceKey === "defaultPrice" ? toMoneyNumber(target.value) : target.value;
-        persist();
+        persistConfigDraft();
         renderRowsAndSummary();
         setConfigStatus("Complemento combinável atualizado.", "success");
         return;
       }
       if (catalogProductTab && catalogProductKey && Number.isFinite(catalogProductIndex)) {
-        const product = config.catalogSections.filter((item) => item?.tab === catalogProductTab)[catalogProductIndex];
+        const product = configDraft.catalogSections.filter((item) => item?.tab === catalogProductTab)[catalogProductIndex];
         if (!product) {
           return;
         }
@@ -15793,27 +15891,27 @@ async function initApp() {
           product[catalogProductKey] = target.value;
         }
         if (catalogProductKey === "id" && catalogProductTab === "m2" && previousId && product.id && previousId !== product.id) {
-          state.m2Items.forEach((row) => {
+          configDraftState.m2Items.forEach((row) => {
             if (row.productId === previousId) {
               row.productId = product.id;
             }
           });
         }
         if (catalogProductKey === "id" && catalogProductTab === "impressos" && previousId && product.id && previousId !== product.id) {
-          state.colorPrintItems.forEach((row) => {
+          configDraftState.colorPrintItems.forEach((row) => {
             if (row.productPresetId === previousId) {
               row.productPresetId = product.id;
             }
           });
         }
         if (catalogProductKey === "id" && catalogProductTab === "prontos" && previousId && product.id && previousId !== product.id) {
-          state.readyItems.forEach((row) => {
+          configDraftState.readyItems.forEach((row) => {
             if (row.productId === previousId) {
               row.productId = product.id;
             }
           });
         }
-        persist();
+        persistConfigDraft();
         renderRowsAndSummary();
         setConfigStatus("Produto extra atualizado.", "success");
       }
@@ -15822,12 +15920,12 @@ async function initApp() {
 
     if (prefix === "linear-meter") {
       const path = key.split(".");
-      let destination = config.linearMeterPricing;
+      let destination = configDraft.linearMeterPricing;
       for (let index = 0; index < path.length - 1; index += 1) destination = destination?.[path[index]];
       if (!destination || typeof destination !== "object") return;
       const field = path[path.length - 1];
       destination[field] = field === "widthLabel" ? target.value : toMoneyNumber(target.value);
-      persist();
+      persistConfigDraft();
       renderConfig();
       renderRowsAndSummary();
       setConfigStatus("Tabela de metro linear atualizada.", "success");
@@ -15835,7 +15933,7 @@ async function initApp() {
     }
 
     if (prefix === "m2-finish") {
-      const finish = config.m2Finishes?.[rowIndex];
+      const finish = configDraft.m2Finishes?.[rowIndex];
       if (!finish) {
         return;
       }
@@ -15846,24 +15944,24 @@ async function initApp() {
       } else {
         finish[key] = target.value;
       }
-      persist();
+      persistConfigDraft();
       renderRowsAndSummary();
       setConfigStatus("Acabamento de m² atualizado.", "success");
       return;
     }
 
     if (prefix === "credential-lanyard-fixed") {
-      if (!config.credentialLanyardPricing || typeof config.credentialLanyardPricing !== "object") {
-        config.credentialLanyardPricing = deepClone(createDefaultConfig().credentialLanyardPricing);
+      if (!configDraft.credentialLanyardPricing || typeof configDraft.credentialLanyardPricing !== "object") {
+        configDraft.credentialLanyardPricing = deepClone(createDefaultConfig().credentialLanyardPricing);
       }
-      config.credentialLanyardPricing[key] = toMoneyNumber(target.value);
-      persist();
+      configDraft.credentialLanyardPricing[key] = toMoneyNumber(target.value);
+      persistConfigDraft();
       renderRowsAndSummary();
       setConfigStatus("Cordão da credencial atualizado.", "success");
       return;
     }
 
-    const array = getConfigArrayByPrefix(config, prefix);
+    const array = getConfigArrayByPrefix(configDraft, prefix);
     if (!array || !array[rowIndex]) {
       return;
     }
@@ -15960,7 +16058,7 @@ async function initApp() {
       array[rowIndex][key] = target.value;
     }
 
-    persist();
+    persistConfigDraft();
     renderRowsAndSummary();
     setConfigStatus("Preço atualizado.", "success");
   });
@@ -15991,9 +16089,9 @@ async function initApp() {
         return;
       }
       const reset = createDefaultConfig();
-      Object.assign(config, reset);
-      ensureAutomaticPlastificationService(config);
-      persist();
+      Object.assign(configDraft, reset);
+      ensureAutomaticPlastificationService(configDraft);
+      persistConfigDraft();
       renderAll();
       setConfigStatus("Configuração restaurada para o padrão.", "warning");
       return;
@@ -16001,7 +16099,7 @@ async function initApp() {
 
     const exportConfigButton = event.target.closest("#export-config-button");
     if (exportConfigButton) {
-      const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify(configDraft, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -16017,7 +16115,7 @@ async function initApp() {
       return;
     }
 
-    if (!isConfigUnlocked) {
+    if (!getConfigPermissions().use) {
       return;
     }
 
@@ -16054,6 +16152,7 @@ async function initApp() {
     }
 
     const deleteButton = event.target.closest("[data-config-delete]");
+    if (!getConfigPermissions().edit || configSaving) return;
     if (deleteButton) {
       const deleteType = deleteButton.dataset.configDelete;
       if (deleteType === "config-row") {
@@ -16064,7 +16163,7 @@ async function initApp() {
           return;
         }
         if (removeConfigRow(prefix, rowIndex)) {
-          persist();
+          persistConfigDraft();
           renderConfig();
           renderRowsAndSummary();
           setConfigStatus("Faixa excluída com sucesso.", "warning");
@@ -16079,7 +16178,7 @@ async function initApp() {
           return;
         }
         if (removeM2Finish(rowIndex)) {
-          persist();
+          persistConfigDraft();
           renderConfig();
           renderRowsAndSummary();
           setConfigStatus("Acabamento excluído com sucesso.", "warning");
@@ -16095,7 +16194,7 @@ async function initApp() {
           return;
         }
         if (removeCatalogProduct(tab, rowIndex)) {
-          persist();
+          persistConfigDraft();
           renderConfig();
           renderRowsAndSummary();
           setConfigStatus("Produto extra excluído com sucesso.", "warning");
@@ -16110,7 +16209,7 @@ async function initApp() {
           return;
         }
         if (removeCombinationService(rowIndex)) {
-          persist();
+          persistConfigDraft();
           renderConfig();
           renderRowsAndSummary();
           setConfigStatus("Complemento excluído com sucesso.", "warning");
@@ -16122,7 +16221,7 @@ async function initApp() {
     const addBindingPricingButton = event.target.closest("[data-add-binding-pricing]");
     if (addBindingPricingButton) {
       const prefix = addBindingPricingButton.dataset.addBindingPricing;
-      const rows = getConfigArrayByPrefix(config, prefix);
+      const rows = getConfigArrayByPrefix(configDraft, prefix);
       if (!Array.isArray(rows)) {
         return;
       }
@@ -16136,7 +16235,7 @@ async function initApp() {
           "101": Number(lastRow.rates?.["101"] || 0),
         },
       });
-      persist();
+      persistConfigDraft();
       renderConfig();
       renderRowsAndSummary();
       setConfigStatus("Nova faixa de encadernação criada.", "success");
@@ -16146,7 +16245,7 @@ async function initApp() {
     const addApostilaPricingButton = event.target.closest("[data-add-apostila-pricing]");
     if (addApostilaPricingButton) {
       const prefix = addApostilaPricingButton.dataset.addApostilaPricing;
-      const rows = getConfigArrayByPrefix(config, prefix);
+      const rows = getConfigArrayByPrefix(configDraft, prefix);
       if (!Array.isArray(rows)) {
         return;
       }
@@ -16157,7 +16256,7 @@ async function initApp() {
         value: Number(lastRow.value || 0),
         label: `A partir de ${nextMin}`,
       });
-      persist();
+      persistConfigDraft();
       renderConfig();
       renderRowsAndSummary();
       setConfigStatus("Nova faixa de acabamento criada.", "success");
@@ -16172,14 +16271,14 @@ async function initApp() {
         if (!pricingKey) {
           return;
         }
-        const bands = config.m2Pricing[pricingKey] || (config.m2Pricing[pricingKey] = []);
+        const bands = configDraft.m2Pricing[pricingKey] || (configDraft.m2Pricing[pricingKey] = []);
         const lastBand = bands[bands.length - 1] || { min: 0, value: 0, label: "Nova faixa" };
         bands.push({
           min: Number(lastBand.min || 0) + 1,
           value: Number(lastBand.value || 0),
           label: lastBand.label ? `acima de ${lastBand.min || 0} m²` : "nova faixa",
         });
-        persist();
+        persistConfigDraft();
         renderConfig();
         setConfigStatus("Nova faixa criada para este produto.", "success");
         return;
@@ -16191,14 +16290,14 @@ async function initApp() {
         if (!pricingKey) {
           return;
         }
-        const bands = config.colorProductPricing[pricingKey] || (config.colorProductPricing[pricingKey] = []);
+        const bands = configDraft.colorProductPricing[pricingKey] || (configDraft.colorProductPricing[pricingKey] = []);
         const lastBand = bands[bands.length - 1] || { min: 1, value: 0, label: "Nova faixa" };
         bands.push({
           min: Number(lastBand.min || 0) + 1,
           value: Number(lastBand.value || 0),
           label: lastBand.label || "Nova faixa",
         });
-        persist();
+        persistConfigDraft();
         renderConfig();
         setConfigStatus("Nova faixa criada para este preset.", "success");
         return;
@@ -16211,7 +16310,7 @@ async function initApp() {
         if (!pricingKey) {
           return;
         }
-        const rows = config.readyProductPricing[pricingKey] || (config.readyProductPricing[pricingKey] = []);
+        const rows = configDraft.readyProductPricing[pricingKey] || (configDraft.readyProductPricing[pricingKey] = []);
         if (readyMode === "variant-fixed") {
           const lastRow = rows[rows.length - 1] || { quantity: 1, value: 0, mode: "unit", label: "Nova opção" };
           rows.push({
@@ -16229,7 +16328,7 @@ async function initApp() {
             label: "Nova faixa",
           });
         }
-        persist();
+        persistConfigDraft();
         renderConfig();
         setConfigStatus("Nova faixa/opção criada para este material.", "success");
         return;
@@ -16237,7 +16336,7 @@ async function initApp() {
 
       const addCredentialLanyardBandButton = event.target.closest("[data-add-credential-lanyard-band]");
       if (addCredentialLanyardBandButton) {
-        const rows = config.credentialLanyardPricing.printed || (config.credentialLanyardPricing.printed = []);
+        const rows = configDraft.credentialLanyardPricing.printed || (configDraft.credentialLanyardPricing.printed = []);
         const lastRow = rows[rows.length - 1] || { min: 1, value: 0, label: "Nova faixa" };
         const nextMin = Math.max(1, Number(lastRow.min || 0) + 1);
         rows.push({
@@ -16245,7 +16344,7 @@ async function initApp() {
           value: Number(lastRow.value || 0),
           label: `A partir de ${nextMin}`,
         });
-        persist();
+        persistConfigDraft();
         renderConfig();
         renderRowsAndSummary();
         setConfigStatus("Nova faixa de cordão criada.", "success");
@@ -16255,7 +16354,7 @@ async function initApp() {
       const addResinPricingButton = event.target.closest("[data-add-resin-pricing]");
       if (addResinPricingButton) {
         const pricingKey = addResinPricingButton.dataset.addResinPricing === "special" ? "special" : "standard";
-        const rows = config.resinPricing[pricingKey] || (config.resinPricing[pricingKey] = []);
+        const rows = configDraft.resinPricing[pricingKey] || (configDraft.resinPricing[pricingKey] = []);
         const lastRow = rows[rows.length - 1] || { min: 1, value: 0, label: "Nova faixa" };
         const nextMin = Math.max(1, Number(lastRow.min || 0) + 1);
         rows.push({
@@ -16263,7 +16362,7 @@ async function initApp() {
           value: Number(lastRow.value || 0),
           label: `${nextMin} folhas A3`,
         });
-        persist();
+        persistConfigDraft();
         renderConfig();
         renderRowsAndSummary();
         setConfigStatus("Nova faixa de resinados criada.", "success");
@@ -16272,8 +16371,8 @@ async function initApp() {
 
       const addCardPricingButton = event.target.closest("[data-add-card-pricing]");
       if (addCardPricingButton) {
-        const lastRow = config.cardPricing?.[config.cardPricing.length - 1] || DEFAULT_CARD_CATALOG[0];
-        config.cardPricing.push({
+        const lastRow = configDraft.cardPricing?.[configDraft.cardPricing.length - 1] || DEFAULT_CARD_CATALOG[0];
+        configDraft.cardPricing.push({
           id: `card-price-${Date.now()}`,
           printType: lastRow.printType || "laser",
           paper: lastRow.paper || "Couche 300g",
@@ -16281,7 +16380,7 @@ async function initApp() {
           quantity: Number(lastRow.quantity || 100),
           price: Number(lastRow.price || 0),
         });
-        persist();
+        persistConfigDraft();
         renderConfig();
         renderRowsAndSummary();
         setConfigStatus("Nova opção de cartão criada.", "success");
@@ -16290,8 +16389,8 @@ async function initApp() {
 
       const addFlyerPricingButton = event.target.closest("[data-add-flyer-pricing]");
       if (addFlyerPricingButton) {
-        const lastRow = config.flyerPricing?.[config.flyerPricing.length - 1] || DEFAULT_FLYER_CATALOG[0];
-        config.flyerPricing.push({
+        const lastRow = configDraft.flyerPricing?.[configDraft.flyerPricing.length - 1] || DEFAULT_FLYER_CATALOG[0];
+        configDraft.flyerPricing.push({
           id: `flyer-price-${Date.now()}`,
           printType: lastRow.printType || "laser",
           paper: lastRow.paper || "Couche 120g",
@@ -16300,7 +16399,7 @@ async function initApp() {
           quantity: Math.max(1, toWholeNumber(lastRow.quantity || 500)),
           price: toMoneyNumber(lastRow.price),
         });
-        persist();
+        persistConfigDraft();
         renderConfig();
         renderRowsAndSummary();
         setConfigStatus("Nova opção de panfleto/folder criada.", "success");
@@ -16309,8 +16408,8 @@ async function initApp() {
 
       const addFlyerFinishButton = event.target.closest("[data-add-flyer-finish]");
       if (addFlyerFinishButton) {
-        const lastRow = config.flyerFinishes?.[config.flyerFinishes.length - 1] || DEFAULT_FLYER_FINISHES[1];
-        config.flyerFinishes.push({
+        const lastRow = configDraft.flyerFinishes?.[configDraft.flyerFinishes.length - 1] || DEFAULT_FLYER_FINISHES[1];
+        configDraft.flyerFinishes.push({
           id: `flyer-finish-${Date.now()}`,
           label: "Novo acabamento",
           minimumPrice: toMoneyNumber(lastRow.minimumPrice),
@@ -16318,7 +16417,7 @@ async function initApp() {
           pricePerHundred: toMoneyNumber(lastRow.pricePerHundred),
           thousandPrice: toMoneyNumber(lastRow.thousandPrice),
         });
-        persist();
+        persistConfigDraft();
         renderConfig();
         renderRowsAndSummary();
         setConfigStatus("Novo acabamento de panfleto/folder criado.", "success");
@@ -16327,7 +16426,7 @@ async function initApp() {
 
       const addCardFinishButton = event.target.closest("[data-add-card-finish]");
       if (addCardFinishButton) {
-        config.cardFinishes.push({
+        configDraft.cardFinishes.push({
           id: `card-finish-${Date.now()}`,
           label: "Novo acabamento",
           type: "perHundred",
@@ -16337,7 +16436,7 @@ async function initApp() {
           pricePerHundred: 3,
           thousandPrice: 25,
         });
-        persist();
+        persistConfigDraft();
         renderConfig();
         renderRowsAndSummary();
         setConfigStatus("Novo acabamento de cartão criado.", "success");
@@ -16346,14 +16445,14 @@ async function initApp() {
 
       const addFinishButton = event.target.closest("[data-add-m2-finish]");
       if (addFinishButton) {
-        config.m2Finishes.push({
+        configDraft.m2Finishes.push({
           id: `acabamento-${Date.now()}`,
           label: "Novo acabamento",
           type: "area",
           price: 0,
           spacingCm: 20,
         });
-        persist();
+        persistConfigDraft();
         renderConfig();
         setConfigStatus("Novo acabamento criado.", "success");
         return;
@@ -16365,13 +16464,13 @@ async function initApp() {
         if (!tab) {
           return;
         }
-        const existingKeys = new Set(Object.keys(config.m2Pricing || {}));
+        const existingKeys = new Set(Object.keys(configDraft.m2Pricing || {}));
         const newPricingKey = tab === "m2" ? createUniqueM2PricingKey("lona", existingKeys) : "";
-        const colorPricingKeys = new Set(Object.keys(config.colorProductPricing || {}));
+        const colorPricingKeys = new Set(Object.keys(configDraft.colorProductPricing || {}));
         const newColorPricingKey = tab === "impressos" ? createUniqueM2PricingKey("impresso", colorPricingKeys) : "";
-        const readyPricingKeys = new Set(Object.keys(config.readyProductPricing || {}));
+        const readyPricingKeys = new Set(Object.keys(configDraft.readyProductPricing || {}));
         const newReadyPricingKey = tab === "prontos" ? createUniqueM2PricingKey("pronto", readyPricingKeys) : "";
-        config.catalogSections.push({
+        configDraft.catalogSections.push({
           id: `produto-${Date.now()}`,
           label: "Novo produto",
           tab,
@@ -16388,15 +16487,15 @@ async function initApp() {
           readyVariantMode: "",
         });
         if (tab === "m2") {
-          config.m2Pricing[newPricingKey] = deepClone(config.m2Pricing.banner || []);
+          configDraft.m2Pricing[newPricingKey] = deepClone(configDraft.m2Pricing.banner || []);
         }
         if (tab === "impressos") {
-          config.colorProductPricing[newColorPricingKey] = deepClone(config.colorPrintPricing["Sulfite 75g"] || []);
+          configDraft.colorProductPricing[newColorPricingKey] = deepClone(configDraft.colorPrintPricing["Sulfite 75g"] || []);
         }
         if (tab === "prontos") {
-          config.readyProductPricing[newReadyPricingKey] = [{ min: 1, value: 0, mode: "unit", label: "Preço inicial" }];
+          configDraft.readyProductPricing[newReadyPricingKey] = [{ min: 1, value: 0, mode: "unit", label: "Preço inicial" }];
         }
-        persist();
+        persistConfigDraft();
         renderConfig();
         setConfigStatus("Novo produto extra criado.", "success");
       }
@@ -16404,7 +16503,7 @@ async function initApp() {
     }
 
     const configKey = button.dataset.addM2Pricing;
-    const bands = config.m2Pricing?.[configKey];
+    const bands = configDraft.m2Pricing?.[configKey];
     if (!Array.isArray(bands)) {
       return;
     }
@@ -16418,7 +16517,7 @@ async function initApp() {
       label: lastMin >= 1000000 ? "nova faixa" : `acima de ${lastMin} m²`,
     });
 
-    persist();
+    persistConfigDraft();
     renderAll();
     setConfigStatus("Nova faixa de preço adicionada.", "success");
   });
@@ -16443,15 +16542,15 @@ async function initApp() {
       return;
     }
     const reset = createDefaultConfig();
-    Object.assign(config, reset);
-    ensureAutomaticPlastificationService(config);
-    persist();
+    Object.assign(configDraft, reset);
+    ensureAutomaticPlastificationService(configDraft);
+    persistConfigDraft();
     renderAll();
     setConfigStatus("Configuração restaurada para o padrão.", "warning");
   });
 
   document.getElementById("export-config-button")?.addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(configDraft, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -16473,12 +16572,12 @@ async function initApp() {
     try {
       const text = await file.text();
       const imported = mergeConfig(JSON.parse(text));
-      Object.assign(config, imported);
-      cleanupHiddenImpressosEntries(config, state);
-      ensureAutomaticPlastificationService(config);
-      persist();
+      Object.assign(configDraft, imported);
+      cleanupHiddenImpressosEntries(configDraft, configDraftState);
+      ensureAutomaticPlastificationService(configDraft);
+      persistConfigDraft();
       renderAll();
-      setMainFeedback("Configuração importada com sucesso. Os novos valores já foram aplicados ao app.", "success");
+      setMainFeedback("Configuração importada como rascunho. Salve com o PIN para aplicar.", "warning");
       setConfigStatus("Configuração importada com sucesso.", "success");
     } catch {
       setMainFeedback("Não foi possível ler esse arquivo de configuração. Confira se o arquivo está em JSON válido.", "error");
@@ -16693,7 +16792,7 @@ async function initApp() {
     renderNewQuoteFreeEditor();
   });
 
-  newQuoteFreeEditor?.addEventListener("click", (event) => {
+  newQuoteFreeEditor?.addEventListener("click", async (event) => {
     const button = event.target.closest("[data-new-quote-free-action]");
     if (!button) return;
     const draft = getNewQuoteFreeDraft();
@@ -16716,7 +16815,7 @@ async function initApp() {
       return;
     }
     if (action === "save-product") {
-      saveFreeProductFromDraft(draft);
+      await saveFreeProductFromDraft(draft);
       return;
     }
     if (action === "add-tier") {
@@ -16761,7 +16860,7 @@ async function initApp() {
         return;
       }
       if (draft.entryMode === "saved") {
-        if (!saveFreeProductFromDraft(draft)) return;
+        if (!(await saveFreeProductFromDraft(draft))) return;
       }
       persist();
       renderNewQuoteBuilder();

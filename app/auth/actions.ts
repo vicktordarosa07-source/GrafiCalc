@@ -1,6 +1,8 @@
 "use server";
 
-import { headers } from "next/headers";
+import { headers, cookies } from "next/headers";
+import { DEVELOPER_COOKIE } from "@/lib/developer-session";
+import { CONFIG_PIN_COOKIE } from "@/lib/config-pin";
 import { redirect } from "next/navigation";
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -364,5 +366,8 @@ export async function updateProfileAction(_: ActionState, formData: FormData): P
 export async function logoutAction() {
   const supabase = await createClient();
   await supabase.auth.signOut({ scope: "local" });
+  const store = await cookies();
+  store.delete(DEVELOPER_COOKIE);
+  store.delete(CONFIG_PIN_COOKIE);
   redirect("/entrar");
 }

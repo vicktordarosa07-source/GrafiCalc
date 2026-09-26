@@ -1,22 +1,29 @@
-import { hashPin, getPinContext, validPin } from "@/lib/config-pin";
-
+import { hashPin, getPinContext, validPin, matchesPin, matchesCurrentPin, writePinAccess, pinAttempt, clearPinAttempts, CONFIG_PIN_COOKIE } from "@/lib/config-pin";
+import { assertSameOrigin, assertWorkspaceBinding, WorkspaceError } from "@/lib/workspace-policy";
+import { workspaceError } from "@/lib/workspace";
+import { cookies } from "next/headers";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const context = await getPinContext();
-  if (!context) return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
-  if (!context.permissions.managePin) return Response.json({ ok: false, error: "pin-management-forbidden" }, { status: 403 });
-  const body = await request.json().catch(() => null) as { currentPin?: string; newPin?: string; confirmPin?: string } | null;
-  const currentPin = String(body?.currentPin || "");
-  const newPin = String(body?.newPin || "");
-  if (!validPin(newPin) || newPin !== String(body?.confirmPin || "")) return Response.json({ ok: false, error: "invalid-pin" }, { status: 400 });
-  const access = context.payload.config?.security?.configAccess || {};
-  const temporaryValid = access.temporaryPinHash && access.temporaryPinHash === hashPin(currentPin) && new Date(access.temporaryPinExpiresAt || 0).getTime() > Date.now();
-  const currentValid = access.pinHash ? access.pinHash === hashPin(currentPin) : String(access.password || "") === currentPin;
-  if (!temporaryValid && !currentValid) return Response.json({ ok: false, error: "invalid-current-pin" }, { status: 403 });
-  if (currentValid && access.pinHash === hashPin(newPin)) return Response.json({ ok: false, error: "same-pin" }, { status: 400 });
-  const nextAccess = { ...access, mode: "open", pinHash: hashPin(newPin), password: "", temporaryPinHash: "", temporaryPinExpiresAt: "" };
-  const payload = { ...context.payload, config: { ...(context.payload.config || {}), security: { ...(context.payload.config?.security || {}), configAccess: nextAccess } } };
-  await context.admin.from("graficalc_runtime_state").upsert({ tenant_id: context.profile.tenant_id, payload, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" });
-  return Response.json({ ok: true });
+  try {
+    assertSameOrigin(request);
+    const context = await getPinContext();
+    if (!context) throw new WorkspaceError("unauthorized", 401);
+    assertWorkspaceBinding(request, context.user.id, context.tenantId);
+    if (!context.permissions.managePin) throw new WorkspaceError("pin-management-forbidden");
+    const body = await request.json();
+    const currentPin = String(body?.currentPin || ""), newPin = String(body?.newPin || "");
+    if (!validPin(newPin) || newPin !== body?.confirmPin) throw new WorkspaceError("invalid-pin", 400);
+    const key = await pinAttempt(context);
+    const access = context.payload.config?.security?.configAccess || {};
+    const configured = Boolean(access.pinHash || access.password);
+    const temporaryValid = access.temporaryPinUserId === context.user.id && matchesPin(currentPin, access.temporaryPinHash)
+      && new Date(access.temporaryPinExpiresAt || 0).getTime() > Date.now();
+    if (configured ? !temporaryValid && !matchesCurrentPin(currentPin, access) : Boolean(currentPin)) throw new WorkspaceError("invalid-current-pin");
+    if (matchesCurrentPin(newPin, access)) throw new WorkspaceError("same-pin", 400);
+    const updatedAt = await writePinAccess(context, { mode: "open", pinHash: hashPin(newPin) });
+    await clearPinAttempts(context, key);
+    (await cookies()).delete(CONFIG_PIN_COOKIE);
+    return Response.json({ ok: true, updatedAt }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) { return workspaceError(error); }
 }

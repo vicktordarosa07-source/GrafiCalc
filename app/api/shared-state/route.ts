@@ -1,139 +1,45 @@
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
-import { DEVELOPER_EMAIL } from "@/lib/developer-session";
-import { getPinContext, hasValidPinVerification } from "@/lib/config-pin";
+import { getWorkspaceContext, writeWorkspace, workspaceError } from "@/lib/workspace";
+import { assertSameOrigin, assertWorkspaceBinding, mergeWorkspace, publicWorkspace, WorkspaceError } from "@/lib/workspace-policy";
+import { hasValidPinVerification, CONFIG_PIN_COOKIE } from "@/lib/config-pin";
+import { cookies } from "next/headers";
 
-const configuredTenantSlug = String(process.env.GRAFICALC_TENANT_SLUG || "").trim().toLowerCase();
+export const dynamic = "force-dynamic";
 
-const LEGACY_CREDENTIAL_KEYS = new Set([
-  "password",
-  "passwordMode",
-  "mustChangePassword",
-  "temporaryPasswordIssuedAt",
-]);
-
-function sanitizeLegacyCredentials(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sanitizeLegacyCredentials);
-  if (!value || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .filter(([key]) => !LEGACY_CREDENTIAL_KEYS.has(key))
-      .map(([key, nested]) => [key, sanitizeLegacyCredentials(nested)]),
-  );
+function snapshot(context: NonNullable<Awaited<ReturnType<typeof getWorkspaceContext>>>, payload = context.payload, updatedAt = context.updatedAt) {
+  const visible = publicWorkspace(payload, context.memberIds);
+  visible.security.authUsers = context.members;
+  return Response.json({ exists: true, payload: visible, updatedAt, userId: context.user.id, tenantId: context.tenantId, permissions: context.permissions, isLeader: context.isLeader }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
-async function context() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user || !user.email_confirmed_at) return null;
-  const isCreator = String(user.email || "").trim().toLowerCase() === DEVELOPER_EMAIL;
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select("id,tenant_id,papel")
-    .eq("id", user.id)
-    .single();
-  if (error && !isCreator) return null;
-
-  const admin = createAdminClient();
-  let tenantId = profile?.tenant_id || "";
-  // The creator owns the legacy shared workspace. Prefer its configured tenant
-  // so a profile created by a later auth migration cannot hide that snapshot.
-  if (isCreator && configuredTenantSlug) {
-    const { data: configuredTenant } = await admin
-      .from("graficalc_tenants")
-      .select("id")
-      .eq("slug", configuredTenantSlug)
-      .maybeSingle();
-    tenantId = configuredTenant?.id || tenantId;
-  }
-
-  if (!tenantId) return null;
-  const { data: tenant } = await admin
-    .from("graficalc_tenants")
-    .select("owner_id")
-    .eq("id", tenantId)
-    .maybeSingle();
-  return {
-    userId: user.id,
-    profile: {
-      ...(profile || {}),
-      tenant_id: tenantId,
-      papel: isCreator ? "admin" : profile?.papel,
-    },
-    isCreator,
-    isLeader: isCreator || tenant?.owner_id === user.id,
-  };
-}
-
-function hasValidOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-  if (!origin) return true;
-  const host = request.headers.get("x-forwarded-host") || request.headers.get("host");
+export async function GET(request: Request) {
   try {
-    return Boolean(host) && new URL(origin).host === host;
-  } catch {
-    return false;
-  }
-}
-
-export async function GET() {
-  const auth = await context();
-  if (!auth) return Response.json({ error: "unauthorized" }, { status: 401 });
-  const admin = createAdminClient();
-  const { data, error } = await admin.from("graficalc_runtime_state").select("payload,updated_at").eq("tenant_id", auth.profile.tenant_id).maybeSingle();
-  if (error) return Response.json({ error: "shared-state-read-failed" }, { status: 500 });
-  return Response.json({
-    exists: Boolean(data),
-    payload: data?.payload ? sanitizeLegacyCredentials(data.payload) : null,
-    updatedAt: data?.updated_at || null,
-  });
+    const context = await getWorkspaceContext();
+    if (!context) throw new WorkspaceError("unauthorized", 401);
+    assertWorkspaceBinding(request, context.user.id, context.tenantId);
+    return snapshot(context);
+  } catch (error) { return workspaceError(error); }
 }
 
 export async function PUT(request: Request) {
-  if (!hasValidOrigin(request)) return Response.json({ error: "invalid-origin" }, { status: 403 });
-  const contentLength = Number(request.headers.get("content-length") || 0);
-  if (contentLength > 15_000_000) return Response.json({ error: "payload-too-large" }, { status: 413 });
-  const auth = await context();
-  if (!auth) return Response.json({ error: "unauthorized" }, { status: 401 });
-  const body = await request.text();
-  if (new TextEncoder().encode(body).byteLength > 15_000_000) {
-    return Response.json({ error: "payload-too-large" }, { status: 413 });
-  }
-  const incoming = (() => {
-    try {
-      return JSON.parse(body) as unknown;
-    } catch {
-      return null;
-    }
-  })();
-  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
-    return Response.json({ error: "invalid-payload" }, { status: 400 });
-  }
-  const admin = createAdminClient();
-  let payload = sanitizeLegacyCredentials(incoming) as Record<string, unknown>;
-  const { data: current, error: currentError } = await admin
-      .from("graficalc_runtime_state")
-      .select("payload")
-      .eq("tenant_id", auth.profile.tenant_id)
-      .maybeSingle();
-  if (currentError) return Response.json({ error: "shared-state-read-failed" }, { status: 500 });
-  const previous = sanitizeLegacyCredentials(current?.payload || {}) as Record<string, unknown>;
-  const configChanged = JSON.stringify(previous.config || null) !== JSON.stringify(payload.config || null);
-  if (configChanged) {
-    const pinContext = await getPinContext();
-    const canEdit = Boolean(pinContext && pinContext.profile.tenant_id === auth.profile.tenant_id && pinContext.permissions.edit);
-    const pinVerified = pinContext ? Boolean(canEdit && await hasValidPinVerification(auth.userId, auth.profile.tenant_id)) : false;
-    if (!pinVerified) return Response.json({ error: "config-pin-required" }, { status: 403 });
-  }
-  if (!auth.isLeader) {
-    const protectedKeys = ["config", "security", "users", "userDirectory", "accessGroups", "dashboardOverrides"];
-    payload = { ...payload };
-    protectedKeys.forEach((key) => {
-      if (key in previous) payload[key] = previous[key];
-      else delete payload[key];
+  try {
+    assertSameOrigin(request);
+    const context = await getWorkspaceContext();
+    if (!context) throw new WorkspaceError("unauthorized", 401);
+    assertWorkspaceBinding(request, context.user.id, context.tenantId);
+    if (Number(request.headers.get("content-length")) > 15_000_000) throw new WorkspaceError("payload-too-large", 413);
+    const raw = await request.text();
+    if (new TextEncoder().encode(raw).length > 15_000_000) throw new WorkspaceError("payload-too-large", 413);
+    let body;
+    try { body = JSON.parse(raw); } catch { throw new WorkspaceError("invalid-payload", 400); }
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new WorkspaceError("invalid-payload", 400);
+    if (!Object.hasOwn(body, "baseUpdatedAt") || body.baseUpdatedAt !== context.updatedAt) throw new WorkspaceError("workspace-conflict", 409);
+    const publishConfig = body.publishConfig === true;
+    const payload = mergeWorkspace(context.payload, body, {
+      isLeader: context.isLeader, canEdit: context.permissions.edit, memberIds: context.memberIds, publishConfig,
+      pinVerified: publishConfig && await hasValidPinVerification(context.user.id, context.tenantId, context.payload.config?.security?.configAccess, context.updatedAt),
     });
-  }
-  const { data, error } = await admin.from("graficalc_runtime_state").upsert({ tenant_id: auth.profile.tenant_id, payload, updated_at: new Date().toISOString() }, { onConflict: "tenant_id" }).select("payload,updated_at").single();
-  if (error) return Response.json({ error: "shared-state-write-failed" }, { status: 500 });
-  return Response.json({ exists: true, payload: data.payload, updatedAt: data.updated_at });
+    const updatedAt = await writeWorkspace(context, payload);
+    if (publishConfig) (await cookies()).delete(CONFIG_PIN_COOKIE);
+    return snapshot(context, payload, updatedAt);
+  } catch (error) { return workspaceError(error); }
 }

@@ -13,6 +13,7 @@ export async function updateSession(request: NextRequest) {
   // A deployment without Supabase must never expose the legacy calculator or private APIs.
   if (!url || !key) {
     if (isPublic) return response;
+    if (pathname.startsWith("/api/")) return NextResponse.json({ error: "security-not-configured" }, { status: 503 });
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/entrar";
     loginUrl.searchParams.set("erro", "configuracao");
@@ -38,6 +39,7 @@ export async function updateSession(request: NextRequest) {
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
+      if (pathname.startsWith("/api/")) return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: { "Cache-Control": "private, no-store" } });
       const loginUrl = request.nextUrl.clone();
       loginUrl.pathname = "/entrar";
       loginUrl.searchParams.set("retorno", pathname);
@@ -45,6 +47,7 @@ export async function updateSession(request: NextRequest) {
     }
 
     if (!user.email_confirmed_at) {
+      if (pathname.startsWith("/api/")) return NextResponse.json({ error: "email-unconfirmed" }, { status: 403 });
       const confirmationUrl = request.nextUrl.clone();
       confirmationUrl.pathname = "/confirmar-email";
       confirmationUrl.search = "";
@@ -53,6 +56,7 @@ export async function updateSession(request: NextRequest) {
 
     return response;
   } catch {
+    if (pathname.startsWith("/api/")) return NextResponse.json({ error: "authentication-unavailable" }, { status: 503 });
     // Do not expose a proxy exception or let the request reach private pages.
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/entrar";

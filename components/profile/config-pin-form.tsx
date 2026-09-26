@@ -13,6 +13,7 @@ export function ConfigPinForm() {
   const [message, setMessage] = useState("");
   const [tone, setTone] = useState<"success" | "error" | "">("");
   const [busy, setBusy] = useState(false);
+  const [identity, setIdentity] = useState({ userId: "", tenantId: "" });
 
   useEffect(() => {
     fetch("/api/config/pin/context", { cache: "no-store" })
@@ -21,6 +22,7 @@ export function ConfigPinForm() {
         if (!result?.ok) return;
         setPermissions(result.permissions || { managePin: false });
         setPinConfigured(Boolean(result.pinConfigured));
+        setIdentity({ userId: result.userId, tenantId: result.tenantId });
       })
       .catch(() => setPermissions({ managePin: false }));
   }, []);
@@ -39,7 +41,7 @@ export function ConfigPinForm() {
     try {
       const response = await fetch("/api/config/pin/change", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-GrafiCalc-User": identity.userId, "X-GrafiCalc-Tenant": identity.tenantId },
         body: JSON.stringify({ currentPin, newPin, confirmPin }),
       });
       const result = await response.json().catch(() => ({}));
@@ -64,7 +66,7 @@ export function ConfigPinForm() {
     setBusy(true);
     setMessage("");
     try {
-      const response = await fetch("/api/config/pin/recover", { method: "POST" });
+      const response = await fetch("/api/config/pin/recover", { method: "POST", headers: { "X-GrafiCalc-User": identity.userId, "X-GrafiCalc-Tenant": identity.tenantId } });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.ok) throw new Error("recovery-failed");
       setTone("success");
