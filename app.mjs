@@ -8188,6 +8188,7 @@ async function initApp() {
   const currentUserLabel = document.getElementById("current-user-label");
   const developerUsersList = document.getElementById("developer-users-list");
   const developerGroupsList = document.getElementById("developer-groups-list");
+  const developerPermissionsDialog = document.getElementById("developer-permissions-dialog");
   const developerUserPermissions = document.getElementById("developer-user-permissions");
   const developerPasswordForm = document.getElementById("developer-password-form");
   const developerPasswordSaveButton = document.getElementById("developer-password-save");
@@ -8998,7 +8999,7 @@ async function initApp() {
               </label>
               <button class="button button-small" type="button" data-dev-user-action="activate" data-dev-user-id="${escapeHtml(user.id)}"${isDev ? " disabled" : ""}>Ativar</button>
               <button class="button button-small" type="button" data-dev-user-action="block" data-dev-user-id="${escapeHtml(user.id)}"${isDev ? " disabled" : ""}>Bloquear</button>
-              <button class="button button-small" type="button" data-dev-user-action="permissions" data-dev-user-id="${escapeHtml(user.id)}">Permissões</button>
+              <button class="button button-small" type="button" data-dev-user-action="permissions" data-dev-user-id="${escapeHtml(user.id)}" aria-haspopup="dialog" aria-controls="developer-permissions-dialog">Permissões</button>
               <button class="button button-small button-danger" type="button" data-dev-user-action="delete" data-dev-user-id="${escapeHtml(user.id)}"${isDev ? " disabled" : ""}>Deletar usuário</button>
             </div>
           </article>
@@ -14537,6 +14538,10 @@ async function initApp() {
     } else if (button.dataset.devUserAction === "permissions") {
       selectedDeveloperUserId = user.id;
       renderDeveloperUserPermissions(user);
+      if (developerPermissionsDialog && !developerPermissionsDialog.open) {
+        developerPermissionsDialog.showModal();
+      }
+      developerUserPermissions.focus({ preventScroll: true });
       return;
     }
     user.updatedAt = new Date().toISOString();
@@ -14545,6 +14550,12 @@ async function initApp() {
     renderEmployeesTab();
     applyAccessRules();
     setConfigStatus("Usuário atualizado na área do desenvolvedor.", "success");
+  });
+
+  developerPermissionsDialog?.addEventListener("click", (event) => {
+    if (event.target === developerPermissionsDialog || event.target.closest("[data-dev-permissions-close]")) {
+      developerPermissionsDialog.close();
+    }
   });
 
   developerUsersList?.addEventListener("change", (event) => {

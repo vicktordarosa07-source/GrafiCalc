@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GrafiCalc | Orçamento Gráfico</title>
   <link rel="icon" type="image/png" href="./assets/favicon.png">
-  <link rel="stylesheet" href="./styles.css?v=20260830-mobile-nav">
+  <link rel="stylesheet" href="./styles.css?v=20260925-dev-permissions-dialog">
 </head>
 <body>
   <svg class="navigation-icon-sprite" aria-hidden="true" focusable="false">
@@ -2086,26 +2086,29 @@
           </article>
         </div>
 
-        <article class="panel">
-          <div class="panel-heading">
-            <div>
-              <h2>Permissões individuais</h2>
-              <p class="panel-copy">Use esta área para liberar ou pausar abas e dashboards para um usuário específico, sem alterar o grupo dele.</p>
+        <dialog class="developer-permissions-dialog" id="developer-permissions-dialog" aria-labelledby="developer-permissions-dialog-title">
+          <article class="panel developer-permissions-panel">
+            <div class="panel-heading">
+              <div>
+                <h2 id="developer-permissions-dialog-title">Permissões do usuário</h2>
+                <p class="panel-copy">Ajuste acessos individuais sem alterar o grupo de assinatura.</p>
+              </div>
+              <button class="button" type="button" data-dev-permissions-close>Fechar</button>
             </div>
-          </div>
-          <form class="developer-password-form" id="developer-password-form">
-            <div class="developer-temp-password-copy">
-              <strong>Senha temporária</strong>
-              <span>Gera uma senha provisória, exige troca no próximo login e prepara o e-mail para o usuário cadastrado.</span>
-            </div>
-            <button class="button" id="developer-password-save" type="button">Salvar senha</button>
-            <button class="button button-primary" type="submit">Gerar senha temporária</button>
-          </form>
-          <p class="helper-text">A senha definitiva não é mais enviada pelo app. O sistema envia uma senha temporária e força a criação de uma nova senha no próximo acesso.</p>
-          <p class="helper-text">Regra de segurança: mínimo de 8 caracteres, com letras e números.</p>
-          <p class="helper-text">Os selos abaixo mostram se o e-mail já foi confirmado e se o CPF está apenas validado localmente ou pronto para consulta oficial.</p>
-          <div id="developer-user-permissions" class="developer-user-permissions"></div>
-        </article>
+            <form class="developer-password-form" id="developer-password-form">
+              <div class="developer-temp-password-copy">
+                <strong>Senha temporária</strong>
+                <span>Gera uma senha provisória, exige troca no próximo login e prepara o e-mail para o usuário cadastrado.</span>
+              </div>
+              <button class="button" id="developer-password-save" type="button">Salvar senha</button>
+              <button class="button button-primary" type="submit">Gerar senha temporária</button>
+            </form>
+            <p class="helper-text">A senha definitiva não é mais enviada pelo app. O sistema envia uma senha temporária e força a criação de uma nova senha no próximo acesso.</p>
+            <p class="helper-text">Regra de segurança: mínimo de 8 caracteres, com letras e números.</p>
+            <p class="helper-text">Os selos abaixo mostram se o e-mail já foi confirmado e se o CPF está apenas validado localmente ou pronto para consulta oficial.</p>
+            <div id="developer-user-permissions" class="developer-user-permissions" tabindex="-1" aria-live="polite"></div>
+          </article>
+        </dialog>
       </section>
     </main>
   </div>
@@ -2197,7 +2200,7 @@
        de CORS que o Chrome aplica a módulos ES locais. -->
   <script src="./catalogo-loja.seed.js"></script>
   <script src="./assets/blocos.catalog.js"></script>
-  <script defer src="./app.mjs?v=20260917-dev-access-fix"></script>
+  <script defer src="./app.mjs?v=20260925-dev-permissions-dialog"></script>
 </body>
 </html>
 

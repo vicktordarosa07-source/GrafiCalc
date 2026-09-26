@@ -2297,6 +2297,45 @@ textarea {
   min-width: 210px;
 }
 
+.developer-permissions-dialog {
+  width: min(960px, calc(100vw - 40px));
+  max-width: none;
+  max-height: min(90dvh, 900px);
+  padding: 0;
+  overflow: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.developer-permissions-dialog::backdrop {
+  background: rgba(15, 35, 43, 0.52);
+  backdrop-filter: blur(5px);
+}
+
+.developer-permissions-panel {
+  margin: 0;
+}
+
+.developer-permissions-panel .panel-heading {
+  align-items: flex-start;
+}
+
+@media (max-width: 760px) {
+  .developer-permissions-dialog {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+
+  .developer-permissions-panel {
+    padding: 16px;
+  }
+
+  .developer-permissions-panel .panel-heading button {
+    flex: 0 0 auto;
+  }
+}
+
 .employee-form {
   align-items: end;
 }
