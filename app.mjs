@@ -8189,6 +8189,7 @@ async function initApp() {
   const developerUsersList = document.getElementById("developer-users-list");
   const developerGroupsList = document.getElementById("developer-groups-list");
   const developerPermissionsDialog = document.getElementById("developer-permissions-dialog");
+  const developerPermissionsUserSelect = document.getElementById("developer-permissions-user-select");
   const developerUserPermissions = document.getElementById("developer-user-permissions");
   const developerPasswordForm = document.getElementById("developer-password-form");
   const developerPasswordSaveButton = document.getElementById("developer-password-save");
@@ -8999,7 +9000,7 @@ async function initApp() {
               </label>
               <button class="button button-small" type="button" data-dev-user-action="activate" data-dev-user-id="${escapeHtml(user.id)}"${isDev ? " disabled" : ""}>Ativar</button>
               <button class="button button-small" type="button" data-dev-user-action="block" data-dev-user-id="${escapeHtml(user.id)}"${isDev ? " disabled" : ""}>Bloquear</button>
-              <button class="button button-small" type="button" data-dev-user-action="permissions" data-dev-user-id="${escapeHtml(user.id)}" aria-haspopup="dialog" aria-controls="developer-permissions-dialog">Permissões</button>
+              <button class="button button-small" type="button" data-dev-user-action="permissions" data-dev-user-id="${escapeHtml(user.id)}" aria-haspopup="dialog" aria-controls="developer-permissions-dialog"${isDev ? " disabled" : ""}>Permissões</button>
               <button class="button button-small button-danger" type="button" data-dev-user-action="delete" data-dev-user-id="${escapeHtml(user.id)}"${isDev ? " disabled" : ""}>Deletar usuário</button>
             </div>
           </article>
@@ -9045,12 +9046,25 @@ async function initApp() {
       })
       .join("");
 
-    const selectedUser = authUsers.find((user) => user.id === selectedDeveloperUserId)
-      || authUsers.find((user) => user.id !== DEVELOPER_ACCOUNT.id)
-      || authUsers[0];
+    const permissionUsers = authUsers.filter((user) => user.role !== "developer");
+    if (developerPermissionsUserSelect) {
+      developerPermissionsUserSelect.innerHTML = permissionUsers
+        .map((user) => {
+          const label = user.email ? `${user.username} - ${user.email}` : user.username;
+          return `<option value="${escapeHtml(user.id)}">${escapeHtml(label)}</option>`;
+        })
+        .join("");
+    }
+    const selectedUser = permissionUsers.find((user) => user.id === selectedDeveloperUserId) || permissionUsers[0];
     if (selectedUser) {
       selectedDeveloperUserId = selectedUser.id;
+      if (developerPermissionsUserSelect) {
+        developerPermissionsUserSelect.value = selectedUser.id;
+      }
       renderDeveloperUserPermissions(selectedUser);
+    } else {
+      selectedDeveloperUserId = "";
+      developerUserPermissions.replaceChildren();
     }
   }
 
@@ -14537,6 +14551,9 @@ async function initApp() {
       return;
     } else if (button.dataset.devUserAction === "permissions") {
       selectedDeveloperUserId = user.id;
+      if (developerPermissionsUserSelect) {
+        developerPermissionsUserSelect.value = user.id;
+      }
       renderDeveloperUserPermissions(user);
       if (developerPermissionsDialog && !developerPermissionsDialog.open) {
         developerPermissionsDialog.showModal();
@@ -14556,6 +14573,18 @@ async function initApp() {
     if (event.target === developerPermissionsDialog || event.target.closest("[data-dev-permissions-close]")) {
       developerPermissionsDialog.close();
     }
+  });
+
+  developerPermissionsUserSelect?.addEventListener("change", () => {
+    if (!isDeveloperSession()) {
+      return;
+    }
+    const user = authUsers.find((item) => item.id === developerPermissionsUserSelect.value && item.role !== "developer");
+    if (!user) {
+      return;
+    }
+    selectedDeveloperUserId = user.id;
+    renderDeveloperUserPermissions(user);
   });
 
   developerUsersList?.addEventListener("change", (event) => {

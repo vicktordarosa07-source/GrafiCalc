@@ -2321,6 +2321,15 @@ textarea {
   align-items: flex-start;
 }
 
+.developer-permissions-user-picker {
+  display: grid;
+  gap: 7px;
+  max-width: 520px;
+  margin-bottom: 16px;
+  color: var(--muted-strong);
+  font-weight: 800;
+}
+
 @media (max-width: 760px) {
   .developer-permissions-dialog {
     width: calc(100vw - 20px);
