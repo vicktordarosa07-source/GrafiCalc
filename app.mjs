@@ -7976,7 +7976,9 @@ function createQuoteText(state, workbook, colorWorkbook, credentialWorkbook, m2W
     quoteEntries.forEach((entry) => lines.push(entry.text));
   }
 
-  lines.push("", `Total geral: ${formatCurrency(quoteEntries.reduce((sum, entry) => sum + Number(entry.total || 0), 0))}`);
+  const sharedQuoteTotal = createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook, linearMeterWorkbook)
+    .reduce((sum, entry) => sum + Number(entry.total || 0), 0);
+  lines.push("", `Total geral: ${formatCurrency(sharedQuoteTotal)}`);
 
   if (state.quoteNotes?.trim()) {
     lines.push("", "Observações:", state.quoteNotes.trim());
@@ -8031,6 +8033,7 @@ async function initApp() {
   let sharedBootstrapComplete = false;
   let sharedUpdatedAt = null;
   let lastSharedSnapshot = "";
+  let lastSyncedSharedState = null;
   let sharedRefreshHandle = null;
   let committedConfigSnapshot = deepClone(config);
   let configDraft = deepClone(config);
@@ -9907,6 +9910,86 @@ async function initApp() {
     quote.updatedAt = new Date().toISOString();
   }
 
+
+  // Durable recovery backup separate from the normal application cache.
+  // Never change the original base while unsynchronized edits remain.
+  const pendingBackupKey = () => getAccountStorageKey("graficalc-unsynced-recovery-v1", currentUser);
+  const pendingBackup = () => loadFromStorage(pendingBackupKey(), value => value && typeof value === "object" ? value : null);
+  const collectionSnapshot = () => ({ clients: deepClone(state.clients), quoteHistory: deepClone(state.quoteHistory), workOrders: deepClone(state.workOrders) });
+  function recordPendingSync() {
+    const old = pendingBackup();
+    const backup = {
+      version: 1, userId: currentUser?.id || "", tenantId: window.grafiCalcRemoteAuth?.tenantId || "",
+      baseUpdatedAt: old?.baseUpdatedAt ?? sharedUpdatedAt,
+      base: old?.base || deepClone(lastSyncedSharedState || {clients: [],quoteHistory: [],workOrders: []}),
+      local: collectionSnapshot(), savedAt: new Date().toISOString(),
+      verifiedBaseline: old?.verifiedBaseline ?? Boolean(lastSyncedSharedState),
+    };
+    try { saveToStorage(pendingBackupKey(), backup); }
+    catch { setSyncStatus("Sem espaço para backup local. Exporte seus dados antes de sair.", "error"); }
+    showSyncRecoveryNotice();
+  }
+  function clearPendingSync() {
+    localStorage.removeItem(scopedStorageKey(pendingBackupKey()));
+    showSyncRecoveryNotice();
+  }
+  function downloadPendingSync() {
+    const backup = pendingBackup();
+    if (!backup) return;
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(new Blob([JSON.stringify(backup, null, 2)], {type:"application/json"}));
+    link.href = url; link.download = "graficalc-pendente-" + Date.now() + ".json";
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  }
+  function showSyncRecoveryNotice() {
+    const id = "graficalc-sync-recovery-banner";
+    let banner = document.getElementById(id);
+    const backup = pendingBackup();
+    if (!backup) { banner?.remove(); return; }
+    if (banner) return;
+    banner = document.createElement("section"); banner.id = id; banner.setAttribute("role","alert");
+    banner.style.cssText = "margin:10px 0;padding:12px;border:1px solid #a67017;border-radius:10px;background:#fff9ee;color:#553b12";
+    const title = document.createElement("strong");
+    title.textContent = "Alterações locais aguardando sincronização";
+    const info = document.createElement("p");
+    info.textContent = "Há um backup separado. Baixe-o antes de recarregar; conflitos nunca serão sobrescritos automaticamente.";
+    const download = document.createElement("button"); download.type="button"; download.className="button button-small";
+    download.textContent="Baixar backup"; download.addEventListener("click",downloadPendingSync);
+    const recover = document.createElement("button"); recover.type="button"; recover.className="button button-small";
+    recover.textContent="Tentar recuperar alterações compatíveis";
+    recover.addEventListener("click", async () => {
+      if (sharedConflict || sharedDirty || sharedSyncInFlight) {
+        setSyncStatus("As alterações locais estão pendentes. Baixe o backup e recarregue antes de tentar recuperar.", "warning"); return;
+      }
+      const saved = pendingBackup();
+      if (!saved || !saved.verifiedBaseline) {
+        setSyncStatus("Backup sem base confiável; baixe o arquivo para revisão manual.", "error"); return;
+      }
+      const updated = await refreshSharedState(false);
+      if (updated.status==="skipped" || updated.status==="error") {
+        setSyncStatus("Não foi possível atualizar o servidor. Backup preservado.", "error"); return;
+      }
+      const reconciler = window.GrafiCalcSyncRecovery;
+      if (!reconciler) {setSyncStatus("Recuperação indisponível; baixe seu backup.", "error");return;}
+      const result = reconciler.reconcileShared(saved.base,saved.local,collectionSnapshot());
+      if(result.conflicts.length) {
+        setSyncStatus("Existem "+result.conflicts.length+" conflitos. Baixe o backup para revisão; nenhum registro foi substituído.", "error");return;
+      }
+      state.clients=result.sharedState.clients; state.quoteHistory=result.sharedState.quoteHistory;
+      state.workOrders=result.sharedState.workOrders;
+      sharedMutation+=1; sharedDirty=true; persistLocalOnly();
+      const success=await saveSharedNow(true);
+      if(success && !sharedDirty) {
+        clearPendingSync(); renderAll();
+        setSyncStatus("Alterações compatíveis recuperadas e salvas.", "success");
+      }else { recordPendingSync(); setSyncStatus("Recuperação ainda não confirmada; backup preservado.", "error"); }
+    });
+    const buttons=document.createElement("div");buttons.style.cssText="display:flex;gap:8px;flex-wrap:wrap";
+    buttons.append(download,recover); banner.append(title,info,buttons);
+    (syncStatus?.parentElement || document.body).appendChild(banner);
+  }
+
   function persistLocalOnly() {
     saveAccountState(currentUser, state);
     saveAccountConfig(currentUser, config);
@@ -9950,6 +10033,7 @@ async function initApp() {
     state.clients = sharedCollections.clients;
     state.quoteHistory = sharedCollections.quoteHistory;
     state.workOrders = sharedCollections.workOrders;
+    lastSyncedSharedState = deepClone(sharedCollections);
     if (sourceState.company) state.company = { ...state.company, ...deepClone(sourceState.company) };
     const sharedSecurity = normalizeSharedSecurity(payload.security || {});
     authUsers = window.grafiCalcRemoteAuth ? sharedSecurity.authUsers : mergeAuthUserCollections(authUsers, sharedSecurity.authUsers);
@@ -10030,12 +10114,15 @@ async function initApp() {
       const result = await requestSharedState("PUT", payload);
       lastSharedSnapshot = serialized;
       sharedUpdatedAt = result.updatedAt || null;
+      lastSyncedSharedState = deepClone(result.payload?.sharedState || payload.sharedState);
       sharedDirty = mutation !== sharedMutation;
+      if (!sharedDirty) clearPendingSync();
       if (sharedDirty) sharedSyncQueued = true;
       setSyncStatus("Tudo salvo e compartilhado entre os computadores.", "success");
       return true;
     } catch (error) {
       sharedConflict = error?.message === "workspace-conflict";
+      recordPendingSync();
       setSyncStatus(sharedConflict ? "Outra sessão alterou os dados. Suas alterações locais foram preservadas. Recarregue para revisar antes de salvar novamente." : "Não foi possível salvar no servidor. As alterações continuam somente nesta máquina.", "error");
       return false;
     } finally {
@@ -10198,6 +10285,7 @@ async function initApp() {
         sharedUpdatedAt = result.updatedAt || null;
         lastSharedSnapshot = JSON.stringify(result.payload);
         applySharedPayload(result.payload, "Base compartilhada conectada com sucesso.");
+        showSyncRecoveryNotice();
         const savedDraft = loadFromStorage(getAccountStorageKey("graficalc-config-draft-v2", currentUser), (value) => value);
         if (savedDraft?.config) {
           configDraft = mergeConfig(savedDraft.config);
@@ -10424,6 +10512,7 @@ async function initApp() {
   function persist() {
     sharedMutation += 1;
     persistLocalOnly();
+    recordPendingSync();
     sharedDirty = true;
     queueSharedSave(false);
   }

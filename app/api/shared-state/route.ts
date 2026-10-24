@@ -1,12 +1,13 @@
 import { getWorkspaceContext, writeWorkspace, workspaceError } from "@/lib/workspace";
-import { assertSameOrigin, assertWorkspaceBinding, mergeWorkspace, publicWorkspace, WorkspaceError } from "@/lib/workspace-policy";
+import { assertSameOrigin, assertWorkspaceBinding, mergeWorkspace, publicWorkspace, getCollectionAccess, scopeWorkspaceCollections, prepareWorkspaceCollections, WorkspaceError } from "@/lib/workspace-policy";
 import { hasValidPinVerification, CONFIG_PIN_COOKIE } from "@/lib/config-pin";
 import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
 function snapshot(context: NonNullable<Awaited<ReturnType<typeof getWorkspaceContext>>>, payload = context.payload, updatedAt = context.updatedAt) {
-  const visible = publicWorkspace(payload, context.memberIds);
+  const access = getCollectionAccess(payload, context.user.id, context.isLeader, context.profile);
+  const visible = scopeWorkspaceCollections(publicWorkspace(payload, context.memberIds), access, context.user.id);
   visible.security.authUsers = context.members;
   return Response.json({ exists: true, payload: visible, updatedAt, userId: context.user.id, tenantId: context.tenantId, permissions: context.permissions, isLeader: context.isLeader }, { headers: { "Cache-Control": "private, no-store" } });
 }
@@ -34,7 +35,9 @@ export async function PUT(request: Request) {
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new WorkspaceError("invalid-payload", 400);
     if (!Object.hasOwn(body, "baseUpdatedAt") || body.baseUpdatedAt !== context.updatedAt) throw new WorkspaceError("workspace-conflict", 409);
     const publishConfig = body.publishConfig === true;
-    const payload = mergeWorkspace(context.payload, body, {
+    const access = getCollectionAccess(context.payload, context.user.id, context.isLeader, context.profile);
+    const authorized = prepareWorkspaceCollections(context.payload, body, access, context.user.id);
+    const payload = mergeWorkspace(context.payload, authorized, {
       isLeader: context.isLeader, canEdit: context.permissions.edit, memberIds: context.memberIds, publishConfig,
       pinVerified: publishConfig && await hasValidPinVerification(context.user.id, context.tenantId, context.payload.config?.security?.configAccess, context.updatedAt),
     });

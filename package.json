@@ -17,7 +17,12 @@
     "test:security:stage-final": "node scripts/security-stage-final.test.cjs",
     "test:workspace-policy": "node --experimental-strip-types scripts/workspace-policy.test.mjs",
     "test:workspace-api": "node --env-file=.env.local --use-system-ca scripts/workspace-api.integration.mjs",
-    "check": "npm run check:legacy && tsc --noEmit"
+    "check": "npm run check:legacy && tsc --noEmit",
+    "test:collection-policy": "node --experimental-strip-types scripts/collection-policy.test.mjs",
+    "test:sync-recovery": "node scripts/sync-recovery.test.cjs",
+    "test:pricing-regression": "node scripts/pricing-regression.test.cjs",
+    "test:next-smoke": "node scripts/next-smoke.cjs",
+    "test:operational-regression": "node scripts/operational-regression.test.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

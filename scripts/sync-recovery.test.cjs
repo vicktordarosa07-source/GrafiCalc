@@ -1,0 +1,12 @@
+const assert=require("node:assert/strict");
+const {reconcileRecords,reconcileShared}=require("../public/legacy/sync-recovery.js");
+const r=(id,value)=>({id,value});
+const x=reconcileRecords([r("a",1),r("b",1)],[r("a",2),r("b",1),r("c",3)],[r("a",1),r("b",4)]);
+assert.deepEqual(x.conflicts,[]);
+assert.deepEqual(Object.fromEntries(x.records.map(v=>[v.id,v.value])),{a:2,b:4,c:3});
+assert.deepEqual(reconcileRecords([r("a",1)],[r("a",2)],[r("a",3)]).conflicts,["a"]);
+assert.deepEqual(reconcileRecords([r("a",1),r("b",1)],[r("b",1)],[r("a",1),r("b",1)]).records,[r("b",1)]);
+assert.deepEqual(reconcileRecords([],[r("a",1)],[r("a",1)]).conflicts,[]);
+assert.deepEqual(reconcileRecords([],[r("a",1)],[r("a",2)]).conflicts,["a"]);
+assert.deepEqual(reconcileShared({clients:[r("a",1)]},{clients:[r("a",2)]},{clients:[r("a",3)]}).conflicts,["clients:a"]);
+console.log("sync-recovery: 6 scenarios passed");
