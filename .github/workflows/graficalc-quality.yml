@@ -41,3 +41,5 @@ jobs:
           npm run test:security:stage-final
       - name: Build
         run: npm run build
+      - name: Unauthenticated smoke tests
+        run: npm run test:next-smoke

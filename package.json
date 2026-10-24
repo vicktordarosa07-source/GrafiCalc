@@ -20,7 +20,8 @@
     "check": "npm run check:legacy && tsc --noEmit",
     "test:collection-policy": "node --experimental-strip-types scripts/collection-policy.test.mjs",
     "test:sync-recovery": "node scripts/sync-recovery.test.cjs",
-    "test:pricing-regression": "node scripts/pricing-regression.test.cjs"
+    "test:pricing-regression": "node scripts/pricing-regression.test.cjs",
+    "test:next-smoke": "node scripts/next-smoke.cjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
