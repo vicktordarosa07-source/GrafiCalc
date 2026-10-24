@@ -130,7 +130,7 @@ export function getCollectionAccess(
 function operationalList(value: unknown): JsonObject[] {
   return Array.isArray(value) ? value : [];
 }
-function ownQuote(quote: JsonObject, userId: string) {
+function ownQuote(quote: JsonObject | undefined, userId: string) {
   return quote?.createdByUserId === userId;
 }
 
@@ -147,7 +147,7 @@ export function scopeWorkspaceCollections(
       : access.quotesWrite ? quoteHistory.filter(quote => ownQuote(quote, userId)) : [],
     workOrders: access.ordersRead ? operationalList(source.workOrders) : [],
   };
-  const output = { ...visible, sharedState: scoped };
+  const output: JsonObject = { ...visible, sharedState: scoped };
   delete output.state;
   return output;
 }
