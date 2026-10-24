@@ -7976,7 +7976,9 @@ function createQuoteText(state, workbook, colorWorkbook, credentialWorkbook, m2W
     quoteEntries.forEach((entry) => lines.push(entry.text));
   }
 
-  lines.push("", `Total geral: ${formatCurrency(quoteEntries.reduce((sum, entry) => sum + Number(entry.total || 0), 0))}`);
+  const sharedQuoteTotal = createQuoteEntries(state, workbook, colorWorkbook, credentialWorkbook, m2Workbook, readyWorkbook, resinWorkbook, cardWorkbook, flyerWorkbook, blockSulfiteWorkbook, blockAutocopiativoWorkbook, linearMeterWorkbook)
+    .reduce((sum, entry) => sum + Number(entry.total || 0), 0);
+  lines.push("", `Total geral: ${formatCurrency(sharedQuoteTotal)}`);
 
   if (state.quoteNotes?.trim()) {
     lines.push("", "Observações:", state.quoteNotes.trim());
