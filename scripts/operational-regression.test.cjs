@@ -45,6 +45,7 @@ assert.match(html,/R\$\s*125,00/);
 assert.ok(!html.includes("internalCost"));
 assert.ok(!html.includes("<script>"));
 assert.ok(html.includes("&lt;script&gt;"));
+ctx.state=state;
 const q=state.quoteHistory[0];
 ctx.syncQuoteStatusFromWorkOrder({quoteId:"q1",id:"os1",status:"delivered"});
 assert.equal(q.status,"completed");assert.equal(q.osId,"os1");
