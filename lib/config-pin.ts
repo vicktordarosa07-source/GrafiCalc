@@ -56,12 +56,13 @@ export async function hasValidPinVerification(userId: string, tenantId: string, 
 
 export async function pinAttempt(context: WorkspaceContext, purpose = "pin") {
   const key = `${purpose}:${context.tenantId}:${context.user.id}`;
-  // Increment before checking so concurrent attempts cannot all observe the old count.
-  const { error: recordError } = await context.admin.rpc("graficalc_record_auth_failure", { p_key: key });
-  if (recordError) throw new WorkspaceError("rate-limit-unavailable", 503);
+  // Check first; the fifth attempt is usable, the sixth is blocked.
+  // Concurrent strict limiting requires an atomic database RPC.
   const { data: allowed, error } = await context.admin.rpc("graficalc_auth_attempt_allowed", { p_key: key });
   if (error) throw new WorkspaceError("rate-limit-unavailable", 503);
   if (!allowed) throw new WorkspaceError("too-many-attempts", 429);
+  const { error: recordError } = await context.admin.rpc("graficalc_record_auth_failure", { p_key: key });
+  if (recordError) throw new WorkspaceError("rate-limit-unavailable", 503);
   return key;
 }
 
