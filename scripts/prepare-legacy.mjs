@@ -9,7 +9,8 @@ for (const file of ["app.mjs", "styles.css", "catalogo-loja.seed.js", "catalogo-
 }
 await cp(path.join(root, "assets"), path.join(target, "assets"), { recursive: true, force: true });
 const sourceHtml = await readFile(path.join(root, "index.html"), "utf8");
-const legacyBootstrap = `<script defer src="./legacy-auth-bridge.mjs?v=20260917-dev-access-fix"></script>
+const legacyBootstrap = `<script defer src="./sync-recovery.js"></script>
+<script defer src="./legacy-auth-bridge.mjs?v=20260917-dev-access-fix"></script>
   <script>
     window.addEventListener("DOMContentLoaded", async () => {
       try {
