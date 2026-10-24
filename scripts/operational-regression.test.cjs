@@ -7,9 +7,10 @@ function extract(name,indent=""){
   const marker=indent+"function "+name+"(";
   const first=source.indexOf(marker);
   assert.ok(first>=0,"missing function "+name);
-  const end=source.indexOf("\n"+indent+"function ",first+marker.length);
+  const closing="\n"+indent+"}";
+  const end=source.indexOf(closing,first+marker.length);
   assert.ok(end>first,"function boundary "+name);
-  return source.slice(first,end);
+  return source.slice(first,end+closing.length);
 }
 const currency=v=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(Number(v||0));
 const esc=v=>String(v||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
