@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { PasswordField } from "./password-field";
 import { Turnstile } from "./turnstile";
 
 export function LoginBrowserForm({ message, successMessage }: { message?: string; successMessage?: string }) {
@@ -15,7 +16,7 @@ export function LoginBrowserForm({ message, successMessage }: { message?: string
   return (
     <form className="auth-form" action="/api/auth/login" method="post" onInput={clearPreviousError}>
       <label className="field"><span>E-mail</span><input type="email" name="email" autoComplete="email" required /></label>
-      <label className="field"><span>Senha</span><input type="password" name="password" autoComplete="current-password" required /></label>
+      <PasswordField name="password" label="Senha" autoComplete="current-password" />
       <Turnstile />
       {message && <p className="form-message error" role="alert">{message}</p>}
       {successMessage && <p className="form-message success" role="status">{successMessage}</p>}
