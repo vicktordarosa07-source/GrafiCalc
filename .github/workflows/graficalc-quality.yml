@@ -34,6 +34,7 @@ jobs:
           npm run test:sync-recovery
           npm run test:pricing-regression
           npm run test:operational-regression
+          npm run test:mobile-navigation
       - name: Legacy security checks
         run: |
           npm run test:security:stage3

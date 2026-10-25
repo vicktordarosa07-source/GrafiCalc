@@ -8927,6 +8927,19 @@ async function initApp() {
         }
       }
     });
+    // Only offer sections that are actually accessible to this user on mobile.
+    if (mobileTabSelect) {
+      const allowedTabs = new Set(tabButtons
+        .filter((button) => !button.hidden && !button.disabled &&
+          (button.dataset.devOnly === undefined || isDeveloperSession()))
+        .map((button) => button.dataset.tabTarget));
+      for (const option of mobileTabSelect.options) {
+        const allowed = allowedTabs.has(option.value);
+        option.hidden = !allowed;
+        option.disabled = !allowed;
+      }
+    }
+
     tabPanels.forEach((panel) => {
       const tab = panel.dataset.tabPanel;
       let allowed = false;
