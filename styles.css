@@ -9557,8 +9557,19 @@ body::before {
     box-shadow: 0 10px 24px rgba(21, 87, 83, .08);
   }
 
-  .page-shell:not(.is-auth-mode) .tab-bar.tab-bar--v3 {
+  /* Override all earlier v3 display:flex !important rules at equal specificity. */
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3 .tab-bar.tab-bar--v3,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3 .tab-bar.tab-bar--v3,
+  .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3.is-expanded .tab-bar.tab-bar--v3,
+  .page-shell:not(.is-auth-mode):not([data-active-tab="home"]) .app-menu-shell.app-menu-shell--v3.is-expanded .tab-bar.tab-bar--v3 {
     display: none !important;
+  }
+
+  .page-shell:not(.is-auth-mode) .tab-panels {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    grid-column: 1 / -1;
   }
 
   .page-shell:not(.is-auth-mode) .app-menu-shell.app-menu-shell--v3 {

@@ -16,7 +16,7 @@ const legacyBootstrap = `<script defer src="./sync-recovery.js"></script>
       try {
         await window.grafiCalcLegacyAuthReady;
         const appScript = document.createElement("script");
-        appScript.src = "./app.mjs?v=20260917-dev-access-fix";
+        appScript.src = "./app.mjs?v=20261025-mobile-layout";
         document.body.appendChild(appScript);
       } catch (error) {
         console.error("Nao foi possivel preparar a sessao do GrafiCalc.", error);
