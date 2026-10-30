@@ -10,6 +10,8 @@
   developerPersistentLogin: "graficalc-developer-persistent-login-v1",
 };
 
+import { calculateFinishPrice, calculateMaterialCosts, FINISH_BILLING_MODES, MATERIAL_ACQUISITION_MODES, MATERIAL_SALE_MODES, normalizeCalculationFinish, normalizeMaterialConfiguration, normalizePrintProcess, PRINT_PROCESS_BILLING_MODES } from "./calculation-base.mjs";
+
 const SESSION_KEYS = {
   configUnlocked: "graficalc-config-unlocked-v1",
 };
@@ -369,6 +371,26 @@ const RESIN_MATERIAL_OPTIONS = [
   { id: "holo-gold", label: "Adesivo holográfico dourado", pricingKey: "special" },
   { id: "holo-silver", label: "Adesivo holográfico prateado", pricingKey: "special" },
 ];
+const CALCULATION_BASE_MATERIAL_TYPES = ["Papel", "Mídia", "Adesivo", "Lona", "Tecido", "Outro"];
+const CALCULATION_BASE_FINISH_NAMES = [
+  "Encadernação espiral", "Encadernação wire-o", "Encadernação brochura", "Encadernação capa dura",
+  "Encadernação térmica", "Plastificação polaseal (tamanhos variados)", "Laminação BOPP",
+  "Laminação fria (adesivo)", "Corte guilhotina", "Corte estilete", "Semicorte manual", "Blocagem",
+  "Corte e vinco", "Corte personalizado com máquina", "Fechamento de banner", "Bainha simples",
+  "Bainha com corda", "Ilhós latão", "Ilhós niquelado", "Laminação m²", "Verniz laka m²",
+];
+
+function createDefaultCalculationBaseFinishes() {
+  return CALCULATION_BASE_FINISH_NAMES.map((name) => {
+    const billingMode = /m²/i.test(name)
+      ? "square-meter"
+      : /bainha|fechamento de banner/i.test(name)
+        ? "linear-meter"
+        : "unit";
+    const id = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return { id: `finish-${id}`, name, billingMode, unitLabel: billingMode === "square-meter" ? "m²" : billingMode === "linear-meter" ? "metro linear" : "unidade", baseValue: 0, variants: [], reductionTiers: [] };
+  });
+}
 const BLOCK_TAB_DEFS = {
   sulfite: {
     appTab: "blocosSulfite",
@@ -999,6 +1021,11 @@ function createDefaultConfig() {
     combinationServices: [],
     freeProductCategories: [],
     freeProducts: [],
+    calculationBaseMaterialOverrides: {},
+    hiddenCalculationBaseMaterialKeys: [],
+    customCalculationBaseMaterials: [],
+    calculationBasePrintProcesses: [],
+    calculationBaseFinishes: createDefaultCalculationBaseFinishes(),
     spiralPlasticDiscount: 1.5,
   };
 }
@@ -1580,6 +1607,69 @@ function normalizeBlockFinishes(candidateFinishes, defaultFinishes = DEFAULT_BLO
   return Array.from(finishById.values());
 }
 
+function normalizeCalculationBaseMaterials(items) {
+  if (!Array.isArray(items)) return [];
+  const seenIds = new Set();
+  const seenLabels = new Set();
+  return items
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      id: String(item.id || "").trim().slice(0, 100),
+      label: String(item.label || "").trim().slice(0, 100),
+      type: CALCULATION_BASE_MATERIAL_TYPES.includes(item.type) ? item.type : "Mídia",
+      unit: String(item.unit || "").trim().slice(0, 60),
+      materialData: normalizeMaterialConfiguration(item.materialData || {}),
+    }))
+    .filter((item) => {
+      const labelKey = normalizeLookupText(item.label);
+      if (!item.id || !labelKey || seenIds.has(item.id) || seenLabels.has(labelKey)) return false;
+      seenIds.add(item.id);
+      seenLabels.add(labelKey);
+      return true;
+    });
+}
+
+function normalizeCalculationBasePrintProcesses(items) {
+  if (!Array.isArray(items)) return [];
+  const ids = new Set();
+  const names = new Set();
+  return items.map((item) => normalizePrintProcess(item)).filter((item) => {
+    const name = normalizeLookupText(item.name);
+    if (!item.id || !name || ids.has(item.id) || names.has(name)) return false;
+    ids.add(item.id);
+    names.add(name);
+    return true;
+  });
+}
+
+function normalizeCalculationBaseFinishes(items) {
+  if (!Array.isArray(items)) return createDefaultCalculationBaseFinishes();
+  const ids = new Set();
+  const names = new Set();
+  return items.map((item) => normalizeCalculationFinish(item)).filter((item) => {
+    const name = normalizeLookupText(item.name);
+    if (!item.id || !name || ids.has(item.id) || names.has(name)) return false;
+    ids.add(item.id);
+    names.add(name);
+    return true;
+  });
+}
+
+function seedCalculationBaseFinishesFromLegacy(config) {
+  const legacyFinishes = Array.isArray(config?.m2Finishes) ? config.m2Finishes : [];
+  const legacyIds = {
+    "finish-laminacao-m2": ["laminacao", "laminação"],
+    "finish-verniz-laka-m2": ["verniz-laka", "verniz laka"],
+    "finish-bainha-com-corda": ["bainha-corda", "bainha com corda"],
+    "finish-ilhos-latao": ["ilhós-latão", "ilhos-latao", "ilhós latão"],
+  };
+  return createDefaultCalculationBaseFinishes().map((finish) => {
+    const aliases = legacyIds[finish.id] || [];
+    const legacy = legacyFinishes.find((item) => aliases.some((alias) => normalizeLookupText(alias) === normalizeLookupText(item?.id) || normalizeLookupText(alias) === normalizeLookupText(item?.label)));
+    return legacy && Number.isFinite(Number(legacy.price)) ? { ...finish, baseValue: Math.max(0, Number(legacy.price)) } : finish;
+  });
+}
+
 function mergeConfig(candidate) {
   const defaults = createDefaultConfig();
   if (!candidate || typeof candidate !== "object") {
@@ -1722,6 +1812,25 @@ function mergeConfig(candidate) {
 
   merged.freeProductCategories = normalizeFreeProductCategories(candidate.freeProductCategories);
   merged.freeProducts = normalizeFreeProducts(candidate.freeProducts, merged.freeProductCategories);
+  merged.calculationBaseMaterialOverrides = Object.fromEntries(
+    Object.entries(candidate.calculationBaseMaterialOverrides || {})
+      .filter(([key, value]) => key && value && typeof value === "object")
+      .map(([key, value]) => [key.slice(0, 180), {
+        label: String(value.label || "").trim().slice(0, 100),
+        type: CALCULATION_BASE_MATERIAL_TYPES.includes(value.type) ? value.type : "Mídia",
+        unit: String(value.unit || "").trim().slice(0, 60),
+        materialData: normalizeMaterialConfiguration(value.materialData || {}),
+      }])
+      .filter(([, value]) => value.label)
+  );
+  merged.hiddenCalculationBaseMaterialKeys = Array.isArray(candidate.hiddenCalculationBaseMaterialKeys)
+    ? [...new Set(candidate.hiddenCalculationBaseMaterialKeys.filter((key) => typeof key === "string").map((key) => key.slice(0, 180)))].slice(0, 500)
+    : [];
+  merged.customCalculationBaseMaterials = normalizeCalculationBaseMaterials(candidate.customCalculationBaseMaterials);
+  merged.calculationBasePrintProcesses = normalizeCalculationBasePrintProcesses(candidate.calculationBasePrintProcesses);
+  merged.calculationBaseFinishes = normalizeCalculationBaseFinishes(
+    candidate.calculationBaseFinishes ?? seedCalculationBaseFinishesFromLegacy(candidate)
+  );
 
   merged.combinationServices = normalizeCombinationServices(candidate.combinationServices);
 
@@ -6598,22 +6707,325 @@ function buildCalculationBases(config) {
   (config.blockFinishes || []).forEach((item) => addUnique(finishes, item.label, "Acabamento", "Blocos", "por bloco"));
   (config.credentialLanyardPricing?.printed || []).forEach((item) => addUnique(finishes, item.label, "Acabamento", "Credenciais", "por unidade"));
 
-  return { media, printModes, finishes };
+  const hiddenKeys = new Set(config.hiddenCalculationBaseMaterialKeys || []);
+  const overrides = config.calculationBaseMaterialOverrides || {};
+  const managedMedia = media
+    .filter((item) => !hiddenKeys.has(item.key))
+    .map((item) => ({
+      ...item,
+      id: item.key,
+      ...overrides[item.key],
+      materialData: normalizeMaterialConfiguration(overrides[item.key]?.materialData || {}),
+      isCustom: false,
+    }));
+  const customMedia = normalizeCalculationBaseMaterials(config.customCalculationBaseMaterials)
+    .map((item) => ({
+      ...item,
+      key: `custom:${item.id}`,
+      sources: ["Cadastro mestre"],
+      materialData: normalizeMaterialConfiguration(item.materialData || {}),
+      isCustom: true,
+    }));
+
+  return {
+    media: [...managedMedia, ...customMedia],
+    printModes,
+    printProcesses: normalizeCalculationBasePrintProcesses(config.calculationBasePrintProcesses),
+    finishes,
+    finishOptions: normalizeCalculationBaseFinishes(config.calculationBaseFinishes),
+  };
 }
 
 function createCalculationBasesMarkup(config) {
   const bases = buildCalculationBases(config);
-  const renderList = (items, empty) => items.length
-    ? `<div class="calculation-base-list">${items.map((item) => `<article class="calculation-base-item"><div><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.unit || "Regra configurada")}</span></div><small>${escapeHtml(item.sources.join(" · "))}</small></article>`).join("")}</div>`
+  const renderList = (items, empty, editable = false) => items.length
+    ? `<div class="calculation-base-list">${items.map((item) => `<article class="calculation-base-item"><div class="calculation-base-item-copy"><strong>${escapeHtml(item.label)}</strong><span>${editable ? `${escapeHtml(item.type)} · ${escapeHtml(item.unit || "Unidade não definida")}` : escapeHtml(item.unit || "Regra configurada")}</span></div><small>${escapeHtml(item.sources.join(" · "))}</small>${editable ? `<div class="calculation-base-actions"><button class="button button-small" type="button" data-calculation-material-edit="${escapeAttribute(item.id)}">Editar</button><button class="button button-small button-danger" type="button" data-calculation-material-delete="${escapeAttribute(item.id)}">Excluir</button></div>` : ""}</article>`).join("")}</div>`
     : `<p class="helper-text">${empty}</p>`;
   return `
-    <div class="calculation-bases-intro"><strong>Base única de referência</strong><span>Os motores atuais continuam usando seus parâmetros específicos, mas todos os materiais, processos e acabamentos ficam catalogados aqui para reutilização nos produtos personalizados.</span></div>
+    <div class="calculation-bases-intro"><strong>Base única de referência</strong><span>Edite o catálogo de mídias e use seus materiais como sugestões nos orçamentos manuais. As tabelas de preço dos motores continuam sendo ajustadas nas configurações de cada cálculo. As mudanças ficam em rascunho até salvar com o PIN.</span></div>
     ${createLinearMeterConfigMarkup(config)}
     <div class="calculation-bases-grid">
-      <section class="calculation-base-group"><header><h4>Mídias de impressão</h4><span>${bases.media.length} bases</span></header>${renderList(bases.media, "Nenhuma mídia encontrada.")}</section>
-      <section class="calculation-base-group"><header><h4>Modos de impressão</h4><span>${bases.printModes.length} modos</span></header>${renderList(bases.printModes, "Nenhum modo encontrado.")}</section>
-      <section class="calculation-base-group"><header><h4>Acabamentos</h4><span>${bases.finishes.length} opções</span></header>${renderList(bases.finishes, "Nenhum acabamento encontrado.")}</section>
+      <section class="calculation-base-group calculation-base-media-group"><header><h4>Mídias de impressão</h4><span>${bases.media.length} materiais</span><button class="button button-small button-primary" type="button" data-calculation-material-add>+ Adicionar material</button></header>${renderList(bases.media, "Nenhuma mídia encontrada.", true)}${createCalculationBaseMaterialDialogMarkup(bases.printProcesses, bases.finishOptions)}</section>
+      <section class="calculation-base-group calculation-base-media-group"><header><h4>Processos de impressão</h4><span>${bases.printProcesses.length} processos</span><button class="button button-small button-primary" type="button" data-print-process-add>+ Adicionar processo</button></header><p class="helper-text">Cadastre somente custo interno. O preço de venda vem da faixa “com impressão” do material. Cada processo pode representar laser P&B, laser colorido ou uma máquina que faz ambos.</p>${bases.printProcesses.length ? `<div class="calculation-base-list">${bases.printProcesses.map((process) => `<article class="calculation-base-item"><div class="calculation-base-item-copy"><strong>${escapeHtml(process.name)}</strong><span>${escapeHtml(process.technology || "Tecnologia não definida")} · ${{ monochrome: "P&B", color: "Colorido", both: "P&B e colorido" }[process.colorMode]} · ${process.costEnabled ? `Custo: ${{ "per-sheet": "por folha", "per-side": "por lado", "front-back": "frente e verso separados" }[process.billingMode]}` : "Custo não cadastrado"}</span></div><div class="calculation-base-actions"><button class="button button-small" type="button" data-print-process-edit="${escapeAttribute(process.id)}">Editar</button><button class="button button-small button-danger" type="button" data-print-process-delete="${escapeAttribute(process.id)}">Excluir</button></div></article>`).join("")}</div>` : `<p class="helper-text">Nenhum processo cadastrado. Adicione, por exemplo, laser colorido e laser preto e branco como processos separados quando os custos/equipamentos forem diferentes.</p>`}${createPrintProcessDialogMarkup()}</section>
+      <section class="calculation-base-group"><header><h4>Referências de impressão existentes</h4><span>${bases.printModes.length} opções</span></header><p class="helper-text">Valores legados do sistema, como colorido e frente e verso. Eles não são tratados como processos configuráveis.</p>${renderList(bases.printModes, "Nenhuma referência encontrada.")}</section>
+      <section class="calculation-base-group calculation-base-media-group"><header><h4>Acabamentos</h4><span>${bases.finishOptions.length} opções</span><button class="button button-small button-primary" type="button" data-calculation-finish-add>+ Adicionar acabamento</button></header><p class="helper-text">Configure valor por unidade, m² ou metro linear e reduções progressivas conforme a quantidade.</p>${bases.finishOptions.length ? `<div class="calculation-base-list">${bases.finishOptions.map((finish) => `<article class="calculation-base-item"><div class="calculation-base-item-copy"><strong>${escapeHtml(finish.name)}</strong><span>${escapeHtml(finish.billingMode === "square-meter" ? "m²" : finish.billingMode === "linear-meter" ? "Metro linear" : finish.unitLabel || "Unidade")} · ${formatCurrency(finish.baseValue)}${finish.variants.length ? ` · ${finish.variants.length} formatos` : ""} · ${finish.reductionTiers.length} redução(ões)</span></div><div class="calculation-base-actions"><button class="button button-small" type="button" data-calculation-finish-edit="${escapeAttribute(finish.id)}">Editar</button><button class="button button-small button-danger" type="button" data-calculation-finish-delete="${escapeAttribute(finish.id)}">Excluir</button></div></article>`).join("")}</div>` : `<p class="helper-text">Nenhum acabamento cadastrado. Use “Adicionar acabamento” para criar um.</p>`}${createCalculationFinishDialogMarkup()}</section>
+      <section class="calculation-base-group"><header><h4>Referências de acabamentos existentes</h4><span>${bases.finishes.length} opções</span></header><p class="helper-text">Acabamentos que já aparecem nos motores atuais. O catálogo acima é o que será selecionado nas compatibilidades de materiais.</p>${renderList(bases.finishes, "Nenhuma referência encontrada.")}</section>
     </div>`;
+}
+
+function createCalculationBaseMaterialDialogMarkup(printProcesses = [], finishOptions = []) {
+  return `<dialog class="calculation-material-dialog" id="calculation-base-material-dialog" aria-labelledby="calculation-base-material-title">
+    <form id="calculation-base-material-form" class="panel calculation-material-panel">
+      <div class="panel-heading"><div><h3 id="calculation-base-material-title">Adicionar material</h3><p class="panel-copy">Configure aquisição, custo, formas de venda e progressivos. O cadastro será aplicado depois de salvar com o PIN.</p></div><button class="button" type="button" data-calculation-material-close>Fechar</button></div>
+      <input type="hidden" name="materialId">
+      <input type="hidden" name="compatibleProcessIds" value="[]">
+      <input type="hidden" name="compatibleFinishIds" value="[]">
+      <div class="config-grid compact-grid material-form-section">
+        <label><span>Nome do material</span><input name="materialLabel" type="text" maxlength="100" required autocomplete="off"></label>
+        <label><span>Tipo</span><select name="materialType">${CALCULATION_BASE_MATERIAL_TYPES.map((type) => `<option value="${escapeAttribute(type)}">${escapeHtml(type)}</option>`).join("")}</select></label>
+        <label><span>Unidade / referência</span><input name="materialUnit" type="text" maxlength="60" placeholder="Ex.: por folha, m²" autocomplete="off"></label>
+      </div>
+      <section class="material-form-section">
+        <h4>Aquisição e custo</h4>
+        <label class="material-cost-toggle"><input name="trackCosts" type="checkbox"><span>Informar custo de aquisição e calcular custo do material</span></label>
+        <p class="helper-text material-no-cost-copy">Sem custo cadastrado, o material continua disponível para venda; o GrafiCalc não exibirá cálculo de custo para ele.</p>
+        <div data-material-cost-fields hidden>
+          <div class="config-grid compact-grid">
+            <label><span>Modo de compra</span><select name="acquisitionMode"><option value="ream">Resma</option><option value="box">Caixa</option><option value="unit">Unidade</option><option value="roll">Bobina</option><option value="square-meter">Metro quadrado</option><option value="linear-meter">Metro linear</option></select></label>
+            <label><span data-purchase-quantity-label>Quantidade comprada</span><input name="purchaseQuantity" type="number" min="0.001" step="0.001" value="1"></label>
+            <label><span>Valor pago no total (R$)</span><input name="paidAmount" type="number" min="0" step="0.01" value="0"></label>
+        </div>
+        <div class="config-grid compact-grid material-acquisition-fields" data-acquisition-fields="sheet">
+          <label><span>Largura da folha-mãe (cm)</span><input name="sheetWidthCm" type="number" min="0" step="0.1" value="0"></label>
+          <label><span>Altura da folha-mãe (cm)</span><input name="sheetHeightCm" type="number" min="0" step="0.1" value="0"></label>
+          <label data-package-count-field><span data-units-per-purchase-label>Folhas por resma/caixa</span><input name="unitsPerPurchase" type="number" min="1" step="1" value="1"></label>
+        </div>
+        <div class="config-grid compact-grid material-acquisition-fields" data-acquisition-fields="roll">
+          <label><span>Largura da bobina (cm)</span><input name="rollWidthCm" type="number" min="0" step="0.1" value="0"></label>
+          <label><span>Comprimento de cada bobina (m)</span><input name="rollLengthM" type="number" min="0" step="0.01" value="0"></label>
+        </div>
+        <div class="config-grid compact-grid material-acquisition-fields" data-acquisition-fields="linear-meter">
+          <label><span>Largura do material (cm, se aplicável)</span><input name="linearWidthCm" type="number" min="0" step="0.1" value="0"></label>
+        </div>
+        <div class="material-cost-preview" aria-live="polite">
+          <div><span>Custo unitário base</span><strong data-material-cost-unit>R$ 0,00</strong></div>
+          <div><span>Custo por m²</span><strong data-material-cost-area>R$ 0,00</strong></div>
+          <div><span>Custo por metro linear</span><strong data-material-cost-linear>R$ 0,00</strong></div>
+        </div>
+        <div class="material-cut-simulator">
+          <strong>Simular corte da folha-mãe / bobina</strong>
+          <div class="config-grid compact-grid">
+            <label><span>Largura do corte (cm)</span><input name="sampleCutWidthCm" type="number" min="0" step="0.1" value="21"></label>
+            <label><span>Altura do corte (cm)</span><input name="sampleCutHeightCm" type="number" min="0" step="0.1" value="29.7"></label>
+          </div>
+          <p data-material-cut-result>Informe a aquisição e as dimensões para estimar o custo do corte.</p>
+        </div>
+        </div>
+      </section>
+      <section class="material-form-section">
+        <h4>Comercialização e progressivos</h4>
+        <div class="material-sale-mode-list">${MATERIAL_SALE_MODES.map((mode) => {
+          const labels = { unit: "Por unidade", "fixed-size": "Por tamanho fixo", "square-meter": "Por m²", "linear-meter": "Por metro linear" };
+          return `<label><input type="checkbox" name="saleModes" value="${mode}"><span>${labels[mode]}</span></label>`;
+        }).join("")}</div>
+        <div class="table-shell material-tier-table-shell"><table class="config-table material-tier-table"><thead><tr><th>Forma de venda</th><th>Formato (opcional)</th><th>A partir de</th><th>Sem impressão (R$)</th><th>Com impressão (R$)</th><th></th></tr></thead><tbody data-material-price-tiers></tbody></table></div>
+        <button class="button button-small" type="button" data-material-tier-add>+ Adicionar faixa</button>
+      </section>
+      <section class="material-form-section material-compatibility-note">
+        <h4>Compatibilidades</h4>
+        <p class="helper-text">Marque os processos que podem imprimir neste material.</p>
+        <div class="material-compatibility-options">${printProcesses.length ? printProcesses.map((process) => `<label><input type="checkbox" data-compatible-process="${escapeAttribute(process.id)}"><span>${escapeHtml(process.name)}</span></label>`).join("") : `<span class="helper-text">Cadastre processos de impressão para vinculá-los a esta mídia.</span>`}</div>
+        <p class="helper-text">Marque os acabamentos que podem ser aplicados neste material.</p>
+        <div class="material-compatibility-options">${finishOptions.length ? finishOptions.map((finish) => `<label><input type="checkbox" data-compatible-finish="${escapeAttribute(finish.id)}"><span>${escapeHtml(finish.name)}</span></label>`).join("") : `<span class="helper-text">Cadastre acabamentos para vinculá-los a esta mídia.</span>`}</div>
+        <div class="material-compatibility-status"><span>Processos vinculados</span><strong data-material-process-count>0</strong><span>Acabamentos vinculados</span><strong data-material-finish-count>0</strong></div>
+      </section>
+      <p class="helper-text">Excluir remove o item deste catálogo mestre, mas preserva preços dos motores e orçamentos registrados. O cálculo de corte permite rotação e mistura de fileiras; não considera sangria, margem ou perda de guilhotina.</p>
+      <div class="toolbar calculation-material-actions"><button class="button" type="button" data-calculation-material-close>Cancelar</button><button class="button button-primary" type="submit">Salvar material no rascunho</button></div>
+    </form>
+  </dialog>`;
+}
+
+function createPrintProcessDialogMarkup() {
+  return `<dialog class="calculation-material-dialog" id="calculation-print-process-dialog" aria-labelledby="calculation-print-process-title">
+    <form id="calculation-print-process-form" class="panel calculation-material-panel">
+      <div class="panel-heading"><div><h3 id="calculation-print-process-title">Adicionar processo</h3><p class="panel-copy">Configure apenas o custo interno. A venda será calculada pela faixa do material com impressão.</p></div><button class="button" type="button" data-print-process-close>Fechar</button></div>
+      <input type="hidden" name="processId">
+      <div class="config-grid compact-grid material-form-section">
+        <label><span>Nome do processo</span><input name="processName" type="text" maxlength="100" required placeholder="Ex.: Laser colorido"></label>
+        <label><span>Tecnologia / equipamento</span><input name="processTechnology" type="text" maxlength="100" placeholder="Ex.: toner colorido"></label>
+        <label><span>Este processo imprime</span><select name="processColorMode"><option value="monochrome">Preto e branco</option><option value="color">Colorido</option><option value="both">Preto e branco e colorido</option></select></label>
+      </div>
+      <section class="material-form-section">
+        <h4>Custo de impressão</h4>
+        <label class="material-cost-toggle"><input name="processCostEnabled" type="checkbox"><span>Informar custo deste processo</span></label>
+        <div class="config-grid compact-grid">
+          <label><span>Como contar frente e verso?</span><select name="processBillingMode"><option value="per-sheet">Por folha física (frente e verso contam como uma)</option><option value="per-side">Por lado impresso (frente e verso contam como dois)</option><option value="front-back">Contar frente e verso separadamente</option></select></label>
+        </div>
+        <div class="config-grid compact-grid process-cost-fields" data-process-cost-fields hidden>
+          <label data-process-cost-field="per-sheet"><span>Custo por folha física (R$)</span><input name="costPerSheet" type="number" min="0" step="0.0001" value="0"></label>
+          <label data-process-cost-field="per-side" hidden><span>Custo por lado impresso (R$)</span><input name="costPerSide" type="number" min="0" step="0.0001" value="0"></label>
+          <label data-process-cost-field="front-back" hidden><span>Custo da frente (R$)</span><input name="frontSideCost" type="number" min="0" step="0.0001" value="0"></label>
+          <label data-process-cost-field="front-back" hidden><span>Custo do verso (R$)</span><input name="backSideCost" type="number" min="0" step="0.0001" value="0"></label>
+        </div>
+        <p class="helper-text">Exemplo: se uma folha frente e verso custa o mesmo que duas folhas só frente, escolha “por lado impresso”. Se duplex tem um preço único, escolha “por folha física”.</p>
+      </section>
+      <div class="toolbar calculation-material-actions"><button class="button" type="button" data-print-process-close>Cancelar</button><button class="button button-primary" type="submit">Salvar processo no rascunho</button></div>
+    </form>
+  </dialog>`;
+}
+
+function createCalculationFinishDialogMarkup() {
+  return `<dialog class="calculation-material-dialog" id="calculation-finish-dialog" aria-labelledby="calculation-finish-title">
+    <form id="calculation-finish-form" class="panel calculation-material-panel">
+      <div class="panel-heading"><div><h3 id="calculation-finish-title">Adicionar acabamento</h3><p class="panel-copy">Defina a unidade de cobrança, o valor base e reduções por quantidade. Os preços ficam na configuração da conta.</p></div><button class="button" type="button" data-calculation-finish-close>Fechar</button></div>
+      <input type="hidden" name="finishId">
+      <section class="material-form-section">
+        <div class="config-grid compact-grid">
+          <label><span>Nome do acabamento</span><input name="finishName" type="text" maxlength="120" required></label>
+          <label><span>Como cobrar</span><select name="finishBillingMode"><option value="unit">Por unidade</option><option value="square-meter">Por m²</option><option value="linear-meter">Por metro linear</option></select></label>
+          <label><span>Descrição da unidade (opcional)</span><input name="finishUnitLabel" type="text" maxlength="40" placeholder="Ex.: folha A4, par"></label>
+          <label><span>Valor base (R$)</span><input name="finishBaseValue" type="number" min="0" step="0.0001" value="0" required></label>
+        </div>
+      </section>
+      <section class="material-form-section">
+        <div class="section-heading"><div><h4>Variações de formato (opcional)</h4><p class="helper-text">Use, por exemplo, para cadastrar preços diferentes da plastificação polaseal A4, A3 e outros tamanhos.</p></div><button class="button button-small" type="button" data-finish-variant-add>+ Adicionar formato</button></div>
+        <div class="table-shell material-tier-table-shell"><table class="config-table material-tier-table"><thead><tr><th>Formato / variação</th><th>Valor base (R$)</th><th></th></tr></thead><tbody data-finish-variants></tbody></table></div>
+      </section>
+      <section class="material-form-section">
+        <div class="section-heading"><div><h4>Redução por quantidade</h4><p class="helper-text">A redução da faixa aplicável é percentual e incide sobre o valor base.</p></div><button class="button button-small" type="button" data-finish-reduction-add>+ Adicionar faixa</button></div>
+        <div class="table-shell material-tier-table-shell"><table class="config-table material-tier-table"><thead><tr><th>A partir de quantas unidades/serviços</th><th>Redução (%)</th><th></th></tr></thead><tbody data-finish-reductions></tbody></table></div>
+        <div class="material-finish-preview">
+          <label><span>Simular quantidade</span><input name="finishPreviewQuantity" type="number" min="1" step="1" value="1"></label>
+          <label><span>Simular formato</span><input name="finishPreviewFormat" type="text" placeholder="Opcional"></label>
+          <label data-finish-measure-field hidden><span data-finish-measure-label>Área / comprimento total</span><input name="finishPreviewMeasure" type="number" min="0" step="0.01" value="1"></label>
+          <strong data-finish-price-preview>Valor estimado: R$ 0,00</strong>
+        </div>
+      </section>
+      <div class="toolbar calculation-material-actions"><button class="button" type="button" data-calculation-finish-close>Cancelar</button><button class="button button-primary" type="submit">Salvar acabamento no rascunho</button></div>
+    </form>
+  </dialog>`;
+}
+
+function createFinishReductionRowMarkup(tier = {}) {
+  return `<tr><td><input data-finish-reduction-field="minQuantity" type="number" min="2" step="1" value="${Math.max(2, Number(tier.minQuantity) || 2)}"></td><td><input data-finish-reduction-field="discountPercent" type="number" min="0" max="100" step="0.01" value="${Math.max(0, Number(tier.discountPercent) || 0)}"></td><td><button class="button button-small button-danger" type="button" data-finish-reduction-remove aria-label="Remover redução">×</button></td></tr>`;
+}
+
+function createFinishVariantRowMarkup(variant = {}) {
+  return `<tr><td><input data-finish-variant-field="label" type="text" maxlength="80" value="${escapeAttribute(variant.label || "")}" placeholder="Ex.: A4"></td><td><input data-finish-variant-field="baseValue" type="number" min="0" step="0.0001" value="${Math.max(0, Number(variant.baseValue) || 0)}"></td><td><button class="button button-small button-danger" type="button" data-finish-variant-remove aria-label="Remover formato">×</button></td></tr>`;
+}
+
+function readFinishFormConfiguration(form) {
+  const tiers = [...form.querySelectorAll("[data-finish-reductions] tr")].map((row) => ({
+    minQuantity: Number(row.querySelector('[data-finish-reduction-field="minQuantity"]')?.value) || 2,
+    discountPercent: Number(row.querySelector('[data-finish-reduction-field="discountPercent"]')?.value) || 0,
+  }));
+  const variants = [...form.querySelectorAll("[data-finish-variants] tr")].map((row) => ({
+    label: row.querySelector('[data-finish-variant-field="label"]')?.value,
+    baseValue: Number(row.querySelector('[data-finish-variant-field="baseValue"]')?.value) || 0,
+  }));
+  return normalizeCalculationFinish({
+    id: form.elements.namedItem("finishId")?.value,
+    name: form.elements.namedItem("finishName")?.value,
+    billingMode: form.elements.namedItem("finishBillingMode")?.value,
+    unitLabel: form.elements.namedItem("finishUnitLabel")?.value,
+    baseValue: form.elements.namedItem("finishBaseValue")?.value,
+    variants,
+    reductionTiers: tiers,
+  });
+}
+
+function syncFinishBillingFields(form) {
+  const mode = form.elements.namedItem("finishBillingMode")?.value || "unit";
+  const field = form.querySelector("[data-finish-measure-field]");
+  if (field) field.hidden = mode === "unit";
+  const label = form.querySelector("[data-finish-measure-label]");
+  if (label) label.textContent = mode === "square-meter" ? "Área total (m²)" : "Comprimento total (m)";
+}
+
+function updateFinishPricePreview(form) {
+  const finish = readFinishFormConfiguration(form);
+  const estimate = calculateFinishPrice(finish, {
+    quantity: Number(form.elements.namedItem("finishPreviewQuantity")?.value) || 1,
+    measure: Number(form.elements.namedItem("finishPreviewMeasure")?.value) || 0,
+    format: form.elements.namedItem("finishPreviewFormat")?.value,
+  });
+  const preview = form.querySelector("[data-finish-price-preview]");
+  if (preview) preview.textContent = `Valor estimado: ${formatCurrency(estimate.total)}${estimate.discountPercent ? ` (${estimate.discountPercent}% de redução)` : ""}`;
+}
+
+function syncPrintProcessCostFields(form) {
+  const enabled = Boolean(form.elements.namedItem("processCostEnabled")?.checked);
+  const mode = form.elements.namedItem("processBillingMode")?.value || "per-sheet";
+  const fields = form.querySelector("[data-process-cost-fields]");
+  if (fields) fields.hidden = !enabled;
+  for (const field of form.querySelectorAll("[data-process-cost-field]")) {
+    field.hidden = !enabled || field.dataset.processCostField !== mode;
+  }
+}
+
+function createMaterialPriceTierRowMarkup(tier = {}) {
+  const labels = { unit: "Por unidade", "fixed-size": "Por tamanho fixo", "square-meter": "Por m²", "linear-meter": "Por metro linear" };
+  return `<tr>
+    <td><select data-tier-field="mode">${MATERIAL_SALE_MODES.map((mode) => `<option value="${mode}" ${tier.mode === mode ? "selected" : ""}>${labels[mode]}</option>`).join("")}</select></td>
+    <td><input data-tier-field="format" type="text" maxlength="80" value="${escapeAttribute(tier.format || "")}" placeholder="Ex.: A4, 30×40 cm"></td>
+    <td><input data-tier-field="minQuantity" type="number" min="1" step="1" value="${Math.max(1, Number(tier.minQuantity) || 1)}"></td>
+    <td><input data-tier-field="withoutPrint" type="number" min="0" step="0.01" value="${Math.max(0, Number(tier.withoutPrint) || 0)}"></td>
+    <td><input data-tier-field="withPrint" type="number" min="0" step="0.01" value="${Math.max(0, Number(tier.withPrint) || 0)}"></td>
+    <td><button class="button button-small button-danger" type="button" data-material-tier-remove aria-label="Remover faixa">×</button></td>
+  </tr>`;
+}
+
+function syncMaterialAcquisitionFields(form) {
+  const mode = form.elements.namedItem("acquisitionMode")?.value || "unit";
+  const trackCosts = Boolean(form.elements.namedItem("trackCosts")?.checked);
+  const costFields = form.querySelector("[data-material-cost-fields]");
+  if (costFields) costFields.hidden = !trackCosts;
+  const purchaseQuantity = form.elements.namedItem("purchaseQuantity");
+  const paidAmount = form.elements.namedItem("paidAmount");
+  if (purchaseQuantity) purchaseQuantity.required = trackCosts;
+  if (paidAmount) paidAmount.required = trackCosts;
+  for (const block of form.querySelectorAll("[data-acquisition-fields]")) {
+    const section = block.dataset.acquisitionFields;
+    block.hidden = section === "sheet" ? !["ream", "box", "unit"].includes(mode) : section !== mode;
+  }
+  const packageCount = form.querySelector("[data-package-count-field]");
+  if (packageCount) packageCount.hidden = mode === "unit";
+  const purchaseLabel = form.querySelector("[data-purchase-quantity-label]");
+  if (purchaseLabel) purchaseLabel.textContent = ({ ream: "Quantidade de resmas", box: "Quantidade de caixas", unit: "Quantidade comprada", roll: "Quantidade de bobinas", "square-meter": "Área comprada (m²)", "linear-meter": "Comprimento comprado (m)" })[mode];
+  const unitsLabel = form.querySelector("[data-units-per-purchase-label]");
+  if (unitsLabel) unitsLabel.textContent = mode === "ream" ? "Folhas por resma" : "Unidades por caixa";
+}
+
+function readMaterialFormConfiguration(form) {
+  const data = new FormData(form);
+  const number = (key) => Math.max(0, Number(data.get(key)) || 0);
+  const tierRows = [...form.querySelectorAll("[data-material-price-tiers] tr")];
+  const tiers = tierRows.map((row) => {
+    const get = (key) => row.querySelector(`[data-tier-field="${key}"]`)?.value;
+    return {
+      mode: get("mode"), format: get("format"), minQuantity: Math.max(1, Math.floor(Number(get("minQuantity")) || 1)),
+      withoutPrint: Math.max(0, Number(get("withoutPrint")) || 0), withPrint: Math.max(0, Number(get("withPrint")) || 0),
+    };
+  });
+  const processIds = [...form.querySelectorAll("[data-compatible-process]:checked")].map((input) => input.dataset.compatibleProcess);
+  const finishIds = [...form.querySelectorAll("[data-compatible-finish]:checked")].map((input) => input.dataset.compatibleFinish);
+  const mode = String(data.get("acquisitionMode") || "unit");
+  return normalizeMaterialConfiguration({
+    acquisition: {
+      mode, trackCosts: Boolean(form.elements.namedItem("trackCosts")?.checked),
+      paidAmount: number("paidAmount"), purchaseQuantity: number("purchaseQuantity"), unitsPerPurchase: number("unitsPerPurchase"),
+      sheetWidthMm: number("sheetWidthCm") * 10, sheetHeightMm: number("sheetHeightCm") * 10,
+      rollWidthMm: number(mode === "linear-meter" ? "linearWidthCm" : "rollWidthCm") * 10, rollLengthM: number("rollLengthM"),
+    },
+    saleModes: data.getAll("saleModes"), priceTiers: tiers,
+    compatibility: { processIds, finishIds },
+  });
+}
+
+function updateMaterialCostPreview(form) {
+  const material = readMaterialFormConfiguration(form);
+  const mode = material.acquisition.mode;
+  const results = calculateMaterialCosts(material, {
+    widthMm: Math.max(0, Number(form.elements.namedItem("sampleCutWidthCm")?.value) || 0) * 10,
+    heightMm: Math.max(0, Number(form.elements.namedItem("sampleCutHeightCm")?.value) || 0) * 10,
+  });
+  const set = (selector, value) => { const element = form.querySelector(selector); if (element) element.textContent = results.costConfigured ? formatCurrency(value) : "Não calculado"; };
+  set("[data-material-cost-unit]", results.costPerUnit);
+  set("[data-material-cost-area]", results.costPerSquareMeter);
+  set("[data-material-cost-linear]", results.costPerLinearMeter);
+  const cut = form.querySelector("[data-material-cut-result]");
+  if (cut) {
+    if (!results.costConfigured) cut.textContent = "Custo desativado para este material. Ele continua liberado para venda.";
+    else if (results.piecesPerStockSheet) cut.textContent = `${results.piecesPerStockSheet} cortes por folha-mãe · custo estimado ${formatCurrency(results.estimatedCutUnitCost)} por corte.`;
+    else if (results.estimatedCutUnitCost > 0) cut.textContent = `Custo estimado do formato informado: ${formatCurrency(results.estimatedCutUnitCost)} por corte.`;
+    else cut.textContent = mode === "ream" || mode === "box" || mode === "unit"
+      ? "Informe as medidas da folha-mãe e o tamanho do corte para estimar o rendimento."
+      : "Informe as dimensões de corte e largura do material (quando aplicável) para estimar o custo.";
+  }
+  const processCount = form.querySelector("[data-material-process-count]");
+  const finishCount = form.querySelector("[data-material-finish-count]");
+  if (processCount) processCount.textContent = String(material.compatibility.processIds.length);
+  if (finishCount) finishCount.textContent = String(material.compatibility.finishIds.length);
 }
 
 function createLinearMeterConfigMarkup(config) {
@@ -11477,7 +11889,7 @@ async function initApp() {
         </div>
         <div class="new-quote-card-editor-grid">
           <label><span>Descrição</span><input name="description" value="${escapeAttribute(draft.description)}" placeholder="Ex.: Display de balcão" autocomplete="off"></label>
-          <label><span>Material utilizado</span><input name="material" value="${escapeAttribute(draft.material)}" placeholder="Ex.: PVC 2 mm" autocomplete="off"></label>
+          <label><span>Material utilizado</span><input name="material" list="calculation-base-material-options" value="${escapeAttribute(draft.material)}" placeholder="Ex.: PVC 2 mm" autocomplete="off"></label>
           <label><span>Quantidade</span><input name="quantity" type="number" min="1" step="1" value="${escapeAttribute(draft.quantity)}"></label>
           <label><span>Valor por unidade</span><input name="manualValue" type="number" min="0" step="0.01" value="${escapeAttribute(draft.manualValue)}" placeholder="0,00"></label>
           <label><span>Valor de arte</span><input name="manualArtFee" type="number" min="0" step="0.01" value="${escapeAttribute(draft.manualArtFee)}" placeholder="0,00"></label>
@@ -11485,6 +11897,7 @@ async function initApp() {
           <label><span>Desconto</span><input name="discountValue" type="number" min="0" step="0.01" value="${escapeAttribute(draft.discountValue)}" placeholder="0,00"></label>
           <label><span>Observação</span><input name="note" value="${escapeAttribute(draft.note || "")}" placeholder="Opcional"></label>
         </div>
+        <datalist id="calculation-base-material-options">${buildCalculationBases(config).media.map((item) => `<option value="${escapeAttribute(item.label)}"></option>`).join("")}</datalist>
         <div class="new-quote-card-preview"><div><span>Quantidade</span><strong>${formatInteger(calculated.quantity)}</strong></div><div><span>Material</span><strong>${escapeHtml(draft.material || "A informar")}</strong></div><div><span>Total do item</span><strong>${formatCurrency(calculated.total)}</strong></div><div><span>Valor unitário</span><strong>${formatCurrency(calculated.unitValue)}</strong></div></div>
         <div class="toolbar new-quote-card-editor-actions"><button class="button" type="button" data-new-quote-free-action="cancel">Descartar item</button><button class="button button-primary" type="button" data-new-quote-free-action="confirm">Adicionar ao orçamento</button></div>`;
       return;
@@ -15955,6 +16368,161 @@ async function initApp() {
   });
 
   configSections.addEventListener("submit", async (event) => {
+    if (event.target.id === "calculation-finish-form") {
+      event.preventDefault();
+      if (!getConfigPermissions().edit || configSaving) return;
+      const form = event.target;
+      const finish = readFinishFormConfiguration(form);
+      if (!finish.name || !FINISH_BILLING_MODES.includes(finish.billingMode)) {
+        setConfigStatus("Informe um nome e uma unidade de cobrança válidos para o acabamento.", "warning");
+        return;
+      }
+      const thresholds = finish.reductionTiers.map((tier) => tier.minQuantity);
+      if (new Set(thresholds).size !== thresholds.length) {
+        setConfigStatus("Cada faixa de redução precisa ter uma quantidade mínima diferente.", "warning");
+        return;
+      }
+      const variantLabels = [...form.querySelectorAll('[data-finish-variant-field="label"]')].map((input) => normalizeLookupText(input.value));
+      if (variantLabels.some((label) => !label) || new Set(variantLabels).size !== variantLabels.length) {
+        setConfigStatus("Preencha cada formato cadastrado e use nomes diferentes.", "warning");
+        return;
+      }
+      const finishes = normalizeCalculationBaseFinishes(configDraft.calculationBaseFinishes);
+      const duplicate = finishes.find((item) => item.id !== finish.id && normalizeLookupText(item.name) === normalizeLookupText(finish.name));
+      if (duplicate) {
+        setConfigStatus("Já existe um acabamento com esse nome.", "warning");
+        form.elements.namedItem("finishName")?.focus();
+        return;
+      }
+      if (!finish.id) finish.id = `finish-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      const index = finishes.findIndex((item) => item.id === finish.id);
+      if (index < 0) finishes.push(finish);
+      else finishes[index] = finish;
+      configDraft.calculationBaseFinishes = normalizeCalculationBaseFinishes(finishes);
+      persistConfigDraft();
+      document.getElementById("calculation-finish-dialog")?.close();
+      renderConfig();
+      setConfigStatus("Acabamento salvo no rascunho. Aplique com o PIN para atualizar a configuração.", "success");
+      return;
+    }
+    if (event.target.id === "calculation-print-process-form") {
+      event.preventDefault();
+      if (!getConfigPermissions().edit || configSaving) return;
+      const form = event.target;
+      const data = new FormData(form);
+      const id = String(data.get("processId") || "").trim();
+      const name = String(data.get("processName") || "").trim();
+      const technology = String(data.get("processTechnology") || "").trim();
+      const colorMode = String(data.get("processColorMode") || "both");
+      const costEnabled = Boolean(form.elements.namedItem("processCostEnabled")?.checked);
+      const billingMode = String(data.get("processBillingMode") || "per-sheet");
+      if (!name || !PRINT_PROCESS_BILLING_MODES.includes(billingMode)) {
+        setConfigStatus("Informe o nome do processo e uma forma válida de cobrança.", "warning");
+        return;
+      }
+      const processes = normalizeCalculationBasePrintProcesses(configDraft.calculationBasePrintProcesses);
+      const duplicate = processes.find((item) => item.id !== id && normalizeLookupText(item.name) === normalizeLookupText(name));
+      if (duplicate) {
+        setConfigStatus("Já existe um processo de impressão com esse nome.", "warning");
+        form.elements.namedItem("processName")?.focus();
+        return;
+      }
+      const process = normalizePrintProcess({
+        id: id || `print-process-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        name, technology, colorMode, costEnabled, billingMode,
+        costPerSheet: Number(data.get("costPerSheet")) || 0,
+        costPerSide: Number(data.get("costPerSide")) || 0,
+        frontSideCost: Number(data.get("frontSideCost")) || 0,
+        backSideCost: Number(data.get("backSideCost")) || 0,
+      });
+      const index = processes.findIndex((item) => item.id === id);
+      if (index < 0) processes.push(process);
+      else processes[index] = process;
+      configDraft.calculationBasePrintProcesses = normalizeCalculationBasePrintProcesses(processes);
+      persistConfigDraft();
+      document.getElementById("calculation-print-process-dialog")?.close();
+      renderConfig();
+      setConfigStatus("Processo de impressão salvo no rascunho. Aplique com o PIN para publicá-lo na configuração.", "success");
+      return;
+    }
+    if (event.target.id === "calculation-base-material-form") {
+      event.preventDefault();
+      if (!getConfigPermissions().edit || configSaving) return;
+      const form = event.target;
+      const formData = new FormData(form);
+      const id = String(formData.get("materialId") || "").trim();
+      const label = String(formData.get("materialLabel") || "").trim();
+      const type = String(formData.get("materialType") || "Mídia");
+      const unit = String(formData.get("materialUnit") || "").trim();
+      let materialData;
+      try {
+        materialData = readMaterialFormConfiguration(form);
+      } catch {
+        setConfigStatus("Não foi possível ler os vínculos de compatibilidade do material.", "warning");
+        return;
+      }
+      if (!label || label.length > 100 || !CALCULATION_BASE_MATERIAL_TYPES.includes(type)) {
+        setConfigStatus("Informe um nome válido e o tipo do material.", "warning");
+        return;
+      }
+      const acquisition = materialData.acquisition;
+      if (!materialData.saleModes.length || !materialData.priceTiers.length) {
+        setConfigStatus("Selecione ao menos uma forma de venda e cadastre uma faixa de preço.", "warning");
+        return;
+      }
+      if (materialData.priceTiers.some((tier) => !materialData.saleModes.includes(tier.mode))) {
+        setConfigStatus("Cada faixa de preço precisa usar uma forma de venda habilitada.", "warning");
+        return;
+      }
+      if (acquisition.trackCosts) {
+        if (acquisition.purchaseQuantity <= 0) {
+          setConfigStatus("Informe a quantidade comprada para calcular custos.", "warning");
+          return;
+        }
+        if (["ream", "box"].includes(acquisition.mode)
+          && (!acquisition.sheetWidthMm || !acquisition.sheetHeightMm || !acquisition.unitsPerPurchase)) {
+          setConfigStatus("Para resma ou caixa, informe o tamanho da folha-mãe e quantas folhas/unidades vêm na embalagem.", "warning");
+          return;
+        }
+        if (acquisition.mode === "roll" && (!acquisition.rollWidthMm || !acquisition.rollLengthM)) {
+          setConfigStatus("Para bobina, informe a largura e o comprimento de cada bobina.", "warning");
+          return;
+        }
+      }
+      const duplicate = buildCalculationBases(configDraft).media.find((item) =>
+        item.id !== id && normalizeLookupText(item.label) === normalizeLookupText(label)
+      );
+      if (duplicate) {
+        setConfigStatus("Já existe um material com esse nome na base de cálculo.", "warning");
+        form.elements.namedItem("materialLabel")?.focus();
+        return;
+      }
+
+      if (id.startsWith("custom:")) {
+        const customId = id.slice("custom:".length);
+        const customMaterials = normalizeCalculationBaseMaterials(configDraft.customCalculationBaseMaterials);
+        const index = customMaterials.findIndex((item) => item.id === customId);
+        const updated = { id: customId, label, type, unit, materialData };
+        if (index >= 0) customMaterials[index] = updated;
+        else customMaterials.push(updated);
+        configDraft.customCalculationBaseMaterials = normalizeCalculationBaseMaterials(customMaterials);
+      } else if (id) {
+        configDraft.calculationBaseMaterialOverrides = configDraft.calculationBaseMaterialOverrides || {};
+        configDraft.calculationBaseMaterialOverrides[id] = { label, type, unit, materialData };
+      } else {
+        const customId = `material-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        configDraft.customCalculationBaseMaterials = normalizeCalculationBaseMaterials([
+          ...(configDraft.customCalculationBaseMaterials || []),
+          { id: customId, label, type, unit, materialData },
+        ]);
+      }
+
+      persistConfigDraft();
+      document.getElementById("calculation-base-material-dialog")?.close();
+      renderConfig();
+      setConfigStatus("Material atualizado no rascunho. Salve com o PIN para aplicar.", "success");
+      return;
+    }
     if (event.target.id !== "config-lock-form") {
       return;
     }
@@ -15973,6 +16541,16 @@ async function initApp() {
     }
 
     const target = event.target;
+    const finishForm = target.closest("#calculation-finish-form");
+    if (finishForm) {
+      updateFinishPricePreview(finishForm);
+      return;
+    }
+    const materialForm = target.closest("#calculation-base-material-form");
+    if (materialForm) {
+      updateMaterialCostPreview(materialForm);
+      return;
+    }
     const prefix = target.dataset.configPrefix;
     const rowIndex = Number(target.dataset.configRow);
     const key = target.dataset.configKey;
@@ -16205,6 +16783,23 @@ async function initApp() {
     setConfigStatus("Preço atualizado.", "success");
   });
 
+  configSections.addEventListener("change", (event) => {
+    const finishForm = event.target.closest("#calculation-finish-form");
+    if (finishForm) {
+      if (event.target.name === "finishBillingMode") syncFinishBillingFields(finishForm);
+      updateFinishPricePreview(finishForm);
+      return;
+    }
+    const form = event.target.closest("#calculation-base-material-form");
+    if (form) {
+      if (["acquisitionMode", "trackCosts"].includes(event.target.name)) syncMaterialAcquisitionFields(form);
+      updateMaterialCostPreview(form);
+      return;
+    }
+    const processForm = event.target.closest("#calculation-print-process-form");
+    if (processForm) syncPrintProcessCostFields(processForm);
+  });
+
   configSections.addEventListener("click", async (event) => {
     const saveConfigButton = event.target.closest("#save-config-button");
     if (saveConfigButton) {
@@ -16258,6 +16853,282 @@ async function initApp() {
     }
 
     if (!getConfigPermissions().use) {
+      return;
+    }
+
+    const materialDialog = document.getElementById("calculation-base-material-dialog");
+    const finishDialog = document.getElementById("calculation-finish-dialog");
+    const printProcessDialog = document.getElementById("calculation-print-process-dialog");
+    const addPrintProcessButton = event.target.closest("[data-print-process-add]");
+    if (addPrintProcessButton) {
+      if (!getConfigPermissions().edit || !printProcessDialog) return;
+      const form = document.getElementById("calculation-print-process-form");
+      form?.reset();
+      if (form) {
+        form.elements.namedItem("processId").value = "";
+        form.elements.namedItem("processColorMode").value = "both";
+        form.elements.namedItem("processCostEnabled").checked = false;
+        syncPrintProcessCostFields(form);
+      }
+      document.getElementById("calculation-print-process-title").textContent = "Adicionar processo";
+      printProcessDialog.showModal();
+      form?.elements.namedItem("processName")?.focus();
+      return;
+    }
+
+    const editPrintProcessButton = event.target.closest("[data-print-process-edit]");
+    if (editPrintProcessButton) {
+      if (!getConfigPermissions().edit || !printProcessDialog) return;
+      const process = normalizeCalculationBasePrintProcesses(configDraft.calculationBasePrintProcesses)
+        .find((item) => item.id === editPrintProcessButton.dataset.printProcessEdit);
+      const form = document.getElementById("calculation-print-process-form");
+      if (!process || !form) return;
+      form.elements.namedItem("processId").value = process.id;
+      form.elements.namedItem("processName").value = process.name;
+      form.elements.namedItem("processTechnology").value = process.technology;
+      form.elements.namedItem("processColorMode").value = process.colorMode;
+      form.elements.namedItem("processCostEnabled").checked = process.costEnabled;
+      form.elements.namedItem("processBillingMode").value = process.billingMode;
+      form.elements.namedItem("costPerSheet").value = process.costPerSheet;
+      form.elements.namedItem("costPerSide").value = process.costPerSide;
+      form.elements.namedItem("frontSideCost").value = process.frontSideCost;
+      form.elements.namedItem("backSideCost").value = process.backSideCost;
+      syncPrintProcessCostFields(form);
+      document.getElementById("calculation-print-process-title").textContent = "Editar processo";
+      printProcessDialog.showModal();
+      form.elements.namedItem("processName").focus();
+      return;
+    }
+
+    const deletePrintProcessButton = event.target.closest("[data-print-process-delete]");
+    if (deletePrintProcessButton) {
+      if (!getConfigPermissions().edit) return;
+      const id = deletePrintProcessButton.dataset.printProcessDelete;
+      const process = normalizeCalculationBasePrintProcesses(configDraft.calculationBasePrintProcesses).find((item) => item.id === id);
+      if (!process || !(await confirmConfigDelete(`Excluir “${process.name}” e remover este vínculo dos materiais compatíveis?`))) return;
+      configDraft.calculationBasePrintProcesses = (configDraft.calculationBasePrintProcesses || []).filter((item) => item.id !== id);
+      configDraft.customCalculationBaseMaterials = (configDraft.customCalculationBaseMaterials || []).map((item) => {
+        const materialData = normalizeMaterialConfiguration(item.materialData || {});
+        materialData.compatibility.processIds = materialData.compatibility.processIds.filter((processId) => processId !== id);
+        return { ...item, materialData };
+      });
+      for (const override of Object.values(configDraft.calculationBaseMaterialOverrides || {})) {
+        const materialData = normalizeMaterialConfiguration(override.materialData || {});
+        materialData.compatibility.processIds = materialData.compatibility.processIds.filter((processId) => processId !== id);
+        override.materialData = materialData;
+      }
+      persistConfigDraft();
+      renderConfig();
+      setConfigStatus("Processo removido do rascunho e das compatibilidades dos materiais.", "warning");
+      return;
+    }
+
+    if (event.target.closest("[data-print-process-close]")) {
+      printProcessDialog?.close();
+      return;
+    }
+
+    if (event.target.closest("[data-calculation-finish-add]")) {
+      if (!getConfigPermissions().edit || !finishDialog) return;
+      const form = document.getElementById("calculation-finish-form");
+      form?.reset();
+      if (form) {
+        form.elements.namedItem("finishId").value = "";
+        form.querySelector("[data-finish-variants]").innerHTML = "";
+        form.querySelector("[data-finish-reductions]").innerHTML = "";
+        syncFinishBillingFields(form);
+        updateFinishPricePreview(form);
+      }
+      document.getElementById("calculation-finish-title").textContent = "Adicionar acabamento";
+      finishDialog.showModal();
+      form?.elements.namedItem("finishName")?.focus();
+      return;
+    }
+
+    if (event.target.closest("[data-calculation-finish-close]")) {
+      finishDialog?.close();
+      return;
+    }
+
+    const editFinishButton = event.target.closest("[data-calculation-finish-edit]");
+    if (editFinishButton) {
+      if (!getConfigPermissions().edit || !finishDialog) return;
+      const finish = normalizeCalculationBaseFinishes(configDraft.calculationBaseFinishes).find((item) => item.id === editFinishButton.dataset.calculationFinishEdit);
+      const form = document.getElementById("calculation-finish-form");
+      if (!finish || !form) return;
+      form.elements.namedItem("finishId").value = finish.id;
+      form.elements.namedItem("finishName").value = finish.name;
+      form.elements.namedItem("finishBillingMode").value = finish.billingMode;
+      form.elements.namedItem("finishUnitLabel").value = finish.unitLabel;
+      form.elements.namedItem("finishBaseValue").value = finish.baseValue;
+      form.querySelector("[data-finish-variants]").innerHTML = finish.variants.map(createFinishVariantRowMarkup).join("");
+      form.querySelector("[data-finish-reductions]").innerHTML = finish.reductionTiers.map(createFinishReductionRowMarkup).join("");
+      syncFinishBillingFields(form);
+      updateFinishPricePreview(form);
+      document.getElementById("calculation-finish-title").textContent = "Editar acabamento";
+      finishDialog.showModal();
+      form.elements.namedItem("finishName").focus();
+      return;
+    }
+
+    const deleteFinishButton = event.target.closest("[data-calculation-finish-delete]");
+    if (deleteFinishButton) {
+      if (!getConfigPermissions().edit) return;
+      const id = deleteFinishButton.dataset.calculationFinishDelete;
+      const finish = normalizeCalculationBaseFinishes(configDraft.calculationBaseFinishes).find((item) => item.id === id);
+      if (!finish || !(await confirmConfigDelete(`Excluir “${finish.name}” e remover este vínculo dos materiais compatíveis?`))) return;
+      configDraft.calculationBaseFinishes = (configDraft.calculationBaseFinishes || []).filter((item) => item.id !== id);
+      configDraft.customCalculationBaseMaterials = (configDraft.customCalculationBaseMaterials || []).map((item) => {
+        const materialData = normalizeMaterialConfiguration(item.materialData || {});
+        materialData.compatibility.finishIds = materialData.compatibility.finishIds.filter((finishId) => finishId !== id);
+        return { ...item, materialData };
+      });
+      for (const override of Object.values(configDraft.calculationBaseMaterialOverrides || {})) {
+        const materialData = normalizeMaterialConfiguration(override.materialData || {});
+        materialData.compatibility.finishIds = materialData.compatibility.finishIds.filter((finishId) => finishId !== id);
+        override.materialData = materialData;
+      }
+      persistConfigDraft();
+      renderConfig();
+      setConfigStatus("Acabamento removido do rascunho e das compatibilidades dos materiais.", "warning");
+      return;
+    }
+
+    if (event.target.closest("[data-finish-reduction-add]")) {
+      const form = event.target.closest("#calculation-finish-form");
+      if (!form || !getConfigPermissions().edit) return;
+      const rows = [...form.querySelectorAll("[data-finish-reductions] tr")];
+      const lastMin = Number(rows.at(-1)?.querySelector('[data-finish-reduction-field="minQuantity"]')?.value) || 1;
+      form.querySelector("[data-finish-reductions]").insertAdjacentHTML("beforeend", createFinishReductionRowMarkup({ minQuantity: lastMin + 1 }));
+      updateFinishPricePreview(form);
+      return;
+    }
+
+    if (event.target.closest("[data-finish-variant-add]")) {
+      const form = event.target.closest("#calculation-finish-form");
+      if (!form || !getConfigPermissions().edit) return;
+      form.querySelector("[data-finish-variants]").insertAdjacentHTML("beforeend", createFinishVariantRowMarkup());
+      return;
+    }
+
+    if (event.target.closest("[data-finish-variant-remove]")) {
+      event.target.closest("tr")?.remove();
+      const form = event.target.closest("#calculation-finish-form");
+      if (form) updateFinishPricePreview(form);
+      return;
+    }
+
+    if (event.target.closest("[data-finish-reduction-remove]")) {
+      event.target.closest("tr")?.remove();
+      const form = event.target.closest("#calculation-finish-form");
+      if (form) updateFinishPricePreview(form);
+      return;
+    }
+
+    const addMaterialButton = event.target.closest("[data-calculation-material-add]");
+    if (addMaterialButton) {
+      if (!getConfigPermissions().edit || !materialDialog) return;
+      const form = document.getElementById("calculation-base-material-form");
+      form?.reset();
+      if (form) {
+        form.elements.namedItem("materialId").value = "";
+        form.elements.namedItem("acquisitionMode").value = "unit";
+        form.elements.namedItem("trackCosts").checked = false;
+        form.querySelector('[name="saleModes"][value="fixed-size"]').checked = true;
+        form.elements.namedItem("compatibleProcessIds").value = "[]";
+        form.elements.namedItem("compatibleFinishIds").value = "[]";
+        form.querySelector("[data-material-price-tiers]").innerHTML = createMaterialPriceTierRowMarkup({ mode: "fixed-size", minQuantity: 1 });
+        syncMaterialAcquisitionFields(form);
+        updateMaterialCostPreview(form);
+      }
+      document.getElementById("calculation-base-material-title").textContent = "Adicionar material";
+      materialDialog.showModal();
+      form?.elements.namedItem("materialLabel")?.focus();
+      return;
+    }
+
+    if (event.target.closest("[data-calculation-material-close]")) {
+      materialDialog?.close();
+      return;
+    }
+
+    const editMaterialButton = event.target.closest("[data-calculation-material-edit]");
+    if (editMaterialButton) {
+      if (!getConfigPermissions().edit || !materialDialog) return;
+      const material = buildCalculationBases(configDraft).media.find((item) => item.id === editMaterialButton.dataset.calculationMaterialEdit);
+      const form = document.getElementById("calculation-base-material-form");
+      if (!material || !form) return;
+      form.elements.namedItem("materialId").value = material.isCustom ? `custom:${material.id}` : material.id;
+      form.elements.namedItem("materialLabel").value = material.label;
+      form.elements.namedItem("materialType").value = material.type;
+      form.elements.namedItem("materialUnit").value = material.unit || "";
+      const data = normalizeMaterialConfiguration(material.materialData || {});
+      const acquisition = data.acquisition;
+      form.elements.namedItem("trackCosts").checked = acquisition.trackCosts;
+      form.elements.namedItem("acquisitionMode").value = acquisition.mode;
+      form.elements.namedItem("purchaseQuantity").value = acquisition.purchaseQuantity;
+      form.elements.namedItem("paidAmount").value = acquisition.paidAmount;
+      form.elements.namedItem("unitsPerPurchase").value = acquisition.unitsPerPurchase;
+      form.elements.namedItem("sheetWidthCm").value = acquisition.sheetWidthMm / 10 || 0;
+      form.elements.namedItem("sheetHeightCm").value = acquisition.sheetHeightMm / 10 || 0;
+      form.elements.namedItem("rollWidthCm").value = acquisition.rollWidthMm / 10 || 0;
+      form.elements.namedItem("linearWidthCm").value = acquisition.rollWidthMm / 10 || 0;
+      form.elements.namedItem("rollLengthM").value = acquisition.rollLengthM || 0;
+      for (const checkbox of form.querySelectorAll('[name="saleModes"]')) checkbox.checked = data.saleModes.includes(checkbox.value);
+      for (const checkbox of form.querySelectorAll("[data-compatible-process]")) checkbox.checked = data.compatibility.processIds.includes(checkbox.dataset.compatibleProcess);
+      for (const checkbox of form.querySelectorAll("[data-compatible-finish]")) checkbox.checked = data.compatibility.finishIds.includes(checkbox.dataset.compatibleFinish);
+      form.elements.namedItem("compatibleProcessIds").value = JSON.stringify(data.compatibility.processIds);
+      form.elements.namedItem("compatibleFinishIds").value = JSON.stringify(data.compatibility.finishIds);
+      form.querySelector("[data-material-price-tiers]").innerHTML = (data.priceTiers.length ? data.priceTiers : [{ mode: data.saleModes[0] || "fixed-size", minQuantity: 1 }]).map(createMaterialPriceTierRowMarkup).join("");
+      syncMaterialAcquisitionFields(form);
+      updateMaterialCostPreview(form);
+      document.getElementById("calculation-base-material-title").textContent = "Editar material";
+      materialDialog.showModal();
+      form.elements.namedItem("materialLabel").focus();
+      return;
+    }
+
+    if (event.target.closest("[data-material-tier-add]")) {
+      const form = event.target.closest("#calculation-base-material-form");
+      if (!form || !getConfigPermissions().edit) return;
+      const rows = [...form.querySelectorAll("[data-material-price-tiers] tr")];
+      const lastMin = Number(rows.at(-1)?.querySelector('[data-tier-field="minQuantity"]')?.value) || 0;
+      const firstMode = form.querySelector('[name="saleModes"]:checked')?.value || "fixed-size";
+      form.querySelector("[data-material-price-tiers]").insertAdjacentHTML("beforeend", createMaterialPriceTierRowMarkup({ mode: firstMode, minQuantity: lastMin + 1 }));
+      return;
+    }
+
+    if (event.target.closest("[data-material-tier-remove]")) {
+      const row = event.target.closest("tr");
+      const body = row?.parentElement;
+      if (body?.querySelectorAll("tr").length > 1) row.remove();
+      else setConfigStatus("O material precisa manter ao menos uma faixa de preço.", "warning");
+      return;
+    }
+
+    const deleteMaterialButton = event.target.closest("[data-calculation-material-delete]");
+    if (deleteMaterialButton) {
+      if (!getConfigPermissions().edit) return;
+      const material = buildCalculationBases(configDraft).media.find((item) => item.id === deleteMaterialButton.dataset.calculationMaterialDelete);
+      if (!material) return;
+      const confirmed = await confirmConfigDelete(
+        material.isCustom
+          ? `Excluir “${material.label}” do catálogo mestre? Orçamentos já registrados não serão alterados.`
+          : `Remover “${material.label}” da base mestre? A opção continuará nas configurações próprias do motor que a utiliza; preços e orçamentos existentes não serão apagados.`
+      );
+      if (!confirmed) return;
+      if (material.isCustom) {
+        configDraft.customCalculationBaseMaterials = (configDraft.customCalculationBaseMaterials || []).filter((item) => item.id !== material.id);
+      } else {
+        configDraft.hiddenCalculationBaseMaterialKeys = [...new Set([
+          ...(configDraft.hiddenCalculationBaseMaterialKeys || []),
+          material.id,
+        ])];
+        delete configDraft.calculationBaseMaterialOverrides?.[material.id];
+      }
+      persistConfigDraft();
+      renderConfig();
+      setConfigStatus("Material removido do catálogo mestre em rascunho. Salve com o PIN para aplicar.", "warning");
       return;
     }
 

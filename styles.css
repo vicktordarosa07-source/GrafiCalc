@@ -2773,6 +2773,15 @@ textarea {
   font-weight: 800;
 }
 
+.calculation-base-media-group header {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.calculation-base-media-group header h4 {
+  margin-right: auto;
+}
+
 .calculation-base-list {
   display: grid;
   gap: 6px;
@@ -2782,16 +2791,29 @@ textarea {
 
 .calculation-base-item {
   display: grid;
-  gap: 3px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px 10px;
   padding: 9px 10px;
   border-bottom: 1px solid rgba(31, 42, 47, 0.08);
 }
 
-.calculation-base-item > div {
+.calculation-base-item-copy {
+  min-width: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 3px 10px;
+}
+
+.calculation-base-item small {
+  grid-column: 1 / -1;
+}
+
+.calculation-base-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
 }
 
 .calculation-base-item strong {
@@ -2807,6 +2829,223 @@ textarea {
 
 .calculation-base-item small {
   line-height: 1.35;
+}
+
+.calculation-material-dialog {
+  width: min(640px, calc(100vw - 28px));
+  max-width: none;
+  max-height: calc(100dvh - 28px);
+  padding: 0;
+  overflow: auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.calculation-material-dialog::backdrop {
+  background: rgba(15, 35, 43, 0.52);
+  backdrop-filter: blur(4px);
+}
+
+.calculation-material-panel {
+  margin: 0;
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.material-form-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(31, 42, 47, 0.1);
+  border-radius: 14px;
+  background: rgba(247, 252, 250, 0.72);
+}
+
+.material-form-section h4 {
+  margin: 0;
+}
+
+.material-cost-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid rgba(31, 42, 47, 0.12);
+  border-radius: 10px;
+  background: #fff;
+  font-weight: 700;
+}
+
+.material-cost-toggle input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.material-no-cost-copy {
+  margin: -5px 0 0;
+}
+
+[data-material-cost-fields][hidden] {
+  display: none !important;
+}
+
+[data-finish-measure-field][hidden] {
+  display: none !important;
+}
+
+.material-compatibility-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.material-compatibility-options label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(31, 42, 47, 0.1);
+  border-radius: 9px;
+  background: #fff;
+}
+
+.material-compatibility-options input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
+.material-finish-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.material-finish-preview strong {
+  grid-column: 1 / -1;
+  color: var(--ink);
+}
+
+.process-cost-fields[hidden],
+[data-process-cost-field][hidden] {
+  display: none !important;
+}
+
+.material-acquisition-fields[hidden] {
+  display: none !important;
+}
+
+.material-cost-preview,
+.material-compatibility-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.material-cost-preview > div,
+.material-compatibility-status > * {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.material-cost-preview span,
+.material-compatibility-status span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.material-cost-preview strong,
+.material-compatibility-status strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.material-cut-simulator {
+  display: grid;
+  gap: 8px;
+}
+
+.material-cut-simulator p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.material-sale-mode-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.material-sale-mode-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid rgba(31, 42, 47, 0.12);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.material-tier-table-shell {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.material-tier-table {
+  min-width: 720px;
+}
+
+.material-tier-table input,
+.material-tier-table select {
+  width: 100%;
+  min-width: 90px;
+}
+
+.calculation-material-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  .calculation-material-panel {
+    padding: 14px;
+  }
+
+  .material-form-section {
+    padding: 11px;
+  }
+
+  .material-cost-preview,
+  .material-compatibility-status {
+    grid-template-columns: 1fr;
+  }
+
+  .material-compatibility-options {
+    grid-template-columns: 1fr;
+  }
+
+  .material-finish-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .calculation-material-actions {
+    flex-direction: column-reverse;
+  }
+
+  .calculation-material-actions .button {
+    width: 100%;
+  }
 }
 
 .m2-config-list {

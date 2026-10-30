@@ -4,7 +4,7 @@ import path from "node:path";
 const root = process.cwd();
 const target = path.join(root, "public", "legacy");
 await mkdir(target, { recursive: true });
-for (const file of ["app.mjs", "styles.css", "catalogo-loja.seed.js", "catalogo-loja.seed.mjs"]) {
+for (const file of ["app.mjs", "calculation-base.mjs", "styles.css", "catalogo-loja.seed.js", "catalogo-loja.seed.mjs"]) {
   await cp(path.join(root, file), path.join(target, file));
 }
 await cp(path.join(root, "assets"), path.join(target, "assets"), { recursive: true, force: true });
@@ -16,7 +16,8 @@ const legacyBootstrap = `<script defer src="./sync-recovery.js"></script>
       try {
         await window.grafiCalcLegacyAuthReady;
         const appScript = document.createElement("script");
-        appScript.src = "./app.mjs?v=20261025-mobile-layout";
+        appScript.type = "module";
+        appScript.src = "./app.mjs?v=20261030-calculation-base-catalogs";
         document.body.appendChild(appScript);
       } catch (error) {
         console.error("Nao foi possivel preparar a sessao do GrafiCalc.", error);
