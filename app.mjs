@@ -48,7 +48,7 @@ const EMAIL_VERIFICATION_COOLDOWN_MS = 60 * 1000;
 
 const APP_TAB_LABELS = [
   { id: "home", label: "Home" },
-  { id: "novoOrcamento", label: "Novo orçamento" },
+  { id: "novoOrcamento", label: "Novo orçamento", developerOnly: true },
   { id: "conta", label: "Minha conta" },
   { id: "calculo", label: "Cálculo de apostila" },
   { id: "impressos", label: "Impressos coloridos" },
@@ -2747,7 +2747,11 @@ function getUserTabPermissions(accessControl, user) {
   }
   const group = getGroupForUser(accessControl, user);
   const overrides = accessControl.userOverrides?.[user.id] || {};
-  return { ...createTabPermissionMap(false, false), ...(group?.tabs || {}), ...overrides };
+  const permissions = { ...createTabPermissionMap(false, false), ...(group?.tabs || {}), ...overrides };
+  for (const tab of APP_TAB_LABELS) {
+    if (tab.developerOnly) permissions[tab.id] = false;
+  }
+  return permissions;
 }
 
 function getUserDashboardPermissions(accessControl, user) {
@@ -5414,7 +5418,7 @@ function applyPresetToRow(row, preset) {
   row.spiralOption = preset.spiralOption;
 }
 
-function createConfigSectionTabsMarkup(activeSection = "calculo") {
+function createConfigSectionTabsMarkup(activeSection = "calculo", includeDeveloperSections = false) {
   const sections = [
     { id: "bases", label: "Bases de cálculo", helper: "Mídias, impressão e acabamentos." },
     { id: "calculo", label: "Cálculo de apostila", helper: "Impressão, capas e acabamentos." },
@@ -5427,7 +5431,7 @@ function createConfigSectionTabsMarkup(activeSection = "calculo") {
     { id: "panfletos", label: "Panfletos e folders", helper: "Laser, offset, papéis, tamanhos e cores." },
     { id: "blocos", label: "Blocos", helper: "Papéis, impressão, tabelas e acabamentos." },
     { id: "personalizados", label: "Produtos personalizados", helper: "Produtos não listados salvos para reutilização." },
-  ];
+  ].filter((section) => includeDeveloperSections || section.id !== "bases");
 
   return `
     <div class="config-section-tabs" role="tablist" aria-label="Seções da configuração">
@@ -6100,7 +6104,7 @@ function importStoreSeedProductToConfig(tab, categoryId, productId, config) {
   return { ok: false, message: "Esse produto ainda não pode ser importado automaticamente nesta etapa." };
 }
 
-function createConfigSectionsMarkup(config, viewMode = "basic", activeSection = "calculo") {
+function createConfigSectionsMarkup(config, viewMode = "basic", activeSection = "calculo", includeDeveloperSections = false) {
   const apostilaCards = [
     createConfigCardMarkup(
       "Preços de impressão",
@@ -6419,7 +6423,10 @@ function createConfigSectionsMarkup(config, viewMode = "basic", activeSection = 
     ),
   ];
 
-  const safeSection = CONFIG_SECTIONS.includes(activeSection) ? activeSection : "bases";
+  const safeSection = CONFIG_SECTIONS.includes(activeSection)
+    && (includeDeveloperSections || activeSection !== "bases")
+    ? activeSection
+    : (includeDeveloperSections ? "bases" : "calculo");
   const configGroups = {
     bases: createConfigGroupMarkup(
       "bases",
@@ -6533,7 +6540,7 @@ function createConfigSectionsMarkup(config, viewMode = "basic", activeSection = 
             <button class="button button-small${viewMode === "basic" ? " is-active" : ""}" type="button" data-config-view-mode="basic">Modo iniciante</button>
             <button class="button button-small${viewMode === "advanced" ? " is-active" : ""}" type="button" data-config-view-mode="advanced">Modo avançado</button>
           </div>
-          ${createConfigSectionTabsMarkup(safeSection)}
+          ${createConfigSectionTabsMarkup(safeSection, includeDeveloperSections)}
         </div>
       </article>
     `,
@@ -10913,6 +10920,7 @@ async function initApp() {
         tabName = getFirstAllowedLoggedTab(currentUser);
       }
       activeConfigSection = CONFIG_SECTIONS.includes(lastConfigSourceTab) ? lastConfigSourceTab : "calculo";
+      if (!isDeveloperSession() && activeConfigSection === "bases") activeConfigSection = "calculo";
       saveConfigSection(activeConfigSection);
       renderConfig();
     } else {
@@ -12537,8 +12545,13 @@ async function initApp() {
 
   function renderConfig() {
     try {
+      const includeDeveloperSections = isDeveloperSession();
+      if (!includeDeveloperSections && activeConfigSection === "bases") {
+        activeConfigSection = "calculo";
+        saveConfigSection(activeConfigSection);
+      }
       configSections.innerHTML = getConfigPermissions().use
-        ? createConfigSectionsMarkup(configDraft, configViewMode, activeConfigSection)
+        ? createConfigSectionsMarkup(configDraft, configViewMode, activeConfigSection, includeDeveloperSections)
         : `<div class="warning-item">Você não tem permissão para utilizar as configurações desta equipe.</div>`;
     } catch (error) {
       console.error("Falha ao renderizar a aba de configuração.", error);
@@ -17155,6 +17168,12 @@ async function initApp() {
 
     const sectionButton = event.target.closest("[data-config-section]");
     if (sectionButton) {
+      if (sectionButton.dataset.configSection === "bases" && !isDeveloperSession()) {
+        activeConfigSection = "calculo";
+        saveConfigSection(activeConfigSection);
+        renderConfig();
+        return;
+      }
       activeConfigSection = CONFIG_SECTIONS.includes(sectionButton.dataset.configSection)
         ? sectionButton.dataset.configSection
         : "calculo";
