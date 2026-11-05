@@ -1,0 +1,32 @@
+import { z } from "zod";
+import { getWorkspaceContext, workspaceError } from "@/lib/workspace";
+import { assertSameOrigin, assertWorkspaceBinding, getCollectionAccess, WorkspaceError } from "@/lib/workspace-policy";
+import { getBillingAccess } from "@/lib/billing/access";
+
+export const dynamic = "force-dynamic";
+const bodySchema = z.object({ quoteId: z.string().min(1).max(120), decision: z.enum(["approved", "rejected"]) }).strict();
+
+export async function POST(request: Request) {
+  try {
+    assertSameOrigin(request);
+    const context = await getWorkspaceContext();
+    if (!context) throw new WorkspaceError("unauthorized", 401);
+    assertWorkspaceBinding(request, context.user.id, context.tenantId);
+    const access = getCollectionAccess(context.payload, context.user.id, context.isLeader, context.profile);
+    if (!access.quotesWrite) throw new WorkspaceError("quote-write-forbidden", 403);
+    const billing = await getBillingAccess(context.admin, context.tenantId);
+    if (!billing.allowed) throw new WorkspaceError("subscription-required", 402);
+    const body = bodySchema.safeParse(await request.json());
+    if (!body.success) throw new WorkspaceError("invalid-payload", 400);
+    const quotes = context.payload.sharedState?.quoteHistory;
+    const quote = Array.isArray(quotes) ? quotes.find((item: any) => item?.id === body.data.quoteId) : null;
+    if (!quote) throw new WorkspaceError("quote-not-found", 404);
+    if (!access.quotesReadAll && quote.createdByUserId !== context.user.id) throw new WorkspaceError("quote-write-forbidden", 403);
+    const { data, error } = await context.admin.rpc("graficalc_decide_quote", {
+      p_tenant_id: context.tenantId, p_quote_id: body.data.quoteId,
+      p_decision: body.data.decision, p_actor_user_id: context.user.id,
+    });
+    if (error) throw new WorkspaceError(error.message.includes("already-converted") ? "quote-already-converted" : "quote-decision-failed", error.message.includes("already-converted") ? 409 : 503);
+    return Response.json({ ok: true, decision: data }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) { return workspaceError(error); }
+}

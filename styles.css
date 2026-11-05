@@ -882,6 +882,16 @@ button {
   gap: 12px;
 }
 
+.os-select-option { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.os-select-option input { width: 18px; height: 18px; accent-color: var(--color-primary, #0b9f78); }
+.os-balance-summary { display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 12px 16px; border: 1px solid rgba(10, 144, 111, .2); border-radius: 14px; background: rgba(15, 186, 133, .06); }
+.os-balance-summary span { color: var(--text-muted, #657980); font-size: .76rem; font-weight: 700; text-transform: uppercase; }
+.os-balance-summary strong { color: var(--text-strong, #143a3d); font-size: 1.2rem; }
+#os-print-area { display: none; }
+.work-order-dialog-form { display: grid; gap: 16px; }
+.work-order-dialog-form label { display: grid; gap: 7px; }
+.work-order-dialog-form input, .work-order-dialog-form select { width: 100%; }
+
 .os-card-header {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   align-items: start;
@@ -4750,7 +4760,65 @@ textarea:hover {
     font-size: 0.82rem;
     line-height: 1.22;
   }
+
+  body.is-printing-work-orders { background: #fff !important; }
+  body.is-printing-work-orders::before,
+  body.is-printing-work-orders .workspace-bar,
+  body.is-printing-work-orders .hero,
+  body.is-printing-work-orders .app-menu-shell,
+  body.is-printing-work-orders .tab-bar,
+  body.is-printing-work-orders .summary-grid,
+  body.is-printing-work-orders .workspace-grid,
+  body.is-printing-work-orders .panel-heading,
+  body.is-printing-work-orders .toolbar,
+  body.is-printing-work-orders .helper-text,
+  body.is-printing-work-orders .os-list,
+  body.is-printing-work-orders .os-card,
+  body.is-printing-work-orders #os-status { display: none !important; }
+  body.is-printing-work-orders .tab-panel { display: none !important; }
+  body.is-printing-work-orders .tab-panel[data-tab-panel="os"] { display: block !important; }
+  body.is-printing-work-orders .tab-panel[data-tab-panel="os"] > .panel { display: block !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+  body.is-printing-work-orders #os-print-area { display: block !important; }
+  body.is-printing-work-orders .os-print-sheet {
+    display: grid !important;
+    width: 210mm;
+    height: 297mm;
+    grid-template-columns: 105mm 105mm;
+    grid-template-rows: 148.5mm 148.5mm;
+    page-break-after: always;
+    break-after: page;
+    overflow: hidden;
+  }
+  body.is-printing-work-orders .os-print-sheet:last-child { page-break-after: auto; break-after: auto; }
+  body.is-printing-work-orders .os-print-card {
+    box-sizing: border-box;
+    width: 105mm;
+    height: 148.5mm;
+    overflow: hidden;
+    padding: 7mm;
+    border: .35mm dashed #4b5960;
+    display: flex;
+    flex-direction: column;
+    color: #111;
+    font-family: Arial, sans-serif;
+    font-size: 8.5pt;
+  }
+  .os-print-card header { display: flex; justify-content: space-between; gap: 4mm; padding-bottom: 3mm; border-bottom: .3mm solid #222; }
+  .os-print-card header div, .os-print-client, .os-print-dates { display: grid; gap: 1.5mm; }
+  .os-print-card header small { display: block; margin-top: 1.5mm; }
+  .os-print-card header > b { font-size: 17pt; white-space: nowrap; }
+  .os-print-client { padding: 3mm 0; }
+  .os-print-client strong { font-size: 12pt; }
+  .os-print-dates { grid-template-columns: 1fr 1fr; padding: 2mm 0; border-block: .2mm solid #999; }
+  .os-print-products { flex: 1; min-height: 0; overflow: hidden; padding-top: 3mm; }
+  .os-print-products > strong { display: block; margin-bottom: 2mm; }
+  .os-print-products ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.5mm; }
+  .os-print-products li { display: flex; justify-content: space-between; gap: 3mm; }
+  .os-print-card footer { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2mm; padding-top: 3mm; border-top: .3mm solid #222; }
+  .os-print-card footer span { display: grid; gap: 1mm; }
 }
+
+@page { size: A4 portrait; margin: 0; }
 
 body {
   position: relative;

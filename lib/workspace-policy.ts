@@ -167,7 +167,14 @@ export function prepareWorkspaceCollections(
     throw new WorkspaceError("invalid-collections", 400);
   }
   const oldQuotes = operationalList(stored.quoteHistory);
-  const newQuotes = operationalList(requested.quoteHistory);
+  const newQuotes = operationalList(requested.quoteHistory).map(quote => {
+    const clean = { ...quote };
+    delete clean.serverDecision;
+    delete clean.serverDecisionStale;
+    delete clean.serverOsId;
+    delete clean.serverOsNumber;
+    return clean;
+  });
   let quotes = oldQuotes;
   if (access.quotesReadAll && access.quotesWrite) {
     quotes = newQuotes;
@@ -191,7 +198,8 @@ export function prepareWorkspaceCollections(
       ...requested,
       clients: access.clientsWrite ? requested.clients : operationalList(stored.clients),
       quoteHistory: quotes,
-      workOrders: access.ordersWrite ? requested.workOrders : operationalList(stored.workOrders),
+      // O.S. records are now written through the audited work-order API only.
+      workOrders: operationalList(stored.workOrders),
     },
   };
 }

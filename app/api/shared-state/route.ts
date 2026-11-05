@@ -3,12 +3,69 @@ import { assertSameOrigin, assertWorkspaceBinding, mergeWorkspace, publicWorkspa
 import { hasValidPinVerification, CONFIG_PIN_COOKIE } from "@/lib/config-pin";
 import { cookies } from "next/headers";
 import { getBillingAccess } from "@/lib/billing/access";
+import { mapWorkOrder } from "@/lib/work-orders";
+import { isDeepStrictEqual } from "node:util";
 
 export const dynamic = "force-dynamic";
 
-function snapshot(context: NonNullable<Awaited<ReturnType<typeof getWorkspaceContext>>>, payload = context.payload, updatedAt = context.updatedAt) {
+async function snapshot(context: NonNullable<Awaited<ReturnType<typeof getWorkspaceContext>>>, payload = context.payload, updatedAt = context.updatedAt) {
   const access = getCollectionAccess(payload, context.user.id, context.isLeader, context.profile);
-  const visible = scopeWorkspaceCollections(publicWorkspace(payload, context.memberIds), access, context.user.id);
+  const source = payload.sharedState || {};
+  const quoteHistory = Array.isArray(source.quoteHistory) ? source.quoteHistory : [];
+  const [{ data: decisionRows, error: decisionError }, { data: orderRows, error: orderError }] = await Promise.all([
+    context.admin.from("graficalc_quote_decisions").select("quote_id,decision,quote_snapshot")
+      .eq("tenant_id", context.tenantId),
+    access.ordersRead
+      ? context.admin.from("graficalc_work_orders").select("*").eq("tenant_id", context.tenantId).order("created_at", { ascending: false })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const schemaNotInstalled = [decisionError, orderError].some(error => error?.code === "42P01" || error?.code === "PGRST205");
+  if ((decisionError || orderError) && !schemaNotInstalled) throw new WorkspaceError("work-order-storage-unavailable", 503);
+  const visibleQuotes = access.quotesReadAll ? quoteHistory : access.quotesWrite
+    ? quoteHistory.filter((quote: any) => quote?.createdByUserId === context.user.id) : [];
+  const quoteIds = visibleQuotes.map((quote: any) => quote?.id).filter(Boolean);
+  const orderIds = (schemaNotInstalled ? [] : (orderRows || []).map(row => row.id));
+  const { data: events, error: eventError } = orderIds.length
+    ? await context.admin.from("graficalc_work_order_events").select("*").eq("tenant_id", context.tenantId)
+      .in("work_order_id", orderIds).order("created_at", { ascending: false })
+    : { data: [], error: null };
+  if (eventError && eventError.code !== "42P01" && eventError.code !== "PGRST205") throw new WorkspaceError("work-order-storage-unavailable", 503);
+  const eventsByOrder = new Map<string, Record<string, any>[]>();
+  for (const event of events || []) eventsByOrder.set(event.work_order_id, [...(eventsByOrder.get(event.work_order_id) || []), event]);
+  const authoritativeOrders = (schemaNotInstalled ? [] : (orderRows || []).map(row => mapWorkOrder(row, eventsByOrder.get(row.id) || [])));
+  const authoritativeQuoteIds = new Set(authoritativeOrders.map(order => order.quoteId));
+  const legacyOrders = (Array.isArray(source.workOrders) ? source.workOrders : [])
+    .filter((order: any) => !authoritativeQuoteIds.has(order?.quoteId))
+    .map((order: any) => ({
+      ...order, legacy: true,
+      paidAmount: Number(order.paidAmount ?? order.entryAmount ?? 0),
+      balance: Math.max(0, Number(order.total || 0) - Number(order.paidAmount ?? order.entryAmount ?? 0)),
+    }));
+  const orderList = [...authoritativeOrders, ...legacyOrders];
+  const orderByQuote = new Map(orderList.map(order => [order.quoteId, order]));
+  const decisionByQuote = new Map((decisionRows || []).map(row => [row.quote_id, row]));
+  const enrichedQuotes = quoteHistory.map((quote: any) => {
+    if (!quoteIds.includes(quote?.id)) return quote;
+    const order = orderByQuote.get(quote.id);
+    const decisionRow = decisionByQuote.get(quote.id);
+    const snapshotMatches = decisionRow ? isDeepStrictEqual(decisionRow.quote_snapshot, quote) : false;
+    return {
+      ...quote,
+      serverDecision: snapshotMatches ? decisionRow?.decision || "" : "",
+      serverDecisionStale: Boolean(decisionRow && !snapshotMatches),
+      serverOsId: order?.id || "",
+      serverOsNumber: order?.osNumber || "",
+    };
+  });
+  const enhancedPayload = {
+    ...payload,
+    sharedState: {
+      ...source,
+      quoteHistory: enrichedQuotes,
+      workOrders: access.ordersRead ? orderList : [],
+    },
+  };
+  const visible = scopeWorkspaceCollections(publicWorkspace(enhancedPayload, context.memberIds), access, context.user.id);
   visible.security.authUsers = context.members;
   return Response.json({ exists: true, payload: visible, updatedAt, userId: context.user.id, tenantId: context.tenantId, permissions: context.permissions, isLeader: context.isLeader }, { headers: { "Cache-Control": "private, no-store" } });
 }

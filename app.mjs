@@ -129,19 +129,15 @@ const QUOTE_STATUS_META = {
   sent: { label: "Enviado", tone: "info" },
   negotiation: { label: "Em negociação", tone: "accent" },
   approved: { label: "Aprovado", tone: "approved" },
+  rejected: { label: "Recusado", tone: "cancelled" },
   converted: { label: "Virou OS", tone: "accent" },
   completed: { label: "Concluído", tone: "completed" },
   cancelled: { label: "Cancelado", tone: "cancelled" },
 };
 const WORK_ORDER_STATUS_META = {
-  created: { label: "Aberta", tone: "pending" },
-  prepress: { label: "Pré-produção", tone: "info" },
-  production: { label: "Produção", tone: "accent" },
-  finishing: { label: "Acabamento", tone: "accent" },
-  ready: { label: "Pronta para entrega", tone: "approved" },
+  production: { label: "Em produção", tone: "accent" },
+  ready: { label: "Pronto para retirada", tone: "approved" },
   delivered: { label: "Entregue", tone: "completed" },
-  closed: { label: "Fechada", tone: "completed" },
-  cancelled: { label: "Cancelada", tone: "cancelled" },
 };
 const WORK_ORDER_PRIORITY_META = {
   normal: { label: "Normal", tone: "pending" },
@@ -1950,6 +1946,10 @@ function mergeState(candidate, configCandidate = null) {
           total: Number.isFinite(Number(item.total)) ? Number(item.total) : 0,
           summary: typeof item.summary === "string" ? item.summary : "",
           status: normalizeQuoteStatus(item.status),
+          serverDecision: item.serverDecision === "approved" || item.serverDecision === "rejected" ? item.serverDecision : "",
+          serverDecisionStale: item.serverDecisionStale === true,
+          serverOsId: typeof item.serverOsId === "string" ? item.serverOsId : "",
+          serverOsNumber: typeof item.serverOsNumber === "string" ? item.serverOsNumber : "",
           createdByUserId: typeof item.createdByUserId === "string" ? item.createdByUserId : "",
           createdByUsername: typeof item.createdByUsername === "string" ? item.createdByUsername : "",
           items: Array.isArray(item.items)
@@ -1987,9 +1987,12 @@ function mergeState(candidate, configCandidate = null) {
           clientContact: typeof item.clientContact === "string" ? item.clientContact : "",
           clientCnpj: typeof item.clientCnpj === "string" ? item.clientCnpj : "",
           total: Number.isFinite(Number(item.total)) ? Number(item.total) : 0,
+          paidAmount: Number.isFinite(Number(item.paidAmount)) ? Number(item.paidAmount) : Number(item.entryAmount || 0),
+          balance: Number.isFinite(Number(item.balance)) ? Number(item.balance) : Math.max(0, Number(item.total || 0) - Number(item.paidAmount ?? item.entryAmount ?? 0)),
           status: normalizeWorkOrderStatus(item.status),
           priority: normalizeWorkOrderPriority(item.priority),
           owner: typeof item.owner === "string" ? item.owner : "",
+          responsibleUserId: typeof item.responsibleUserId === "string" ? item.responsibleUserId : "",
           promisedDate: typeof item.promisedDate === "string" ? item.promisedDate : "",
           deliveryDate: typeof item.deliveryDate === "string" ? item.deliveryDate : "",
           deliveryAddress: typeof item.deliveryAddress === "string" ? item.deliveryAddress : "",
@@ -2004,6 +2007,7 @@ function mergeState(candidate, configCandidate = null) {
           deliveryNotes: typeof item.deliveryNotes === "string" ? item.deliveryNotes : "",
           internalNotes: typeof item.internalNotes === "string" ? item.internalNotes : "",
           createdAt: typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString(),
+          enteredAt: typeof item.enteredAt === "string" ? item.enteredAt : typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString(),
           updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : typeof item.createdAt === "string" ? item.createdAt : new Date().toISOString(),
           createdByUserId: typeof item.createdByUserId === "string" ? item.createdByUserId : "",
           createdByUsername: typeof item.createdByUsername === "string" ? item.createdByUsername : "",
@@ -2018,8 +2022,15 @@ function mergeState(candidate, configCandidate = null) {
                   label: typeof entry.label === "string" ? entry.label : "Atualização",
                   note: typeof entry.note === "string" ? entry.note : "",
                   at: typeof entry.at === "string" ? entry.at : new Date().toISOString(),
+                  actorUserId: typeof entry.actorUserId === "string" ? entry.actorUserId : "",
+                  actorName: typeof entry.actorName === "string" ? entry.actorName : "",
+                  eventType: typeof entry.eventType === "string" ? entry.eventType : "",
+                  before: entry.before && typeof entry.before === "object" ? entry.before : {},
+                  after: entry.after && typeof entry.after === "object" ? entry.after : {},
                 }))
             : [],
+          notes: typeof item.notes === "string" ? item.notes : "",
+          legacy: item.legacy === true,
           items: Array.isArray(item.items)
             ? item.items
                 .filter((entry) => entry && typeof entry === "object")
@@ -3400,12 +3411,19 @@ function normalizeQuoteStatus(value) {
   return Object.prototype.hasOwnProperty.call(QUOTE_STATUS_META, value) ? value : "pending";
 }
 
+function getQuoteWorkflowStatus(item) {
+  if (item?.serverDecisionStale) return "pending";
+  return normalizeQuoteStatus(item?.serverDecision || item?.status);
+}
+
 function getQuoteStatusMeta(value) {
   return QUOTE_STATUS_META[normalizeQuoteStatus(value)] || QUOTE_STATUS_META.pending;
 }
 
 function normalizeWorkOrderStatus(value) {
-  return Object.prototype.hasOwnProperty.call(WORK_ORDER_STATUS_META, value) ? value : "created";
+  if (value === "delivered") return "delivered";
+  if (value === "ready") return "ready";
+  return "production";
 }
 
 function getWorkOrderStatusMeta(value) {
@@ -10276,7 +10294,9 @@ async function initApp() {
           ...record,
           id: current.id,
           createdAt: current.createdAt,
-          status: current.status || record.status,
+          status: current.serverDecision ? "pending" : current.status || record.status,
+          serverDecision: "",
+          serverDecisionStale: false,
           osId: current.osId || "",
           createdByUserId: current.createdByUserId || record.createdByUserId || "",
           createdByUsername: current.createdByUsername || record.createdByUsername || "",
@@ -10315,99 +10335,6 @@ async function initApp() {
       at: new Date().toISOString(),
     };
   }
-
-  function getCurrentWorkOrderUserMeta() {
-    const username = String(currentUser?.username || "usuario").trim() || "usuario";
-    const userId = String(currentUser?.id || "anonymous").trim() || "anonymous";
-    const prefix = username
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 3)
-      .map((part) => part[0])
-      .join("")
-      .toUpperCase() || "USR";
-    return { username, userId, prefix };
-  }
-
-  function getNextWorkOrderNumber() {
-    const currentYear = new Date().getFullYear();
-    const userMeta = getCurrentWorkOrderUserMeta();
-    const userOrders = state.workOrders.filter((item) => item.createdByUserId === userMeta.userId);
-    const nextSequence = userOrders.reduce((max, item) => Math.max(max, Number(item.sequenceNumber || 0)), 0) + 1;
-    return {
-      sequenceNumber: nextSequence,
-      osNumber: `${userMeta.prefix}-${currentYear}-${String(nextSequence).padStart(4, "0")}`,
-      ...userMeta,
-    };
-  }
-
-  function createWorkOrderFromQuote(quote, options = {}) {
-    const createdAt = new Date().toISOString();
-    const numbering = getNextWorkOrderNumber();
-    const workOrder = {
-      id: `os-${Date.now()}`,
-      osNumber: numbering.osNumber,
-      quoteId: quote.id,
-      quoteTitle: quote.title || "Orçamento",
-      clientName: quote.clientName || state.client.name || "",
-      clientContact: quote.clientContact || state.client.contact || "",
-      clientCnpj: quote.clientCnpj || state.client.cnpj || "",
-      total: Number(quote.total || 0),
-      status: "created",
-      priority: options.priority || "normal",
-      owner: options.owner || "",
-      promisedDate: options.promisedDate || "",
-      deliveryDate: "",
-      deliveryAddress: options.deliveryAddress || state.company.address || "",
-      paymentTerms: quote.paymentTerms || state.paymentTerms || "",
-      paymentMethod: options.paymentMethod || "",
-      entryPaid: Boolean(options.entryPaid),
-      entryAmount: options.entryAmount === "" || options.entryAmount === null || typeof options.entryAmount === "undefined"
-        ? ""
-        : toMoneyNumber(options.entryAmount),
-      totalPaid: Boolean(options.totalPaid),
-      productionNotes: options.productionNotes || "",
-      deliveryNotes: "",
-      internalNotes: options.internalNotes || "",
-      createdAt,
-      updatedAt: createdAt,
-      createdByUserId: numbering.userId,
-      createdByUsername: numbering.username,
-      salesUserId: quote.createdByUserId || numbering.userId,
-      salesUsername: quote.createdByUsername || numbering.username,
-      sequenceNumber: numbering.sequenceNumber,
-      timeline: [
-        createWorkOrderTimelineEntry("OS gerada", `Criada a partir do orçamento ${quote.title || quote.id}.`),
-      ],
-      items: Array.isArray(quote.items) ? deepClone(quote.items) : [],
-    };
-
-    state.workOrders.unshift(workOrder);
-    quote.osId = workOrder.id;
-    quote.status = "converted";
-    quote.updatedAt = createdAt;
-    return workOrder;
-  }
-
-  function syncQuoteStatusFromWorkOrder(workOrder) {
-    if (!workOrder?.quoteId) {
-      return;
-    }
-    const quote = state.quoteHistory.find((item) => item.id === workOrder.quoteId);
-    if (!quote) {
-      return;
-    }
-    if (workOrder.status === "delivered" || workOrder.status === "closed") {
-      quote.status = "completed";
-    } else if (workOrder.status === "cancelled") {
-      quote.status = "cancelled";
-    } else {
-      quote.status = "converted";
-    }
-    quote.osId = workOrder.id;
-    quote.updatedAt = new Date().toISOString();
-  }
-
 
   // Durable recovery backup separate from the normal application cache.
   // Never change the original base while unsynchronized edits remain.
@@ -10753,7 +10680,7 @@ async function initApp() {
       }
 
       const serialized = JSON.stringify(result.payload);
-      if (serialized === lastSharedSnapshot || result.updatedAt === sharedUpdatedAt) {
+      if (serialized === lastSharedSnapshot) {
         return { status: "unchanged" };
       }
 
@@ -12877,10 +12804,10 @@ async function initApp() {
     const totalQuotes = state.quoteHistory.length;
     const totalValue = state.quoteHistory.reduce((sum, item) => sum + Number(item.total || 0), 0);
     const convertedValue = state.quoteHistory
-      .filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status)))
+      .filter((item) => ["approved", "converted", "completed"].includes(getQuoteWorkflowStatus(item)))
       .reduce((sum, item) => sum + Number(item.total || 0), 0);
     const conversionRate = totalQuotes
-      ? ((state.quoteHistory.filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status))).length / totalQuotes) * 100)
+      ? ((state.quoteHistory.filter((item) => ["approved", "converted", "completed"].includes(getQuoteWorkflowStatus(item))).length / totalQuotes) * 100)
       : 0;
     document.getElementById("history-count").textContent = formatInteger(totalQuotes);
     document.getElementById("history-total").textContent = formatCurrency(totalValue);
@@ -12900,7 +12827,7 @@ async function initApp() {
     }
 
     const filteredHistory = state.quoteHistory.filter((item) => {
-      const statusMatch = historyFilters.status === "all" || normalizeQuoteStatus(item.status) === historyFilters.status;
+      const statusMatch = historyFilters.status === "all" || getQuoteWorkflowStatus(item) === historyFilters.status;
       const clientMatch = !historyFilters.client || normalizeLookupText(item.clientName || "").includes(normalizeLookupText(historyFilters.client));
       const itemDate = typeof item.createdAt === "string" ? item.createdAt.slice(0, 10) : "";
       const startMatch = !historyFilters.start || itemDate >= historyFilters.start;
@@ -12912,7 +12839,8 @@ async function initApp() {
       ? filteredHistory
           .map(
             (item) => {
-              const statusMeta = getQuoteStatusMeta(item.status);
+              const displayedStatus = item.serverDecisionStale ? "pending" : item.serverDecision || item.status;
+              const statusMeta = getQuoteStatusMeta(displayedStatus);
               return `
               <article class="list-card" data-quote-id="${escapeHtml(item.id)}">
                 <div>
@@ -12921,23 +12849,28 @@ async function initApp() {
                   <p class="list-meta">${escapeHtml(formatDateTime(item.createdAt) || "data indisponível")} | Total ${escapeHtml(formatCurrency(item.total || 0))}</p>
                   ${item.osId ? `<p class="list-meta">OS vinculada: ${escapeHtml(state.workOrders.find((entry) => entry.id === item.osId)?.osNumber || "Gerada")}</p>` : ""}
                   <div class="history-status-row">
-                    ${Object.entries(QUOTE_STATUS_META).map(([statusId, meta]) => `
+                    ${["approved", "rejected"].map((statusId) => {
+                      const meta = statusId === "approved" ? { label: "Aprovado", tone: "approved" } : { label: "Recusado", tone: "cancelled" };
+                      return `
                       <button
-                        class="status-chip ${statusId === normalizeQuoteStatus(item.status) ? "is-active" : ""}"
+                        class="status-chip ${statusId === displayedStatus ? "is-active" : ""}"
                         type="button"
                         data-history-status="${escapeHtml(statusId)}"
                         data-quote-id="${escapeHtml(item.id)}"
                         data-tone="${escapeHtml(meta.tone)}"
+                        ${item.serverOsId ? "disabled" : ""}
                       >${escapeHtml(meta.label)}</button>
-                    `).join("")}
+                    `; }).join("")}
                   </div>
                   <p class="list-meta">Status atual: <span class="status-inline status-inline-${escapeHtml(statusMeta.tone)}">${escapeHtml(statusMeta.label)}</span></p>
+                  ${item.serverDecisionStale ? `<p class="list-meta status-inline status-inline-cancelled">Orçamento alterado após a decisão. Registre novamente como aprovado ou recusado.</p>` : ""}
+                  ${item.serverOsNumber ? `<p class="list-meta">O.S. vinculada: ${escapeHtml(item.serverOsNumber)}</p>` : ""}
                   ${item.summary ? `<p class="list-notes">${escapeHtml(item.summary)}</p>` : ""}
                 </div>
                 <div class="list-actions">
                   <button class="button button-primary" type="button" data-history-action="load-client" data-quote-id="${escapeHtml(item.id)}">Usar cliente</button>
-                  <button class="button" type="button" data-history-action="edit-quote" data-quote-id="${escapeHtml(item.id)}">Editar orçamento</button>
-                  <button class="button" type="button" data-history-action="generate-os" data-quote-id="${escapeHtml(item.id)}"${item.osId ? " disabled" : ""}>${item.osId ? "OS gerada" : "Gerar OS"}</button>
+                  <button class="button" type="button" data-history-action="edit-quote" data-quote-id="${escapeHtml(item.id)}"${item.serverOsId ? " disabled" : ""}>Editar orçamento</button>
+                  <button class="button" type="button" data-history-action="generate-os" data-quote-id="${escapeHtml(item.id)}"${item.serverDecision !== "approved" || item.serverOsId ? " disabled" : ""}>${item.serverOsNumber ? `O.S. ${escapeHtml(item.serverOsNumber)}` : "Gerar O.S."}</button>
                   <button class="button" type="button" data-history-action="copy" data-quote-id="${escapeHtml(item.id)}">Copiar resumo</button>
                   <button class="button button-danger" type="button" data-history-action="delete" data-quote-id="${escapeHtml(item.id)}">Excluir</button>
                 </div>
@@ -12950,8 +12883,8 @@ async function initApp() {
   }
 
   function renderOrdersTab() {
-    const openCount = state.workOrders.filter((item) => !["delivered", "closed", "cancelled"].includes(normalizeWorkOrderStatus(item.status))).length;
-    const productionCount = state.workOrders.filter((item) => ["prepress", "production", "finishing"].includes(normalizeWorkOrderStatus(item.status))).length;
+    const openCount = state.workOrders.filter((item) => normalizeWorkOrderStatus(item.status) !== "delivered").length;
+    const productionCount = state.workOrders.filter((item) => normalizeWorkOrderStatus(item.status) === "production").length;
     const readyCount = state.workOrders.filter((item) => ["ready", "delivered"].includes(normalizeWorkOrderStatus(item.status))).length;
     const totalValue = state.workOrders.reduce((sum, item) => sum + Number(item.total || 0), 0);
 
@@ -12977,12 +12910,11 @@ async function initApp() {
     osList.innerHTML = filteredOrders.length
       ? filteredOrders.map((item) => {
           const statusMeta = getWorkOrderStatusMeta(item.status);
-          const priorityMeta = getWorkOrderPriorityMeta(item.priority);
+          const canEditOrder = !item.legacy && item.responsibleUserId === currentUser?.id;
           const quoteLabel = item.quoteTitle || "Orçamento sem título";
           const timelineMarkup = (item.timeline || [])
             .slice()
             .sort((left, right) => String(right.at || "").localeCompare(String(left.at || "")))
-            .slice(0, 5)
             .map((entry) => `
               <div class="os-timeline-item">
                 <strong>${escapeHtml(entry.label || "Atualização")}</strong>
@@ -13001,10 +12933,12 @@ async function initApp() {
                 </div>
                 <div>
                   <p class="list-meta">Status atual: <span class="status-inline status-inline-${escapeHtml(statusMeta.tone)}">${escapeHtml(statusMeta.label)}</span></p>
-                  <p class="list-meta">Prioridade: <span class="status-inline status-inline-${escapeHtml(priorityMeta.tone)}">${escapeHtml(priorityMeta.label)}</span></p>
-                  <p class="list-meta">Prazo: ${escapeHtml(item.promisedDate || "Não definido")}</p>
-                  <p class="list-meta">Sequência do usuário: ${escapeHtml(item.createdByUsername || "Usuário")} #${escapeHtml(String(item.sequenceNumber || 1))}</p>
+                  <p class="list-meta">Criada por: ${escapeHtml(item.createdByUsername || "Usuário")}</p>
+                  <p class="list-meta">Responsável: ${escapeHtml(item.owner || "Não definido")}</p>
+                  <p class="list-meta">Entrada: ${escapeHtml(formatDateTime(item.enteredAt || item.createdAt) || "data indisponível")}</p>
+                  <p class="list-meta">Entrega prevista: ${escapeHtml(item.promisedDate || "Não definida")}</p>
                 </div>
+                <label class="os-select-option"><input type="checkbox" data-os-select="${escapeHtml(item.id)}"><span>Selecionar para impressão</span></label>
               </div>
 
               <div class="history-status-row">
@@ -13015,75 +12949,37 @@ async function initApp() {
                     data-os-status="${escapeHtml(statusId)}"
                     data-os-id="${escapeHtml(item.id)}"
                     data-tone="${escapeHtml(meta.tone)}"
-                  >${escapeHtml(meta.label)}</button>
-                `).join("")}
-              </div>
-
-              <div class="history-status-row">
-                ${Object.entries(WORK_ORDER_PRIORITY_META).map(([priorityId, meta]) => `
-                  <button
-                    class="status-chip ${priorityId === normalizeWorkOrderPriority(item.priority) ? "is-active" : ""}"
-                    type="button"
-                    data-os-priority="${escapeHtml(priorityId)}"
-                    data-os-id="${escapeHtml(item.id)}"
-                    data-tone="${escapeHtml(meta.tone)}"
+                    ${!canEditOrder || statusId === normalizeWorkOrderStatus(item.status) ? "disabled" : ""}
                   >${escapeHtml(meta.label)}</button>
                 `).join("")}
               </div>
 
               <div class="os-card-field-grid">
+                ${item.legacy ? `<p class="helper-text full-width">Registro anterior ao novo fluxo. Está disponível para consulta e impressão; alterações auditadas ficam habilitadas nas O.S. criadas pelo novo fluxo.</p>` : ""}
                 <label>
-                  <span>Responsável</span>
-                  <input type="text" value="${escapeHtml(item.owner || "")}" data-os-field="owner" data-os-id="${escapeHtml(item.id)}" placeholder="Ex.: Produção / Atendente">
+                  <span>Colaborador responsável</span>
+                  <select data-os-field="responsibleUserId" data-os-id="${escapeHtml(item.id)}"${!canEditOrder ? " disabled" : ""}>
+                    ${(state.security?.authUsers || []).filter((user) => user?.status === "active" || user?.id === currentUser?.id).map((user) => `<option value="${escapeHtml(user.id)}"${user.id === item.responsibleUserId ? " selected" : ""}>${escapeHtml(user.username || user.email || "Colaborador")}</option>`).join("")}
+                  </select>
                 </label>
                 <label>
                   <span>Entrega prevista</span>
-                  <input type="date" value="${escapeHtml(item.promisedDate || "")}" data-os-field="promisedDate" data-os-id="${escapeHtml(item.id)}">
+                  <input type="date" value="${escapeHtml(item.promisedDate || "")}" data-os-field="promisedDate" data-os-id="${escapeHtml(item.id)}"${!canEditOrder ? " disabled" : ""}>
                 </label>
                 <label>
-                  <span>Data de entrega</span>
-                  <input type="date" value="${escapeHtml(item.deliveryDate || "")}" data-os-field="deliveryDate" data-os-id="${escapeHtml(item.id)}">
+                  <span>Valor pago</span>
+                  <input type="number" min="0" max="${escapeHtml(item.total || 0)}" step="0.01" value="${escapeHtml(item.paidAmount || 0)}" data-os-field="paidAmount" data-os-id="${escapeHtml(item.id)}"${!canEditOrder ? " disabled" : ""}>
                 </label>
-                <label>
-                  <span>Forma de pagamento acordada</span>
-                  <input type="text" value="${escapeHtml(item.paymentMethod || "")}" data-os-field="paymentMethod" data-os-id="${escapeHtml(item.id)}" placeholder="Pix, cartão, boleto, dinheiro...">
-                </label>
-                <label>
-                  <span>Contato do cliente</span>
-                  <input type="text" value="${escapeHtml(item.clientContact || "")}" data-os-field="clientContact" data-os-id="${escapeHtml(item.id)}">
-                </label>
-                <label>
-                  <span>Valor de entrada pago</span>
-                  <input type="number" min="0" step="0.01" value="${escapeHtml(item.entryAmount === "" ? "" : item.entryAmount || "")}" data-os-field="entryAmount" data-os-id="${escapeHtml(item.id)}" placeholder="0,00">
-                </label>
-                <label>
-                  <span>Pagamento de entrada realizado</span>
-                  <select data-os-field="entryPaid" data-os-id="${escapeHtml(item.id)}">
-                    <option value="false"${item.entryPaid ? "" : " selected"}>Não</option>
-                    <option value="true"${item.entryPaid ? " selected" : ""}>Sim</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Pagamento total realizado</span>
-                  <select data-os-field="totalPaid" data-os-id="${escapeHtml(item.id)}">
-                    <option value="false"${item.totalPaid ? "" : " selected"}>Não</option>
-                    <option value="true"${item.totalPaid ? " selected" : ""}>Sim</option>
-                  </select>
-                </label>
+                <div class="os-balance-summary"><span>Falta pagar</span><strong>${escapeHtml(formatCurrency(item.balance ?? Math.max(0, Number(item.total || 0) - Number(item.paidAmount || 0))))}</strong></div>
                 <label class="full-width">
-                  <span>Observações de produção</span>
-                  <textarea data-os-field="productionNotes" data-os-id="${escapeHtml(item.id)}" placeholder="Materiais, conferência, impressão, acabamento...">${escapeHtml(item.productionNotes || "")}</textarea>
-                </label>
-                <label class="full-width">
-                  <span>Observações de entrega / fechamento</span>
-                  <textarea data-os-field="deliveryNotes" data-os-id="${escapeHtml(item.id)}" placeholder="Retirada, envio, aceite, pendências...">${escapeHtml(item.deliveryNotes || "")}</textarea>
+                  <span>Observações da O.S.</span>
+                  <textarea data-os-field="notes" data-os-id="${escapeHtml(item.id)}" placeholder="Observações internas"${!canEditOrder ? " disabled" : ""}>${escapeHtml(item.notes || "")}</textarea>
                 </label>
               </div>
 
               <div class="os-card-actions">
-                <button class="button button-primary" type="button" data-os-action="load-client" data-os-id="${escapeHtml(item.id)}">Usar cliente</button>
+                <button class="button button-primary" type="button" data-os-action="save" data-os-id="${escapeHtml(item.id)}"${!canEditOrder ? " disabled" : ""}>Salvar alterações</button>
                 <button class="button" type="button" data-os-action="copy-summary" data-os-id="${escapeHtml(item.id)}">Copiar OS</button>
-                <button class="button button-danger" type="button" data-os-action="delete" data-os-id="${escapeHtml(item.id)}">Excluir OS</button>
               </div>
 
               <div class="os-timeline">
@@ -13094,6 +12990,31 @@ async function initApp() {
           `;
         }).join("")
       : `<div class="empty-state"><strong>Nenhuma OS encontrada</strong><span>Gere uma OS a partir do orçamento atual ou de um item aprovado do histórico.</span></div>`;
+    renderWorkOrderPrintArea();
+  }
+
+  function renderWorkOrderPrintArea() {
+    const area = document.getElementById("os-print-area");
+    if (!area) return;
+    const ids = new Set([...document.querySelectorAll("[data-os-select]:checked")].map((input) => input.dataset.osSelect));
+    const selected = state.workOrders.filter((order) => ids.has(order.id));
+    const itemRows = (items) => (Array.isArray(items) ? items : []).map((entry) => `
+      <li><span>${escapeHtml(entry.label || entry.category || "Produto")}${entry.detail ? ` — ${escapeHtml(entry.detail)}` : ""} × ${escapeHtml(entry.quantity ?? 1)}</span><strong>${escapeHtml(formatCurrency(entry.total || 0))}</strong></li>
+    `).join("");
+    const cards = selected.map((order) => `
+      <article class="os-print-card">
+        <header><div><strong>GrafiCalc · Ordem de Serviço</strong><small>Responsável pela criação: ${escapeHtml(order.createdByUsername || "—")}</small></div><b>${escapeHtml(order.osNumber)}</b></header>
+        <section class="os-print-client"><strong>${escapeHtml(order.clientName || "Cliente não informado")}</strong><span>${escapeHtml(order.clientContact || "")}</span><span>${escapeHtml(order.clientCnpj || "")}</span></section>
+        <div class="os-print-dates"><span>Entrada: ${escapeHtml(formatDateTime(order.enteredAt || order.createdAt) || "—")}</span><span>Prevista: ${escapeHtml(order.promisedDate || "Não definida")}</span></div>
+        <section class="os-print-products"><strong>Produtos pedidos</strong><ul>${itemRows(order.items) || "<li>Itens conforme orçamento salvo</li>"}</ul></section>
+        <footer><span>Total <b>${escapeHtml(formatCurrency(order.total || 0))}</b></span><span>Pago <b>${escapeHtml(formatCurrency(order.paidAmount || 0))}</b></span><span>Falta <b>${escapeHtml(formatCurrency(order.balance ?? Math.max(0, Number(order.total || 0) - Number(order.paidAmount || 0))))}</b></span></footer>
+      </article>
+    `);
+    const sheets = [];
+    for (let index = 0; index < cards.length; index += 4) sheets.push(`<section class="os-print-sheet">${cards.slice(index, index + 4).join("")}</section>`);
+    area.innerHTML = sheets.join("");
+    const button = document.getElementById("print-selected-os-button");
+    if (button) button.textContent = selected.length ? `Imprimir ${selected.length} O.S. selecionada${selected.length === 1 ? "" : "s"}` : "Imprimir O.S. selecionadas";
   }
 
   function renderReportsTab() {
@@ -13115,7 +13036,7 @@ async function initApp() {
     if (reportsFilterOsStatus) reportsFilterOsStatus.value = reportsFilters.osStatus;
 
     const filteredQuotes = state.quoteHistory.filter((item) => {
-      const status = normalizeQuoteStatus(item.status);
+      const status = getQuoteWorkflowStatus(item);
       const statusMatch = reportsFilters.quoteStatus === "all" || status === reportsFilters.quoteStatus;
       return statusMatch && inPeriod(item.createdAt);
     });
@@ -13136,7 +13057,7 @@ async function initApp() {
         id: statusId,
         label: meta.label,
         tone: meta.tone,
-        count: filteredQuotes.filter((item) => normalizeQuoteStatus(item.status) === statusId).length,
+        count: filteredQuotes.filter((item) => getQuoteWorkflowStatus(item) === statusId).length,
       }));
       const maxCount = Math.max(1, ...chartData.map((item) => item.count));
       quoteChart.innerHTML = `
@@ -13248,7 +13169,7 @@ async function initApp() {
       ? employeeUsers.map((user) => {
           const userQuotes = state.quoteHistory.filter((item) => getQuoteOwnerId(item) === user.id);
           const userMonthQuotes = userQuotes.filter((item) => isCurrentMonth(item.createdAt));
-          const convertedQuotes = userMonthQuotes.filter((item) => convertedStatuses.has(normalizeQuoteStatus(item.status)));
+          const convertedQuotes = userMonthQuotes.filter((item) => convertedStatuses.has(getQuoteWorkflowStatus(item)));
           const userOrders = state.workOrders.filter((item) => (item.salesUserId || item.createdByUserId) === user.id);
           const userMonthOrders = userOrders.filter((item) => isCurrentMonth(item.createdAt || item.updatedAt));
           const quoteTotal = userMonthQuotes.reduce((sum, item) => sum + Number(item.total || 0), 0);
@@ -13284,32 +13205,32 @@ async function initApp() {
     const monthlyQuotes = state.quoteHistory.filter((item) => getMonthKey(item.createdAt) === currentMonthKey);
     const previousMonthlyQuotes = state.quoteHistory.filter((item) => getMonthKey(item.createdAt) === previousMonthKey);
     const monthlyWorkOrders = state.workOrders.filter((item) => getMonthKey(item.createdAt || item.updatedAt || item.deliveryDate) === currentMonthKey);
-    const soldQuotes = monthlyQuotes.filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status)));
+    const soldQuotes = monthlyQuotes.filter((item) => ["approved", "converted", "completed"].includes(getQuoteWorkflowStatus(item)));
     const quoteCount = monthlyQuotes.length;
-    const approvedCount = monthlyQuotes.filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status))).length;
-    const completedCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "completed").length;
-    const pendingCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "pending").length;
-    const inAnalysisCount = monthlyQuotes.filter((item) => ["sent", "negotiation"].includes(normalizeQuoteStatus(item.status))).length;
-    const convertedCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "converted").length;
-    const cancelledCount = monthlyQuotes.filter((item) => normalizeQuoteStatus(item.status) === "cancelled").length;
+    const approvedCount = monthlyQuotes.filter((item) => ["approved", "converted", "completed"].includes(getQuoteWorkflowStatus(item))).length;
+    const completedCount = monthlyQuotes.filter((item) => getQuoteWorkflowStatus(item) === "completed").length;
+    const pendingCount = monthlyQuotes.filter((item) => getQuoteWorkflowStatus(item) === "pending").length;
+    const inAnalysisCount = monthlyQuotes.filter((item) => ["sent", "negotiation"].includes(getQuoteWorkflowStatus(item))).length;
+    const convertedCount = monthlyQuotes.filter((item) => getQuoteWorkflowStatus(item) === "converted").length;
+    const cancelledCount = monthlyQuotes.filter((item) => ["cancelled", "rejected"].includes(getQuoteWorkflowStatus(item))).length;
     const conversionCount = approvedCount + convertedCount + completedCount;
     const conversionRate = quoteCount ? (conversionCount / quoteCount) * 100 : 0;
     const approvedValue = monthlyQuotes
-      .filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status)))
+      .filter((item) => ["approved", "converted", "completed"].includes(getQuoteWorkflowStatus(item)))
       .reduce((sum, item) => sum + Number(item.total || 0), 0);
     const pendingValue = monthlyQuotes
-      .filter((item) => ["pending", "sent", "negotiation"].includes(normalizeQuoteStatus(item.status)))
+      .filter((item) => ["pending", "sent", "negotiation"].includes(getQuoteWorkflowStatus(item)))
       .reduce((sum, item) => sum + Number(item.total || 0), 0);
     const quoteValues = monthlyQuotes.map((item) => Number(item.total || 0)).filter((value) => value > 0);
     const minQuoteValue = quoteValues.length ? Math.min(...quoteValues) : 0;
     const maxQuoteValue = quoteValues.length ? Math.max(...quoteValues) : 0;
     const previousApprovedValue = previousMonthlyQuotes
-      .filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status)))
+      .filter((item) => ["approved", "converted", "completed"].includes(getQuoteWorkflowStatus(item)))
       .reduce((sum, item) => sum + Number(item.total || 0), 0);
     const previousPendingValue = previousMonthlyQuotes
-      .filter((item) => ["pending", "sent", "negotiation"].includes(normalizeQuoteStatus(item.status)))
+      .filter((item) => ["pending", "sent", "negotiation"].includes(getQuoteWorkflowStatus(item)))
       .reduce((sum, item) => sum + Number(item.total || 0), 0);
-    const previousConversionCount = previousMonthlyQuotes.filter((item) => ["approved", "converted", "completed"].includes(normalizeQuoteStatus(item.status))).length;
+    const previousConversionCount = previousMonthlyQuotes.filter((item) => ["approved", "converted", "completed"].includes(getQuoteWorkflowStatus(item))).length;
     const previousConversionRate = previousMonthlyQuotes.length ? (previousConversionCount / previousMonthlyQuotes.length) * 100 : 0;
 
     const statusChart = document.getElementById("home-status-chart");
@@ -13410,7 +13331,7 @@ async function initApp() {
     if (followupList) {
       const followupStatusPriority = { negotiation: 0, sent: 1, pending: 2 };
       const followups = state.quoteHistory
-        .filter((item) => Object.prototype.hasOwnProperty.call(followupStatusPriority, normalizeQuoteStatus(item.status)))
+        .filter((item) => Object.prototype.hasOwnProperty.call(followupStatusPriority, getQuoteWorkflowStatus(item)))
         .map((item) => {
           const updatedAt = new Date(item.updatedAt || item.createdAt || 0);
           const ageInDays = Number.isFinite(updatedAt.getTime())
@@ -18803,33 +18724,103 @@ async function initApp() {
     setMainFeedback(isEditingExistingQuote ? "Orçamento salvo e atualizado no histórico compartilhado." : "Orçamento salvo no histórico compartilhado.", "success");
   });
 
-  document.getElementById("save-and-generate-os-button")?.addEventListener("click", () => {
-    const isEditingExistingQuote = Boolean(editingQuoteId);
-    const quote = saveQuoteRecord(buildQuoteRecordFromCurrentState());
-    const workOrder = createWorkOrderFromQuote(quote);
-    persist();
-    renderHistoryTab();
-    renderOrdersTab();
-    renderHomeTab();
-    renderEmployeesTab();
-    setStatusMessage(osStatus, `OS ${workOrder.osNumber} gerada com sucesso.`, "success");
-    setMainFeedback(isEditingExistingQuote ? `Orçamento atualizado e convertido na ${workOrder.osNumber}.` : `Orçamento salvo e convertido na ${workOrder.osNumber}.`, "success");
-  });
+  async function requestWorkOrderApi(path, method, payload) {
+    const response = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json", "X-GrafiCalc-Request": "1" },
+      body: JSON.stringify(payload), cache: "no-store",
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `work-order-http-${response.status}`);
+    return result;
+  }
 
-  document.getElementById("create-os-from-current-button")?.addEventListener("click", () => {
-    const isEditingExistingQuote = Boolean(editingQuoteId);
-    const quote = saveQuoteRecord(buildQuoteRecordFromCurrentState());
-    quote.status = "approved";
-    const workOrder = createWorkOrderFromQuote(quote);
-    persist();
-    renderHistoryTab();
-    renderOrdersTab();
-    renderHomeTab();
-    renderEmployeesTab();
-    selectTab("os");
-    setStatusMessage(osStatus, `OS ${workOrder.osNumber} criada a partir do orçamento atual.`, "success");
-    setMainFeedback(isEditingExistingQuote ? `Orçamento atualizado e OS ${workOrder.osNumber} criada com sucesso.` : `OS ${workOrder.osNumber} criada com sucesso.`, "success");
+  function requestWorkOrderPassword() {
+    const dialog = document.getElementById("work-order-password-dialog");
+    const form = document.getElementById("work-order-password-form");
+    const input = document.getElementById("work-order-password");
+    const cancel = dialog.querySelector("[data-os-password-cancel]");
+    return new Promise((resolve) => {
+      input.value = "";
+      dialog.showModal();
+      input.focus();
+      const onSubmit = (event) => { event.preventDefault(); finish(input.value); };
+      const onCancel = () => finish("");
+      const onDialogCancel = () => finish("");
+      const finish = (value) => {
+        form.removeEventListener("submit", onSubmit);
+        cancel.removeEventListener("click", onCancel);
+        dialog.removeEventListener("cancel", onDialogCancel);
+        if (dialog.open) dialog.close();
+        resolve(value);
+      };
+      form.addEventListener("submit", onSubmit);
+      cancel.addEventListener("click", onCancel);
+      dialog.addEventListener("cancel", onDialogCancel);
+    });
+  }
+
+  function requestWorkOrderCreation(quote) {
+    const dialog = document.getElementById("work-order-create-dialog");
+    const form = document.getElementById("work-order-create-form");
+    const select = document.getElementById("work-order-responsible");
+    const date = document.getElementById("work-order-promised-date");
+    const paid = document.getElementById("work-order-paid-amount");
+    const balance = document.getElementById("work-order-create-balance");
+    const cancel = dialog.querySelector("[data-os-create-cancel]");
+    const members = [...(state.security?.authUsers || [])];
+    if (currentUser?.id && !members.some((user) => user.id === currentUser.id)) members.unshift({ id: currentUser.id, username: currentUser.username, status: "active" });
+    const eligible = members.filter((user) => user?.id && (user.status === "active" || user.id === currentUser?.id));
+    select.innerHTML = eligible.map((user) => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.username || user.email || "Colaborador")}</option>`).join("");
+    if (!eligible.length) {
+      setStatusMessage(osStatus, "Cadastre e ative pelo menos um colaborador na aba Equipe antes de gerar uma O.S.", "warning");
+      return Promise.resolve(null);
+    }
+    document.getElementById("work-order-create-quote").textContent = `${quote.title || "Orçamento"} · ${quote.clientName || "Cliente não informado"} · ${formatCurrency(quote.total || 0)}`;
+    paid.value = "0";
+    paid.max = String(Number(quote.total || 0));
+    date.value = "";
+    const updateBalance = () => {
+      const amount = Math.max(0, Number(paid.value || 0));
+      balance.textContent = `Falta pagar na criação: ${formatCurrency(Math.max(0, Number(quote.total || 0) - amount))}`;
+    };
+    updateBalance();
+    paid.oninput = updateBalance;
+    dialog.showModal();
+    return new Promise((resolve) => {
+      const onSubmit = (event) => {
+        event.preventDefault();
+        const amount = Number(paid.value || 0);
+        if (!Number.isFinite(amount) || amount < 0 || amount > Number(quote.total || 0)) {
+          balance.textContent = "O valor pago precisa estar entre R$ 0,00 e o total do orçamento.";
+          return;
+        }
+        finish({ responsibleUserId: select.value, promisedDate: date.value, paidAmount: amount });
+      };
+      const onCancel = () => finish(null);
+      const onDialogCancel = () => finish(null);
+      const finish = (value) => {
+        form.removeEventListener("submit", onSubmit);
+        cancel.removeEventListener("click", onCancel);
+        dialog.removeEventListener("cancel", onDialogCancel);
+        if (dialog.open) dialog.close();
+        resolve(value);
+      };
+      form.addEventListener("submit", onSubmit);
+      cancel.addEventListener("click", onCancel);
+      dialog.addEventListener("cancel", onDialogCancel);
+    });
+  }
+
+  document.getElementById("work-order-password-status").textContent = "";
+  document.getElementById("print-selected-os-button")?.addEventListener("click", () => {
+    const selectedCount = document.querySelectorAll("[data-os-select]:checked").length;
+    if (!selectedCount) { setStatusMessage(osStatus, "Selecione ao menos uma O.S. para imprimir.", "warning"); return; }
+    renderWorkOrderPrintArea();
+    document.body.classList.add("is-printing-work-orders");
+    window.print();
   });
+  window.addEventListener("afterprint", () => document.body.classList.remove("is-printing-work-orders"));
 
   clientsList.addEventListener("click", async (event) => {
     const button = event.target.closest("[data-client-action]");
@@ -18890,16 +18881,22 @@ async function initApp() {
     const statusButton = event.target.closest("[data-history-status]");
     if (statusButton) {
       const item = state.quoteHistory.find((entry) => entry.id === statusButton.dataset.quoteId);
-      if (!item) {
+      if (!item || item.serverOsId) {
         return;
       }
-      item.status = normalizeQuoteStatus(statusButton.dataset.historyStatus);
-      item.updatedAt = new Date().toISOString();
-      persist();
+      try {
+        const { decision } = await requestWorkOrderApi("/api/quotes/decision", "POST", {
+          quoteId: item.id, decision: statusButton.dataset.historyStatus,
+        });
+        item.serverDecision = decision.decision;
+      } catch (error) {
+        setMainFeedback(error.message === "quote-already-converted" ? "Este orçamento já foi convertido e não pode mudar de decisão." : "Não foi possível registrar a decisão do orçamento.", "error");
+        return;
+      }
       renderHistoryTab();
       renderHomeTab();
       renderEmployeesTab();
-      setMainFeedback(`Status do orçamento alterado para ${getQuoteStatusMeta(item.status).label}.`, "success");
+      setMainFeedback(`Orçamento ${item.serverDecision === "approved" ? "aprovado" : "recusado"}.`, "success");
       return;
     }
 
@@ -18932,24 +18929,33 @@ async function initApp() {
       selectTab("orcamento");
       setMainFeedback(`Orçamento "${item.title || "sem título"}" carregado para edição. Ao salvar, o registro existente será atualizado.`, "success");
     } else if (button.dataset.historyAction === "generate-os") {
-      if (item.osId) {
-        setMainFeedback("Este orçamento já possui uma OS vinculada.", "warning");
+      if (item.serverOsId || item.serverDecision !== "approved") {
+        setMainFeedback(item.serverOsId ? "Este orçamento já possui uma O.S. vinculada." : "Aprove o orçamento antes de gerar a O.S.", "warning");
         return;
       }
-      item.status = "approved";
-      const workOrder = createWorkOrderFromQuote(item);
-      persist();
-      renderHistoryTab();
-      renderOrdersTab();
-      renderHomeTab();
-      renderEmployeesTab();
-      selectTab("os");
-      setStatusMessage(osStatus, `OS ${workOrder.osNumber} gerada a partir do histórico.`, "success");
-      setMainFeedback(`OS ${workOrder.osNumber} criada com sucesso.`, "success");
+      const creation = await requestWorkOrderCreation(item);
+      if (!creation) return;
+      try {
+        const result = await requestWorkOrderApi("/api/work-orders", "POST", { quoteId: item.id, ...creation });
+        state.workOrders.unshift(result.workOrder);
+        item.serverOsId = result.workOrder.id;
+        item.serverOsNumber = result.workOrder.osNumber;
+        renderHistoryTab(); renderOrdersTab(); renderHomeTab(); renderEmployeesTab();
+        selectTab("os");
+        setStatusMessage(osStatus, `O.S. ${result.workOrder.osNumber} gerada.`, "success");
+        setMainFeedback(`O.S. ${result.workOrder.osNumber} criada com sucesso.`, "success");
+        await refreshSharedState(false);
+      } catch (error) {
+        setMainFeedback(error.message === "quote-changed-requires-approval" ? "O orçamento mudou depois da aprovação. Aprove-o novamente antes de gerar a O.S." : "Não foi possível gerar a O.S. Confira o colaborador, o valor pago e a conexão.", "error");
+      }
     } else if (button.dataset.historyAction === "copy") {
       navigator.clipboard.writeText(item.summary || item.title || "").catch(() => {});
       setMainFeedback("Resumo do histórico copiado.", "success");
     } else if (button.dataset.historyAction === "delete") {
+      if (item.serverOsId || item.serverDecision === "approved" || item.serverDecisionStale) {
+        setMainFeedback("Um orçamento aprovado ou já convertido precisa permanecer no histórico.", "warning");
+        return;
+      }
       if (!(await confirmAppAction({
         kicker: "Exclusão",
         title: "Excluir item do histórico",
@@ -18973,34 +18979,20 @@ async function initApp() {
     const statusButton = event.target.closest("[data-os-status]");
     if (statusButton) {
       const item = state.workOrders.find((entry) => entry.id === statusButton.dataset.osId);
-      if (!item) {
+      if (!item || item.responsibleUserId !== currentUser?.id) {
+        setStatusMessage(osStatus, "Somente o colaborador responsável pode alterar o status desta O.S.", "warning");
         return;
       }
-      item.status = normalizeWorkOrderStatus(statusButton.dataset.osStatus);
-      item.updatedAt = new Date().toISOString();
-      item.timeline.unshift(createWorkOrderTimelineEntry("Status atualizado", `Nova etapa: ${getWorkOrderStatusMeta(item.status).label}.`));
-      syncQuoteStatusFromWorkOrder(item);
-      persist();
-      renderOrdersTab();
-      renderHistoryTab();
-      renderHomeTab();
-      renderEmployeesTab();
-      setStatusMessage(osStatus, `OS ${item.osNumber} atualizada para ${getWorkOrderStatusMeta(item.status).label}.`, "success");
-      return;
-    }
-
-    const priorityButton = event.target.closest("[data-os-priority]");
-    if (priorityButton) {
-      const item = state.workOrders.find((entry) => entry.id === priorityButton.dataset.osId);
-      if (!item) {
-        return;
+      const password = await requestWorkOrderPassword();
+      if (!password) return;
+      try {
+        const result = await requestWorkOrderApi(`/api/work-orders/${encodeURIComponent(item.id)}`, "POST", { password, status: statusButton.dataset.osStatus });
+        state.workOrders = state.workOrders.map((entry) => entry.id === item.id ? result.workOrder : entry);
+        renderOrdersTab(); renderHomeTab(); renderEmployeesTab();
+        setStatusMessage(osStatus, `${item.osNumber} atualizada para ${getWorkOrderStatusMeta(result.workOrder.status).label}.`, "success");
+      } catch (error) {
+        setStatusMessage(osStatus, error.message === "invalid-credentials" ? "Senha incorreta; o status não foi alterado." : error.message === "invalid-status-transition" ? "A mudança de status não segue a sequência permitida." : "Não foi possível atualizar o status da O.S.", "error");
       }
-      item.priority = normalizeWorkOrderPriority(priorityButton.dataset.osPriority);
-      item.updatedAt = new Date().toISOString();
-      item.timeline.unshift(createWorkOrderTimelineEntry("Prioridade atualizada", `Prioridade definida como ${getWorkOrderPriorityMeta(item.priority).label}.`));
-      persist();
-      renderOrdersTab();
-      setStatusMessage(osStatus, `Prioridade da ${item.osNumber} ajustada.`, "success");
       return;
     }
 
@@ -19014,78 +19006,55 @@ async function initApp() {
       return;
     }
 
-    if (button.dataset.osAction === "load-client") {
-      state.client.name = item.clientName || state.client.name;
-      state.client.contact = item.clientContact || state.client.contact;
-      state.client.cnpj = item.clientCnpj || state.client.cnpj;
-      state.paymentTerms = item.paymentTerms || state.paymentTerms;
-      persist();
-      renderAll();
-      setMainFeedback("Cliente da OS carregado no orçamento atual.", "success");
-      return;
-    }
-
     if (button.dataset.osAction === "copy-summary") {
       const lines = [
         item.osNumber,
         item.clientName || "Cliente não informado",
         `Status: ${getWorkOrderStatusMeta(item.status).label}`,
-        `Prioridade: ${getWorkOrderPriorityMeta(item.priority).label}`,
         `Prazo: ${item.promisedDate || "Não definido"}`,
         `Total: ${formatCurrency(item.total || 0)}`,
+        `Pago: ${formatCurrency(item.paidAmount || 0)}`,
+        `Falta: ${formatCurrency(item.balance || 0)}`,
       ];
       navigator.clipboard.writeText(lines.join("\n")).catch(() => {});
       setMainFeedback("Resumo da OS copiado.", "success");
       return;
     }
-
-    if (button.dataset.osAction === "delete") {
-      if (!(await confirmAppAction({
-        kicker: "Exclusão",
-        title: "Excluir ordem de serviço",
-        message: `Deseja realmente excluir a ${item.osNumber}?`,
-        confirmLabel: "Excluir",
-        danger: true,
-      }))) {
-        setStatusMessage(osStatus, "A exclusão da OS foi cancelada.", "warning");
+    if (button.dataset.osAction === "save") {
+      if (item.responsibleUserId !== currentUser?.id) {
+        setStatusMessage(osStatus, "Somente o colaborador responsável pode salvar alterações nesta O.S.", "warning");
         return;
       }
-      const quote = state.quoteHistory.find((entry) => entry.id === item.quoteId);
-      if (quote) {
-        quote.osId = "";
-        quote.status = "approved";
-        quote.updatedAt = new Date().toISOString();
+      const card = button.closest(".os-card");
+      const values = Object.fromEntries([...card.querySelectorAll("[data-os-field]")].map((field) => [field.dataset.osField, field.value]));
+      const paidAmount = Number(values.paidAmount || 0);
+      if (!Number.isFinite(paidAmount) || paidAmount < 0 || paidAmount > Number(item.total || 0)) {
+        setStatusMessage(osStatus, "O valor pago deve ficar entre zero e o total da O.S.", "warning");
+        return;
       }
-      state.workOrders = state.workOrders.filter((entry) => entry.id !== item.id);
-      persist();
-      renderOrdersTab();
-      renderHistoryTab();
-      renderHomeTab();
-      renderEmployeesTab();
-      setStatusMessage(osStatus, `${item.osNumber} excluída.`, "warning");
+      const password = await requestWorkOrderPassword();
+      if (!password) return;
+      try {
+        const result = await requestWorkOrderApi(`/api/work-orders/${encodeURIComponent(item.id)}`, "PATCH", {
+          password, paidAmount, promisedDate: values.promisedDate || "", notes: values.notes || "",
+          responsibleUserId: values.responsibleUserId,
+        });
+        state.workOrders = state.workOrders.map((entry) => entry.id === item.id ? result.workOrder : entry);
+        renderOrdersTab(); renderHomeTab(); renderEmployeesTab();
+        setStatusMessage(osStatus, `${item.osNumber} atualizada. A alteração foi registrada no histórico.`, "success");
+      } catch (error) {
+        setStatusMessage(osStatus, error.message === "invalid-credentials" ? "Senha incorreta; as alterações não foram salvas." : "Não foi possível salvar a O.S. Confira o saldo e tente novamente.", "error");
+      }
     }
   });
 
   osList?.addEventListener("change", (event) => {
+    if (event.target.matches("[data-os-select]")) { renderWorkOrderPrintArea(); return; }
     const target = event.target.closest("[data-os-field]");
-    if (!target) {
-      return;
-    }
+    if (!target || target.dataset.osField !== "paidAmount") return;
     const item = state.workOrders.find((entry) => entry.id === target.dataset.osId);
-    if (!item) {
-      return;
-    }
-    if (target.dataset.osField === "entryPaid" || target.dataset.osField === "totalPaid") {
-      item[target.dataset.osField] = target.value === "true";
-    } else if (target.dataset.osField === "entryAmount") {
-      item.entryAmount = target.value === "" ? "" : toMoneyNumber(target.value);
-    } else {
-      item[target.dataset.osField] = target.value;
-    }
-    item.updatedAt = new Date().toISOString();
-    syncQuoteStatusFromWorkOrder(item);
-    persist();
-    setStatusMessage(osStatus, `${item.osNumber} atualizada.`, "success");
+    const balance = target.closest(".os-card")?.querySelector(".os-balance-summary strong");
+    if (item && balance) balance.textContent = formatCurrency(Math.max(0, Number(item.total || 0) - Number(target.value || 0)));
   });
 
   document.getElementById("home-quick-links")?.addEventListener("click", (event) => {

@@ -1507,11 +1507,11 @@
             </div>
 
             <div class="toolbar">
-              <button id="create-os-from-current-button" class="button button-primary" type="button">Gerar OS do orçamento atual</button>
+              <button id="print-selected-os-button" class="button button-primary" type="button">Imprimir O.S. selecionadas</button>
             </div>
 
             <p class="helper-text status-note" id="os-status">
-              Salve ou aprove um orçamento e gere a OS para iniciar o acompanhamento interno.
+              Aprove um orçamento no histórico e gere a O.S. atribuindo um colaborador e uma data prevista.
             </p>
           </article>
 
@@ -1528,14 +1528,9 @@
                 <span>Status</span>
                 <select id="os-filter-status">
                   <option value="all">Todos</option>
-                  <option value="created">Aberta</option>
-                  <option value="prepress">Pré-produção</option>
                   <option value="production">Produção</option>
-                  <option value="finishing">Acabamento</option>
-                  <option value="ready">Pronta para entrega</option>
+                  <option value="ready">Pronto para retirada</option>
                   <option value="delivered">Entregue</option>
-                  <option value="closed">Fechada</option>
-                  <option value="cancelled">Cancelada</option>
                 </select>
               </label>
               <label>
@@ -1566,6 +1561,7 @@
           </div>
 
           <div id="os-list" class="stack-list"></div>
+          <div id="os-print-area" aria-hidden="true"></div>
         </article>
       </section>
 
@@ -1614,6 +1610,7 @@
                 <option value="sent">Enviado</option>
                 <option value="negotiation">Em negociação</option>
                 <option value="approved">Aprovado</option>
+                <option value="rejected">Recusado</option>
                 <option value="converted">Virou OS</option>
                 <option value="completed">Concluído</option>
                 <option value="cancelled">Cancelado</option>
@@ -1623,14 +1620,9 @@
               <span>Status da OS</span>
               <select id="reports-filter-os-status">
                 <option value="all">Todos</option>
-                <option value="created">Aberta</option>
-                <option value="prepress">Pré-produção</option>
-                <option value="production">Produção</option>
-                <option value="finishing">Acabamento</option>
-                <option value="ready">Pronta para entrega</option>
+                <option value="production">Em produção</option>
+                <option value="ready">Pronto para retirada</option>
                 <option value="delivered">Entregue</option>
-                <option value="closed">Fechada</option>
-                <option value="cancelled">Cancelada</option>
               </select>
             </label>
             <div class="history-filter-actions">
@@ -1715,7 +1707,6 @@
 
             <div class="toolbar">
               <button id="save-history-button" class="button button-primary" type="button">Salvar orçamento atual</button>
-              <button id="save-and-generate-os-button" class="button" type="button">Salvar e gerar OS</button>
             </div>
 
             <p class="helper-text">Cada registro salva o total, o cliente e um resumo curto do orçamento.</p>
@@ -1738,6 +1729,7 @@
                   <option value="sent">Enviado</option>
                   <option value="negotiation">Em negociação</option>
                   <option value="approved">Aprovado</option>
+                  <option value="rejected">Recusado</option>
                   <option value="converted">Virou OS</option>
                   <option value="completed">Concluído</option>
                   <option value="cancelled">Cancelado</option>
@@ -2127,6 +2119,35 @@
       </div>
     </div>
   </div>
+
+  <dialog class="developer-permissions-dialog" id="work-order-create-dialog" aria-labelledby="work-order-create-title">
+    <article class="panel developer-permissions-panel">
+      <div class="panel-heading">
+        <div><h2 id="work-order-create-title">Gerar ordem de serviço</h2><p class="panel-copy" id="work-order-create-quote"></p></div>
+        <button class="button" type="button" data-os-create-cancel>Cancelar</button>
+      </div>
+      <form id="work-order-create-form" class="work-order-dialog-form">
+        <label><span>Colaborador responsável</span><select id="work-order-responsible" required></select></label>
+        <label><span>Data prevista de entrega</span><input id="work-order-promised-date" type="date"></label>
+        <label><span>Valor pago na entrada</span><input id="work-order-paid-amount" type="number" min="0" step="0.01" value="0" required></label>
+        <p class="helper-text" id="work-order-create-balance"></p>
+        <button class="button button-primary" type="submit">Gerar O.S.</button>
+      </form>
+    </article>
+  </dialog>
+  <dialog class="developer-permissions-dialog" id="work-order-password-dialog" aria-labelledby="work-order-password-title">
+    <article class="panel developer-permissions-panel">
+      <div class="panel-heading">
+        <div><h2 id="work-order-password-title">Confirme sua senha</h2><p class="panel-copy">A conta do colaborador responsável precisa autorizar esta alteração.</p></div>
+        <button class="button" type="button" data-os-password-cancel>Cancelar</button>
+      </div>
+      <form id="work-order-password-form" class="work-order-dialog-form">
+        <label><span>Senha da sua conta GrafiCalc</span><input id="work-order-password" type="password" autocomplete="current-password" required></label>
+        <p class="helper-text" id="work-order-password-status" aria-live="polite"></p>
+        <button class="button button-primary" type="submit">Confirmar</button>
+      </form>
+    </article>
+  </dialog>
 
   <div class="app-modal" id="password-change-modal" hidden>
     <div class="app-modal-backdrop"></div>
