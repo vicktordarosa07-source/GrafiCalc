@@ -55,10 +55,6 @@ async function prepareLegacySession() {
 }
 window.grafiCalcLegacyAuthReady = prepareLegacySession();
 
-const secureAuthStyle = document.createElement("style");
-secureAuthStyle.textContent = "#account-password-form,#developer-password-form,#password-change-modal{display:none!important}";
-document.head.appendChild(secureAuthStyle);
-
 document.addEventListener("click", async (event) => {
   if (event.target.closest('[data-tab-target="conta"]')) {
     event.preventDefault();

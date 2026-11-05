@@ -9928,3 +9928,9 @@ body::before {
     border-radius: 14px;
   }
 }
+
+#account-password-form,
+#developer-password-form,
+#password-change-modal {
+  display: none !important;
+}

@@ -24,3 +24,16 @@ export function createContentSecurityPolicy(nonce: string, isDevelopment = false
     "frame-ancestors 'self'",
   ].join("; ");
 }
+
+/**
+ * The legacy workspace is served as static same-origin HTML inside the
+ * authenticated workspace iframe. Its scripts cannot receive Next's nonce,
+ * so allow its own scripts explicitly while keeping inline scripts blocked.
+ */
+export function createLegacyContentSecurityPolicy(nonce: string, isDevelopment = false): string {
+  const policy = createContentSecurityPolicy(nonce, isDevelopment);
+  return policy.replace(
+    /script-src [^;]+/,
+    `script-src 'self' https://challenges.cloudflare.com${isDevelopment ? " 'unsafe-eval'" : ""}`,
+  );
+}

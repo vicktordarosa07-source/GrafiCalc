@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createContentSecurityPolicy } from "../lib/security/csp.ts";
+import { createContentSecurityPolicy, createLegacyContentSecurityPolicy } from "../lib/security/csp.ts";
 
 const nonce = "dGVzdC1ub25jZS0xMjM=";
 const productionPolicy = createContentSecurityPolicy(nonce);
@@ -18,4 +18,10 @@ assert.match(developmentScriptPolicy, /'unsafe-eval'/);
 assert.doesNotMatch(developmentScriptPolicy, /unsafe-inline/);
 assert.doesNotMatch(developmentPolicy, /unsafe-inline/);
 
-console.log("security-csp: nonce policy allows trusted scripts/styles and rejects unsafe-inline");
+const legacyPolicy = createLegacyContentSecurityPolicy(nonce);
+const legacyScriptPolicy = legacyPolicy.split("; ").find((directive) => directive.startsWith("script-src "));
+assert.equal(legacyScriptPolicy, "script-src 'self' https://challenges.cloudflare.com");
+assert.doesNotMatch(legacyScriptPolicy, /nonce-|strict-dynamic|unsafe-inline/);
+assert.match(legacyPolicy, new RegExp(`style-src 'self' 'nonce-${nonce}`));
+
+console.log("security-csp: strict app policy and same-origin legacy script policy verified");

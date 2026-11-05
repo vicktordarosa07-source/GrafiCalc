@@ -1,10 +1,13 @@
 import type { NextRequest } from "next/server";
-import { createContentSecurityPolicy } from "@/lib/security/csp";
+import { createContentSecurityPolicy, createLegacyContentSecurityPolicy } from "@/lib/security/csp";
 import { updateSession } from "@/lib/supabase/proxy";
 
 export async function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const contentSecurityPolicy = createContentSecurityPolicy(nonce, process.env.NODE_ENV === "development");
+  const isDevelopment = process.env.NODE_ENV === "development";
+  const contentSecurityPolicy = request.nextUrl.pathname.startsWith("/legacy/")
+    ? createLegacyContentSecurityPolicy(nonce, isDevelopment)
+    : createContentSecurityPolicy(nonce, isDevelopment);
   return updateSession(request, { nonce, contentSecurityPolicy });
 }
 
