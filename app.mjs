@@ -10336,6 +10336,25 @@ async function initApp() {
     };
   }
 
+  function syncQuoteStatusFromWorkOrder(workOrder) {
+    if (!workOrder?.quoteId) {
+      return;
+    }
+    const quote = state.quoteHistory.find((item) => item.id === workOrder.quoteId);
+    if (!quote) {
+      return;
+    }
+    if (workOrder.status === "delivered" || workOrder.status === "closed") {
+      quote.status = "completed";
+    } else if (workOrder.status === "cancelled") {
+      quote.status = "cancelled";
+    } else {
+      quote.status = "converted";
+    }
+    quote.osId = workOrder.id;
+    quote.updatedAt = new Date().toISOString();
+  }
+
   // Durable recovery backup separate from the normal application cache.
   // Never change the original base while unsynchronized edits remain.
   const pendingBackupKey = () => getAccountStorageKey("graficalc-unsynced-recovery-v1", currentUser);
