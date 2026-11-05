@@ -361,7 +361,7 @@ test("billing routes keep checkout, account data, and webhook responses private 
   assert.match(worker, /isStrongSecret\(secret\)/);
   assert.match(worker, /drainBillingWebhookQueue\(createAdminClient\(\), 25\)/);
   assert.match(vercelConfig, /"path": "\/api\/billing\/worker"/);
-  assert.match(vercelConfig, /"schedule": "\* \* \* \* \*"/);
+  assert.match(vercelConfig, /"schedule": "0 3 \* \* \*"/);
   const subscriptionPanel = await readFile(new URL("../components/billing/subscription-panel.tsx", import.meta.url), "utf8");
   assert.match(subscriptionPanel, /api\/billing\/cancel/);
   assert.match(subscriptionPanel, /subscription\?\.canCancelRecurrence/);
