@@ -15,5 +15,5 @@ export default async function WorkspacePage() {
   try { billingAllowed = (await getBillingAccess(context.admin, context.tenantId)).allowed; }
   catch { redirect("/assinatura?erro=indisponivel"); }
   if (!billingAllowed) redirect("/assinatura?acesso=restrito");
-  return <main className="workspace-shell"><InactivityGuard /><div className="workspace-bar"><Link href="/assinatura">Assinatura</Link><Link href="/perfil">Minha conta</Link></div><iframe title="Área de trabalho GrafiCalc" src="/legacy/index.html?v=20261105-creator-tabs" /></main>;
+  return <main className="workspace-shell"><InactivityGuard /><div className="workspace-bar"><Link href="/assinatura">Assinatura</Link><Link href="/perfil">Minha conta</Link></div><iframe title="Área de trabalho GrafiCalc" src="/legacy/index.html?v=20261105-brand-sync" /></main>;
 }
