@@ -41,10 +41,12 @@ create policy "profiles_select_own" on public.profiles for select to authenticat
 drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own" on public.profiles for update to authenticated using ((select auth.uid()) = id) with check ((select auth.uid()) = id);
 
-revoke all on public.profiles from anon, authenticated;
+revoke all on public.profiles from public, anon, authenticated, service_role;
 grant select on public.profiles to authenticated;
 grant update (nome, empresa, cpf_cnpj, telefone, atualizado_em) on public.profiles to authenticated;
-revoke all on public.auth_rate_limits from anon, authenticated;
+grant select on public.profiles to service_role;
+grant update (tenant_id, papel, atualizado_em) on public.profiles to service_role;
+revoke all on public.auth_rate_limits from public, anon, authenticated, service_role;
 
 create or replace function public.graficalc_handle_new_user()
 returns trigger language plpgsql security definer set search_path = '' as $$

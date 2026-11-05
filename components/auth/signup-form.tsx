@@ -4,7 +4,7 @@ import { startTransition, useActionState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import Link from "next/link";
 import { signupAction } from "@/app/auth/actions";
-import { maskCpfCnpj, maskPhone } from "@/lib/validation/documents";
+import { formatMaskedValuePreservingSelection, maskCpfCnpj, maskPhone } from "@/lib/validation/documents";
 import { FormMessage } from "./form-message";
 import { PasswordField } from "./password-field";
 import { SubmitButton } from "./submit-button";
@@ -18,13 +18,30 @@ export function SignupForm() {
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<SignupValues>();
   const submit = handleSubmit(() => startTransition(() => action(new FormData(formRef.current!))));
   const errorFor = (name: keyof SignupValues) => errors[name]?.message || state.fieldErrors?.[name]?.[0];
+  const cpfRegistration = register("cpfCnpj", { required: "Informe o documento." });
+  const phoneRegistration = register("telefone", { required: "Informe o telefone." });
+  const handleMaskedInput = (name: "cpfCnpj" | "telefone", formatter: (value: string) => string) =>
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const input = event.currentTarget;
+      const formatted = formatMaskedValuePreservingSelection(
+        input.value,
+        input.selectionStart,
+        input.selectionEnd,
+        formatter,
+      );
+      input.value = formatted.value;
+      setValue(name, formatted.value, { shouldDirty: true, shouldTouch: true });
+      if (formatted.selectionStart !== null && formatted.selectionEnd !== null) {
+        requestAnimationFrame(() => input.setSelectionRange(formatted.selectionStart, formatted.selectionEnd));
+      }
+    };
 
   return (
     <form ref={formRef} className="auth-form signup-grid" onSubmit={submit} noValidate>
       <label className="field"><span>Nome completo</span><input autoComplete="name" {...register("nome", { required: "Informe seu nome." })} /></label>
       <label className="field"><span>Empresa / gráfica</span><input autoComplete="organization" {...register("empresa", { required: "Informe sua empresa." })} /></label>
-      <label className="field"><span>CPF ou CNPJ</span><input inputMode="numeric" {...register("cpfCnpj", { required: "Informe o documento.", onChange: (event) => setValue("cpfCnpj", maskCpfCnpj(event.target.value)) })} /></label>
-      <label className="field"><span>Telefone</span><input inputMode="tel" autoComplete="tel" {...register("telefone", { required: "Informe o telefone.", onChange: (event) => setValue("telefone", maskPhone(event.target.value)) })} /></label>
+      <label className="field"><span>CPF ou CNPJ</span><input inputMode="numeric" {...cpfRegistration} onChange={handleMaskedInput("cpfCnpj", maskCpfCnpj)} /></label>
+      <label className="field"><span>Telefone</span><input inputMode="tel" autoComplete="tel" {...phoneRegistration} onChange={handleMaskedInput("telefone", maskPhone)} /></label>
       <label className="field full"><span>E-mail</span><input type="email" autoComplete="email" {...register("email", { required: "Informe seu e-mail." })} /></label>
       <PasswordField name="password" label="Senha" autoComplete="new-password" registration={register("password", { required: "Crie uma senha." })} />
       <PasswordField name="confirmPassword" label="Confirmar senha" autoComplete="new-password" registration={register("confirmPassword", { required: "Repita a senha." })} />

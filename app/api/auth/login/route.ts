@@ -2,7 +2,9 @@ import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSupabaseServerEnvironment } from "@/lib/supabase/env";
+import { getTrustedClientIp, resolveSupabaseAuthClientConfig } from "@/lib/supabase/auth-ip-forwarding";
 import { loginSchema } from "@/lib/validation/auth";
+import { beginAuthAttempt } from "@/lib/supabase/auth-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -20,17 +22,6 @@ function loginErrorCode(error: { message?: string; status?: number }) {
   if (/rate limit|too many|over.*limit/.test(detail)) return "limite";
   if (/network|fetch|timeout|connection/.test(detail) || error.status === 0) return "conexao-supabase";
   return "credenciais";
-}
-
-async function recordFailedAttempt(admin: ReturnType<typeof createAdminClient> | null, key: string) {
-  if (!admin) return;
-
-  try {
-    await admin.rpc("graficalc_record_auth_failure", { p_key: key });
-  } catch (error) {
-    // The audit must never turn an invalid credential into an application failure.
-    console.error("graficalc_login_audit_failure", { message: error instanceof Error ? error.message : "unknown" });
-  }
 }
 
 async function clearFailedAttempts(admin: ReturnType<typeof createAdminClient> | null, key: string) {
@@ -53,7 +44,7 @@ export async function POST(request: NextRequest) {
   });
   if (!parsed.success) return redirectToLogin(request, "campos");
 
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const ip = getTrustedClientIp(request.headers) || "unknown";
   const rateLimitKey = `${ip}:${parsed.data.email.toLowerCase()}`;
 
   let admin: ReturnType<typeof createAdminClient> | null = null;
@@ -69,11 +60,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { data: allowed, error: limitError } = await admin.rpc("graficalc_auth_attempt_allowed", { p_key: rateLimitKey });
-    if (limitError) {
-      console.error("graficalc_login_rate_limit_failure", { message: limitError.message });
-      return redirectToLogin(request, "rate-limit");
-    }
+    const allowed = await beginAuthAttempt(admin, rateLimitKey);
     if (!allowed) {
       return redirectToLogin(request, "limite");
     }
@@ -82,13 +69,29 @@ export async function POST(request: NextRequest) {
     return redirectToLogin(request, "rate-limit");
   }
 
-  const { url, publishableKey: key } = getSupabaseServerEnvironment();
-  if (!url || !key) return redirectToLogin(request, "configuracao-publica");
+  const environment = getSupabaseServerEnvironment();
+  const forwardClientIp = process.env.SUPABASE_AUTH_IP_FORWARDING_ENABLED?.trim().toLowerCase() === "true";
+  const authClientConfig = resolveSupabaseAuthClientConfig({
+    forwardClientIp,
+    clientIp: ip === "unknown" ? null : ip,
+    secretKey: environment.secretKey,
+    publishableKey: environment.publishableKey,
+  });
+  if (!environment.url || !authClientConfig.ok) {
+    console.error("graficalc_login_supabase_configuration", {
+      urlConfigured: Boolean(environment.url),
+      reason: authClientConfig.ok ? "unknown" : authClientConfig.reason,
+    });
+    return redirectToLogin(request, forwardClientIp ? "configuracao-auth" : "configuracao-publica");
+  }
 
   const response = NextResponse.redirect(new URL("/workspace", request.url), { status: 303 });
   let supabase: ReturnType<typeof createServerClient>;
   try {
-    supabase = createServerClient(url, key, {
+    supabase = createServerClient(environment.url, authClientConfig.apiKey, {
+      ...(authClientConfig.forwardedFor
+        ? { global: { headers: { "Sb-Forwarded-For": authClientConfig.forwardedFor } } }
+        : {}),
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll(cookiesToSet) {
@@ -114,14 +117,12 @@ export async function POST(request: NextRequest) {
   }
 
   if (result.error || !result.data.user) {
-    await recordFailedAttempt(admin, rateLimitKey);
     if (result.error) {
       console.error("graficalc_login_rejected", { message: result.error.message, status: result.error.status });
     }
     return redirectToLogin(request, loginErrorCode(result.error || {}));
   }
   if (!result.data.user.email_confirmed_at) {
-    await recordFailedAttempt(admin, rateLimitKey);
     await supabase.auth.signOut();
     return redirectToLogin(request, "confirmacao");
   }

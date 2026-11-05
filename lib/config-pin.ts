@@ -2,6 +2,8 @@ import { createHash, createHmac, randomBytes, randomInt, scryptSync, timingSafeE
 import { cookies } from "next/headers";
 import { getWorkspaceContext, writeWorkspace, type WorkspaceContext } from "@/lib/workspace";
 import { WorkspaceError, type JsonObject } from "@/lib/workspace-policy";
+import { isStrongSecret } from "@/lib/security/secret-strength.cjs";
+import { beginAuthAttempt } from "@/lib/supabase/auth-rate-limit";
 
 export const getPinContext = getWorkspaceContext;
 export const CONFIG_PIN_COOKIE = "graficalc_config_pin_verified";
@@ -34,7 +36,7 @@ export function matchesCurrentPin(pin: string, access: JsonObject) {
 
 function sign(value: string) {
   const secret = process.env.GRAFICALC_SESSION_SECRET?.trim();
-  if (!secret) throw new WorkspaceError("security-not-configured", 503);
+  if (!secret || !isStrongSecret(secret)) throw new WorkspaceError("security-not-configured", 503);
   return createHmac("sha256", secret).update(value).digest("base64url");
 }
 
@@ -56,13 +58,11 @@ export async function hasValidPinVerification(userId: string, tenantId: string, 
 
 export async function pinAttempt(context: WorkspaceContext, purpose = "pin") {
   const key = `${purpose}:${context.tenantId}:${context.user.id}`;
-  // Check first; the fifth attempt is usable, the sixth is blocked.
-  // Concurrent strict limiting requires an atomic database RPC.
-  const { data: allowed, error } = await context.admin.rpc("graficalc_auth_attempt_allowed", { p_key: key });
-  if (error) throw new WorkspaceError("rate-limit-unavailable", 503);
+  // Prefer atomic reservation; use the existing fail-closed RPCs until migration 08 is deployed.
+  let allowed: boolean;
+  try { allowed = await beginAuthAttempt(context.admin, key); }
+  catch { throw new WorkspaceError("rate-limit-unavailable", 503); }
   if (!allowed) throw new WorkspaceError("too-many-attempts", 429);
-  const { error: recordError } = await context.admin.rpc("graficalc_record_auth_failure", { p_key: key });
-  if (recordError) throw new WorkspaceError("rate-limit-unavailable", 503);
   return key;
 }
 

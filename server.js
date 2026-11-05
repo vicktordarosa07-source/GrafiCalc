@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const os = require("os");
 const net = require("net");
 const { URL } = require("url");
+const { isStrongSecret } = require("./lib/security/secret-strength.cjs");
 
 function loadGrafiCalcLocalEnv() {
   const envPath = path.join(__dirname, "graficalc.local-env.ps1");
@@ -55,6 +56,9 @@ const IS_DEPLOYED_RUNTIME = Boolean(process.env.VERCEL) || process.env.NODE_ENV 
 function resolveSessionSecret() {
   const configuredSecret = String(process.env.GRAFICALC_SESSION_SECRET || "").trim();
   if (configuredSecret) {
+    if (!isStrongSecret(configuredSecret)) {
+      throw new Error("GRAFICALC_SESSION_SECRET must be a strong random secret.");
+    }
     return configuredSecret;
   }
   if (IS_DEPLOYED_RUNTIME) {
@@ -141,7 +145,11 @@ const STATIC_PUBLIC_ROOT_FILES = new Set([
   "index.html",
   "styles.css",
   "app.mjs",
+  "calculation-base.mjs",
+  "input-format.mjs",
+  "number-input.mjs",
   "catalogo-loja.seed.js",
+  "catalogo-loja.seed.mjs",
   "catalogo-loja.seed.mjs",
 ]);
 const STATIC_PUBLIC_DIRECTORIES = new Set(["assets", "public"]);

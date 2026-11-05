@@ -25,15 +25,28 @@ jobs:
           cache: npm
       - name: Install
         run: npm ci
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
       - name: Typecheck and legacy syntax
         run: npm run check
-      - name: Unit regressions
+      - name: Local regression checks
         run: |
+          npm run test:security:csp
           npm run test:workspace-policy
           npm run test:collection-policy
+          npm run test:calculation-base
           npm run test:sync-recovery
           npm run test:pricing-regression
           npm run test:operational-regression
+          npm run test:input-formatting
+          npm run test:redirect-security
+          npm run test:number-input
+          npm run test:billing
+          npm run test:billing-postgres
+          npm run test:auth-rate-limit
+          npm run test:session-secret
+          npm run test:supabase-migrations
+          npm run test:workspace-api-guard
           npm run test:mobile-navigation
       - name: Legacy security checks
         run: |
@@ -43,5 +56,26 @@ jobs:
           npm run test:security:stage-final
       - name: Build
         run: npm run build
+      - name: Start production build for auth browser checks
+        run: |
+          node node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3210 > /tmp/graficalc-next.log 2>&1 &
+          echo $! > /tmp/graficalc-next.pid
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3210/entrar > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/graficalc-next.log
+          exit 1
+      - name: Auth layout and keyboard browser checks
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: |
+          AUTH_ROUTE=/entrar AUTH_WIDTH=390 AUTH_HEIGHT=844 node scripts/auth-layout-diagnostic.cjs
+          AUTH_ROUTE=/entrar AUTH_WIDTH=1440 AUTH_HEIGHT=900 node scripts/auth-layout-diagnostic.cjs
+          AUTH_ROUTE=/cadastro AUTH_WIDTH=390 AUTH_HEIGHT=844 node scripts/auth-layout-diagnostic.cjs
+          AUTH_ROUTE=/recuperar-senha AUTH_WIDTH=390 AUTH_HEIGHT=844 node scripts/auth-layout-diagnostic.cjs
+      - name: Stop auth browser test server
+        if: always()
+        run: if [ -f /tmp/graficalc-next.pid ]; then kill "$(cat /tmp/graficalc-next.pid)" 2>/dev/null || true; fi
       - name: Unauthenticated smoke tests
         run: npm run test:next-smoke

@@ -40,8 +40,12 @@ execute function public.graficalc_set_updated_at();
 alter table public.graficalc_tenants enable row level security;
 alter table public.graficalc_runtime_state enable row level security;
 
-revoke all on public.graficalc_tenants from anon, authenticated;
-revoke all on public.graficalc_runtime_state from anon, authenticated;
+revoke all on public.graficalc_tenants from public, anon, authenticated, service_role;
+revoke all on public.graficalc_runtime_state from public, anon, authenticated, service_role;
+-- Explicitly remove historical/default API grants before granting the backend
+-- only the privileges its queries require.
+grant select, insert, update on public.graficalc_tenants to service_role;
+grant select, insert, update on public.graficalc_runtime_state to service_role;
 
 comment on table public.graficalc_tenants is 'Tenants do GrafiCalc. Cada gráfica pode ter seu próprio workspace.';
 comment on table public.graficalc_runtime_state is 'Snapshot central do estado compartilhado do GrafiCalc por tenant.';

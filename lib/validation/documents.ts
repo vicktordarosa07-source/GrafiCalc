@@ -1,5 +1,33 @@
 export const onlyDigits = (value: string) => value.replace(/\D/g, "");
 
+function positionAfterDigits(value: string, digitCount: number) {
+  if (digitCount <= 0) return 0;
+  let seen = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (/\d/.test(value[index])) seen += 1;
+    if (seen >= digitCount) return index + 1;
+  }
+  return value.length;
+}
+
+export function formatMaskedValuePreservingSelection(
+  value: string,
+  selectionStart: number | null,
+  selectionEnd: number | null,
+  formatter: (value: string) => string,
+) {
+  const formatted = formatter(value);
+  const digitsBefore = (position: number | null) =>
+    position === null ? null : onlyDigits(value.slice(0, position)).length;
+  const startDigits = digitsBefore(selectionStart);
+  const endDigits = digitsBefore(selectionEnd);
+  return {
+    value: formatted,
+    selectionStart: startDigits === null ? null : positionAfterDigits(formatted, startDigits),
+    selectionEnd: endDigits === null ? null : positionAfterDigits(formatted, endDigits),
+  };
+}
+
 function allDigitsEqual(value: string) {
   return /^(\d)\1+$/.test(value);
 }

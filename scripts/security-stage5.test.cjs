@@ -10,7 +10,7 @@ const PORT = 3919;
 const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "graficalc-security-stage5-"));
 const developerPassword = "Correct#123";
 const configPassword = "Config#123";
-const sessionSecret = "stage5-test-session-secret";
+const sessionSecret = "F4kQ9vT2mR7xB3pL8zN6cH1sW5yD0aGH";
 let server;
 
 function wait(ms) {

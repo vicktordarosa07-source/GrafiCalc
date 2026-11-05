@@ -92,7 +92,7 @@
         <div class="tab-menu-section-label">Configuradores</div>
         <button class="tab-button" data-tab-target="conta" title="Minha conta" data-tooltip="Minha conta"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-user"></use></svg><span class="tab-button-label">Minha conta</span></button>
         <button class="tab-button" data-tab-target="configuracao" title="Configuração do sistema" data-tooltip="Configuração do sistema"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-settings"></use></svg><span class="tab-button-label">Configuração</span></button>
-        <button class="tab-button" data-tab-target="equipe" data-dev-only hidden style="display:none!important" title="Equipe" data-tooltip="Equipe"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-team"></use></svg><span class="tab-button-label">Equipe</span></button>
+        <button class="tab-button" data-tab-target="equipe" title="Equipe" data-tooltip="Equipe"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-team"></use></svg><span class="tab-button-label">Equipe</span></button>
         <button class="tab-button developer-tab-button" data-tab-target="desenvolvedor" data-dev-only hidden style="display:none!important" title="Área do desenvolvedor" data-tooltip="Área do desenvolvedor"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-code"></use></svg><span class="tab-button-label">Dev</span></button>
         <div class="tab-menu-section-label">Comercial</div>
         <button class="tab-button" data-tab-target="home" title="Home" data-tooltip="Home"><svg class="tab-nav-icon" aria-hidden="true"><use href="#nav-home"></use></svg><span class="tab-button-label">Home</span></button>
@@ -1966,7 +1966,7 @@
         </article>
       </section>
 
-      <section class="tab-panel" data-tab-panel="equipe" data-dev-only hidden>
+      <section class="tab-panel" data-tab-panel="equipe" hidden>
         <div class="summary-grid">
           <article class="summary-card">
             <span class="summary-label">Funcionários ativos</span>
@@ -1991,7 +1991,7 @@
             <div class="panel-heading">
               <div>
                 <h2>Cadastro de funcionário</h2>
-                <p class="panel-copy">Crie acessos internos para a equipe. Funcionários entram apenas nas áreas de orçamento liberadas.</p>
+                <p class="panel-copy">Envie um convite por e-mail. A pessoa define a própria senha e entra vinculada a esta equipe.</p>
               </div>
             </div>
             <form class="employee-form quote-form-grid" id="employee-form">
@@ -2003,22 +2003,11 @@
                 <span>E-mail</span>
                 <input id="employee-email" type="email" placeholder="funcionario@email.com" autocomplete="email">
               </label>
-              <label>
-                <span>Senha</span>
-                <span class="password-input-wrap">
-                  <input id="employee-password" type="password" autocomplete="new-password" placeholder="Mínimo 8 caracteres">
-                  <button class="password-eye-button" type="button" data-password-toggle="employee-password" aria-label="Mostrar senha" aria-pressed="false">◐</button>
-                </span>
-              </label>
-              <label>
-                <span>Função / setor</span>
-                <input id="employee-company" type="text" placeholder="Ex.: Atendimento, produção, vendedor">
-              </label>
               <div class="history-filter-actions">
-                <button class="button button-primary" type="submit">Cadastrar funcionário</button>
+                <button class="button button-primary" type="submit">Enviar convite</button>
               </div>
             </form>
-            <p class="helper-text status-note" id="employee-status">Funcionários criados aqui ficam ativos e com e-mail verificado para uso interno.</p>
+            <p class="helper-text status-note" id="employee-status">O convite precisa ser aceito pelo e-mail cadastrado. A senha é criada pelo próprio funcionário.</p>
           </article>
 
           <article class="panel">
@@ -2199,12 +2188,10 @@
     </div>
   </div>
 
-  <!-- O app também é aberto diretamente por file://. Como app.mjs não usa
-       import/export estático, carregá-lo como script clássico evita o bloqueio
-       de CORS que o Chrome aplica a módulos ES locais. -->
+  <!-- O app usa módulos ES; abra pelo servidor local, não por file://. -->
   <script src="./catalogo-loja.seed.js"></script>
   <script src="./assets/blocos.catalog.js"></script>
-  <script defer src="./app.mjs?v=20260925-dev-permissions-user-switcher"></script>
+  <script type="module" src="./app.mjs?v=20261105-esm-modules"></script>
 </body>
 </html>
 

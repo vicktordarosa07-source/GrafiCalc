@@ -49,7 +49,7 @@ async function startServer(environment = {}) {
       PORT: String(port),
       HOST: "127.0.0.1",
       GRAFICALC_DATA_DIR: dataDirectory,
-      GRAFICALC_SESSION_SECRET: "stage-final-session-secret-only-for-tests",
+      GRAFICALC_SESSION_SECRET: "F4kQ9vT2mR7xB3pL8zN6cH1sW5yD0aGH",
       GRAFICALC_DEVELOPER_USERNAME: "stage-final-admin",
       GRAFICALC_DEVELOPER_PASSWORD: "StageFinal#123",
       ...environment,
@@ -120,6 +120,12 @@ async function main() {
     assert.equal(stylesheetResponse.status, 200);
     assert.match(String(stylesheetResponse.headers["content-type"]), /^text\/css/);
     assert.equal(stylesheetResponse.headers["cache-control"], "public, max-age=300, must-revalidate");
+
+    for (const moduleFile of ["app.mjs", "calculation-base.mjs", "input-format.mjs", "number-input.mjs", "catalogo-loja.seed.mjs"]) {
+      const moduleResponse = await request(localServer.port, "GET", `/${moduleFile}`);
+      assert.equal(moduleResponse.status, 200, `${moduleFile} must be accessible to the legacy app's ES module loader`);
+      assert.match(String(moduleResponse.headers["content-type"]), /^application\/javascript/);
+    }
 
     const headResponse = await request(localServer.port, "HEAD", "/index.html");
     assert.equal(headResponse.status, 200);

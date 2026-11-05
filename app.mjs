@@ -11,6 +11,8 @@
 };
 
 import { calculateFinishPrice, calculateMaterialCosts, FINISH_BILLING_MODES, MATERIAL_ACQUISITION_MODES, MATERIAL_SALE_MODES, normalizeCalculationFinish, normalizeMaterialConfiguration, normalizePrintProcess, PRINT_PROCESS_BILLING_MODES } from "./calculation-base.mjs";
+import { applyInputFormatterPreservingSelection, formatBrazilianPhone, formatClientDocument } from "./input-format.mjs";
+import { parseLocalizedNumber } from "./number-input.mjs";
 
 const SESSION_KEYS = {
   configUnlocked: "graficalc-config-unlocked-v1",
@@ -64,7 +66,7 @@ const APP_TAB_LABELS = [
   { id: "clientes", label: "Clientes" },
   { id: "os", label: "OS" },
   { id: "relatorios", label: "Relatórios" },
-  { id: "equipe", label: "Equipe", developerOnly: true },
+  { id: "equipe", label: "Equipe", teamLeaderOnly: true },
   { id: "historico", label: "Histórico" },
   { id: "orcamento", label: "Orçamento" },
   { id: "desenvolvedor", label: "Área do desenvolvedor", developerOnly: true },
@@ -2376,7 +2378,7 @@ function saveAccountConfig(user, config) {
 
 function createTabPermissionMap(enabled = true, developerEnabled = false) {
   return Object.fromEntries(
-    APP_TAB_LABELS.map((tab) => [tab.id, tab.developerOnly ? developerEnabled : enabled])
+    APP_TAB_LABELS.map((tab) => [tab.id, tab.teamLeaderOnly ? false : tab.developerOnly ? developerEnabled : enabled])
   );
 }
 
@@ -2742,14 +2744,17 @@ function getUserTabPermissions(accessControl, user) {
   if (!user) {
     return createTabPermissionMap(false, false);
   }
-  if (user.role === "developer" && user.developerAccess === true) {
-    return createTabPermissionMap(true, true);
-  }
+  const isDeveloper = user.role === "developer" && user.developerAccess === true;
   const group = getGroupForUser(accessControl, user);
   const overrides = accessControl.userOverrides?.[user.id] || {};
-  const permissions = { ...createTabPermissionMap(false, false), ...(group?.tabs || {}), ...overrides };
+  const permissions = isDeveloper
+    ? createTabPermissionMap(true, true)
+    : { ...createTabPermissionMap(false, false), ...(group?.tabs || {}), ...overrides };
   for (const tab of APP_TAB_LABELS) {
-    if (tab.developerOnly) permissions[tab.id] = false;
+    if (tab.developerOnly && !isDeveloper) permissions[tab.id] = false;
+    if (tab.teamLeaderOnly) {
+      permissions[tab.id] = Boolean(user.teamLeader) || isDeveloper;
+    }
   }
   return permissions;
 }
@@ -2898,29 +2903,6 @@ function validateBrazilianDocument(document) {
     return validateCnpj(digits) ? "" : "O CNPJ informado parece invalido. Revise os numeros digitados.";
   }
   return "Digite um CPF com 11 numeros ou um CNPJ com 14 numeros.";
-}
-
-function formatClientDocument(value, personType = "individual") {
-  const digits = onlyDigits(value).slice(0, personType === "legal" ? 14 : 11);
-  if (personType === "legal") {
-    return digits
-      .replace(/^(\d{2})(\d)/, "$1.$2")
-      .replace(/^(\d{2}\.\d{3})(\d)/, "$1.$2")
-      .replace(/\.(\d{3})(\d)/, ".$1/$2")
-      .replace(/(\d{4})(\d)/, "$1-$2");
-  }
-  return digits
-    .replace(/^(\d{3})(\d)/, "$1.$2")
-    .replace(/^(\d{3}\.\d{3})(\d)/, "$1.$2")
-    .replace(/\.(\d{3})(\d)/, ".$1-$2");
-}
-
-function formatBrazilianPhone(value) {
-  const digits = onlyDigits(value).slice(0, 11);
-  if (digits.length <= 2) return digits ? `(${digits}` : "";
-  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 }
 
 function getRemainingCooldownMs(user) {
@@ -3152,6 +3134,18 @@ async function requestAuthUserSave(user, accessControl) {
   return response.json();
 }
 
+async function requestTeamInvitation(nome, email) {
+  const response = await fetch("/api/team/invitations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nome, email }),
+    cache: "no-store",
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result?.ok) throw new Error(result?.error || `team-invite-http-${response.status}`);
+  return result;
+}
+
 async function requestManagedUsers() {
   if (typeof fetch !== "function") {
     throw new Error("fetch-unavailable");
@@ -3317,22 +3311,13 @@ function toWholeNumber(value) {
 }
 
 function toMoneyNumber(value) {
-  const parsed = Number.parseFloat(normalizeNumberInput(value));
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  const parsed = parseLocalizedNumber(value);
+  return parsed !== null && parsed >= 0 ? parsed : 0;
 }
 
 function toDecimalNumber(value) {
-  const parsed = Number.parseFloat(normalizeNumberInput(value));
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-}
-
-function normalizeNumberInput(value) {
-  const raw = String(value ?? "").trim().replace(/\s/g, "");
-  if (!raw) return "";
-  const lastComma = raw.lastIndexOf(",");
-  const lastDot = raw.lastIndexOf(".");
-  if (lastComma > lastDot) return raw.replace(/\./g, "").replace(",", ".");
-  return raw.replace(/,/g, "");
+  const parsed = parseLocalizedNumber(value);
+  return parsed !== null && parsed >= 0 ? parsed : 0;
 }
 
 function normalizeDiscountType(value) {
@@ -8598,6 +8583,7 @@ async function initApp() {
   const developerAccessUsername = document.getElementById("developer-access-username");
   const developerAccessPassword = document.getElementById("developer-access-password");
   const developerAccessStatus = document.getElementById("developer-access-status");
+  let developerAccessReturnFocus = null;
   const appShell = document.getElementById("app-shell");
   const authStatus = document.getElementById("auth-status");
   const emailVerificationForm = document.getElementById("email-verification-form");
@@ -9122,6 +9108,7 @@ async function initApp() {
 
   function openDeveloperAccessModal() {
     if (!developerAccessModal) return;
+    developerAccessReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : developerAccessButton;
     developerAccessModal.hidden = false;
     if (developerAccessUsername) developerAccessUsername.value = "";
     if (developerAccessPassword) developerAccessPassword.value = "";
@@ -9130,7 +9117,23 @@ async function initApp() {
   }
 
   function closeDeveloperAccessModal() {
-    if (developerAccessModal) developerAccessModal.hidden = true;
+    if (!developerAccessModal || developerAccessModal.hidden) return;
+    developerAccessModal.hidden = true;
+    const returnFocus = developerAccessReturnFocus;
+    developerAccessReturnFocus = null;
+    restoreModalFocus(returnFocus);
+  }
+
+  function restoreModalFocus(previousFocus) {
+    queueMicrotask(() => {
+      if (isVisibleTabStop(previousFocus)) {
+        previousFocus.focus({ preventScroll: true });
+        return;
+      }
+      const scope = document.querySelector(".tab-panel.is-active");
+      const fallback = getTabStops(scope)[0] || developerAccessButton;
+      if (isVisibleTabStop(fallback)) fallback.focus({ preventScroll: true });
+    });
   }
 
   function getFirstAllowedLoggedTab(user = currentUser) {
@@ -9447,6 +9450,7 @@ async function initApp() {
       .map((group) => {
         const tabToggles = APP_TAB_LABELS
           .filter((tab) => tab.id !== "home")
+          .filter((tab) => !tab.teamLeaderOnly)
           .filter((tab) => !tab.developerOnly || group.id === "developer")
           .map((tab) => `
             <label class="developer-permission-chip">
@@ -9513,7 +9517,7 @@ async function initApp() {
     const documentMeta = getDocumentVerificationMeta(user);
     const cpfPayload = buildOfficialCpfVerificationPayload(user);
     const permissionRows = APP_TAB_LABELS
-      .filter((tab) => !tab.developerOnly && tab.id !== "home")
+      .filter((tab) => !tab.developerOnly && !tab.teamLeaderOnly && tab.id !== "home")
       .map((tab) => {
         const inherited = Boolean(group?.tabs?.[tab.id]);
         const overrideValue = Object.prototype.hasOwnProperty.call(overrides, tab.id) ? overrides[tab.id] : "";
@@ -9888,14 +9892,21 @@ async function initApp() {
     return true;
   }
 
-  function isVisibleFocusableField(element) {
-    if (!element || element.disabled || element.readOnly) {
+  function isVisibleTabStop(element) {
+    if (!element || element.disabled || element.tabIndex < 0) {
       return false;
     }
-    if (!element.matches("input, select, textarea")) {
+    const closedDetails = element.closest("details:not([open])");
+    if (closedDetails && !(element.matches("summary") && element.parentElement === closedDetails)) {
       return false;
     }
-    if (element.matches('input[type="hidden"], input[type="checkbox"], input[type="radio"]')) {
+    if (!element.matches("a[href], button, input, select, textarea, summary, [tabindex]")) {
+      return false;
+    }
+    if (element.matches('input[type="hidden"]')) {
+      return false;
+    }
+    if (element.closest("[hidden], [inert], [aria-hidden=\"true\"]")) {
       return false;
     }
     return element.getClientRects().length > 0;
@@ -9904,7 +9915,7 @@ async function initApp() {
   function getCurrentTabScope(element) {
     const modal = element.closest(".app-modal");
     if (modal) {
-      return null;
+      return modal.querySelector('[role="dialog"]') || modal;
     }
     const popover = element.closest(".finish-popover, .color-service-popover");
     if (popover) {
@@ -9913,11 +9924,34 @@ async function initApp() {
     return element.closest(".tab-panel.is-active");
   }
 
-  function getEditableFields(scope) {
+  function getTabStops(scope) {
     if (!scope) {
       return [];
     }
-    return [...scope.querySelectorAll("input, select, textarea")].filter(isVisibleFocusableField);
+    const candidates = [...scope.querySelectorAll("a[href], button, input, select, textarea, summary, [tabindex]")]
+      .filter(isVisibleTabStop);
+    const radioGroups = new Map();
+    for (const candidate of candidates) {
+      if (!candidate.matches('input[type="radio"][name]')) continue;
+      let formGroups = radioGroups.get(candidate.form);
+      if (!formGroups) {
+        formGroups = new Map();
+        radioGroups.set(candidate.form, formGroups);
+      }
+      const group = formGroups.get(candidate.name) || [];
+      group.push(candidate);
+      formGroups.set(candidate.name, group);
+    }
+    const skippedRadios = new Set();
+    for (const groups of radioGroups.values()) {
+      for (const group of groups.values()) {
+        const tabRadio = group.find((radio) => radio.checked) || group[0];
+        for (const radio of group) {
+          if (radio !== tabRadio) skippedRadios.add(radio);
+        }
+      }
+    }
+    return candidates.filter((candidate) => !skippedRadios.has(candidate));
   }
 
   function getFocusDescriptor(element, fallbackIndex = -1) {
@@ -9934,15 +9968,32 @@ async function initApp() {
       ["color", "tr[data-color-row-index]", "colorRowIndex"],
       ["credential", "tr[data-credential-row-index]", "credentialRowIndex"],
       ["m2", "tr[data-m2-row-index]", "m2RowIndex"],
+      ["card", "tr[data-card-row-index]", "cardRowIndex"],
+      ["flyer", "tr[data-flyer-row-index]", "flyerRowIndex"],
+      ["linearMeter", "tr[data-linear-meter-row-index]", "linearMeterRowIndex"],
       ["ready", "tr[data-ready-row-index]", "readyRowIndex"],
       ["resin", "tr[data-resin-row-index]", "resinRowIndex"],
     ];
 
     for (const [type, selector, key] of rowSelectors) {
       const row = element.closest(selector);
-      if (row && name) {
-        return { type, rowIndex: row.dataset[key], name, fallbackIndex };
+      if (row) {
+        const rowStops = getTabStops(row);
+        return { type, rowIndex: row.dataset[key], name, elementIndex: rowStops.indexOf(element), fallbackIndex };
       }
+    }
+
+    const blockRow = element.closest("tr[data-block-tab][data-block-row-index]");
+    if (blockRow) {
+      const rowStops = getTabStops(blockRow);
+      return {
+        type: "block",
+        tab: blockRow.dataset.blockTab,
+        rowIndex: blockRow.dataset.blockRowIndex,
+        name,
+        elementIndex: rowStops.indexOf(element),
+        fallbackIndex,
+      };
     }
 
     return { type: "fallback", fallbackIndex };
@@ -9961,33 +10012,40 @@ async function initApp() {
       color: `tr[data-color-row-index="${descriptor.rowIndex}"]`,
       credential: `tr[data-credential-row-index="${descriptor.rowIndex}"]`,
       m2: `tr[data-m2-row-index="${descriptor.rowIndex}"]`,
+      card: `tr[data-card-row-index="${descriptor.rowIndex}"]`,
+      flyer: `tr[data-flyer-row-index="${descriptor.rowIndex}"]`,
+      linearMeter: `tr[data-linear-meter-row-index="${descriptor.rowIndex}"]`,
       ready: `tr[data-ready-row-index="${descriptor.rowIndex}"]`,
       resin: `tr[data-resin-row-index="${descriptor.rowIndex}"]`,
     };
-    const rowSelector = rowLookup[descriptor.type];
+    const rowSelector = descriptor.type === "block"
+      ? `tr[data-block-tab="${CSS.escape(descriptor.tab || "")}"][data-block-row-index="${CSS.escape(descriptor.rowIndex || "")}"]`
+      : rowLookup[descriptor.type];
     if (rowSelector && descriptor.name) {
       const row = document.querySelector(rowSelector);
       return row?.querySelector(`[name="${CSS.escape(descriptor.name)}"]`) || null;
+    }
+    if (rowSelector) {
+      const row = document.querySelector(rowSelector);
+      return getTabStops(row)[descriptor.elementIndex] || null;
     }
 
     return null;
   }
 
-  function focusEditableField(descriptor) {
-    requestAnimationFrame(() => {
+  function focusTabStop(descriptor) {
+    queueMicrotask(() => {
       let next = resolveFocusDescriptor(descriptor);
-      if (!isVisibleFocusableField(next)) {
-        const scope = document.querySelector(".tab-panel.is-active");
-        const fields = getEditableFields(scope);
-        next = fields[descriptor?.fallbackIndex] || null;
+      if (!isVisibleTabStop(next)) {
+        const modal = document.querySelector(".app-modal:not([hidden]) [role=\"dialog\"]");
+        const scope = modal || document.querySelector(".tab-panel.is-active");
+        const stops = getTabStops(scope);
+        next = stops[descriptor?.fallbackIndex] || null;
       }
-      if (!isVisibleFocusableField(next)) {
+      if (!isVisibleTabStop(next)) {
         return;
       }
       next.focus({ preventScroll: true });
-      if (typeof next.select === "function" && next.matches('input:not([type="number"]), textarea')) {
-        next.select();
-      }
       next.scrollIntoView({ block: "nearest", inline: "nearest" });
     });
   }
@@ -9998,26 +10056,34 @@ async function initApp() {
     }
 
     const current = event.target;
-    if (!isVisibleFocusableField(current)) {
+    if (!isVisibleTabStop(current)) {
       return;
     }
 
     const scope = getCurrentTabScope(current);
-    const fields = getEditableFields(scope);
-    const currentIndex = fields.indexOf(current);
-    if (currentIndex === -1) {
+    const stops = getTabStops(scope);
+    const currentIndex = stops.indexOf(current);
+    if (currentIndex === -1 || stops.length === 0) {
       return;
     }
 
     const nextIndex = currentIndex + (event.shiftKey ? -1 : 1);
-    if (nextIndex < 0 || nextIndex >= fields.length) {
+    const isModalScope = Boolean(current.closest(".app-modal:not([hidden])"));
+    if (isModalScope && (nextIndex < 0 || nextIndex >= stops.length)) {
+      event.preventDefault();
+      stops[nextIndex < 0 ? stops.length - 1 : 0].focus({ preventScroll: true });
+      return;
+    }
+    if (nextIndex < 0 || nextIndex >= stops.length) {
       return;
     }
 
-    const nextDescriptor = getFocusDescriptor(fields[nextIndex], nextIndex);
+    const nextDescriptor = getFocusDescriptor(stops[nextIndex], nextIndex);
     event.preventDefault();
-    current.dispatchEvent(new Event("change", { bubbles: true }));
-    focusEditableField(nextDescriptor);
+    if (current.matches("input, select, textarea")) {
+      current.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    focusTabStop(nextDescriptor);
   }
 
   function setClientEditorPersonType(personType = "individual") {
@@ -12718,6 +12784,7 @@ async function initApp() {
     confirmModalConfirm.textContent = confirmLabel;
     confirmModalConfirm.classList.toggle("button-danger", danger);
     confirmModalConfirm.classList.toggle("button-primary", !danger);
+    const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     confirmModal.hidden = false;
     document.body.style.overflow = "hidden";
 
@@ -12736,6 +12803,7 @@ async function initApp() {
         confirmModal.removeEventListener("click", onBackdrop);
         document.removeEventListener("keydown", onKeydown);
         resolve(result);
+        restoreModalFocus(returnFocus);
       };
 
       const onConfirm = () => finish(true);
@@ -14640,7 +14708,6 @@ async function initApp() {
   tabButtons.forEach((button) => {
     button.addEventListener("click", () => {
       selectTab(button.dataset.tabTarget);
-      button.blur();
       closeSettingsPopover();
       closeAppMenu();
       collapseDesktopMenuAfterNavigation();
@@ -14666,7 +14733,6 @@ async function initApp() {
   menuShortcutButtons.forEach((button) => {
     button.addEventListener("click", () => {
       selectTab(button.dataset.menuShortcut);
-      button.blur();
       closeSettingsPopover();
       closeAppMenu();
       collapseDesktopMenuAfterNavigation();
@@ -14681,7 +14747,6 @@ async function initApp() {
 
   appHomeShortcut?.addEventListener("click", () => {
     selectTab("home");
-    appHomeShortcut.blur();
     closeSettingsPopover();
     closeAppMenu();
     collapseDesktopMenuAfterNavigation();
@@ -14769,6 +14834,10 @@ async function initApp() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      if (developerAccessModal && !developerAccessModal.hidden) {
+        closeDeveloperAccessModal();
+        return;
+      }
       closeSettingsPopover();
       closeAppMenu();
     }
@@ -14961,66 +15030,51 @@ async function initApp() {
 
   employeeForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!isDeveloperSession()) {
-      setStatusMessage(employeeStatus, "Somente o administrador pode cadastrar funcionários.", "error");
+    if (!isTeamLeader()) {
+      setStatusMessage(employeeStatus, "Somente o líder da equipe pode convidar funcionários.", "error");
       return;
     }
     const username = document.getElementById("employee-name")?.value.trim() || "";
     const email = document.getElementById("employee-email")?.value.trim() || "";
-    const password = document.getElementById("employee-password")?.value || "";
-    const company = document.getElementById("employee-company")?.value.trim() || "Funcionário";
     if (!username) {
       setStatusMessage(employeeStatus, "Digite o nome do funcionário.", "warning");
       document.getElementById("employee-name")?.focus();
       return;
     }
-    if (authUsers.some((user) => user.username.trim().toLowerCase() === username.toLowerCase())) {
-      setStatusMessage(employeeStatus, "Já existe um usuário com este nome.", "warning");
-      return;
-    }
-    const emailError = email ? validateEmailAddress(email) : "";
+    const emailError = validateEmailAddress(email);
     if (emailError) {
       setStatusMessage(employeeStatus, emailError, "warning");
       document.getElementById("employee-email")?.focus();
       return;
     }
-    if (email && authUsers.some((user) => normalizeLookupEmail(user.email) === normalizeLookupEmail(email))) {
-      setStatusMessage(employeeStatus, "Já existe um usuário com este e-mail.", "warning");
+    if (authUsers.some((user) => normalizeLookupEmail(user.email) === normalizeLookupEmail(email))) {
+      setStatusMessage(employeeStatus, "Já existe um cadastro com este e-mail.", "warning");
       return;
     }
-    const passwordError = validateSecurePassword(password);
-    if (passwordError) {
-      setStatusMessage(employeeStatus, passwordError, "warning");
-      document.getElementById("employee-password")?.focus();
-      return;
+    const submitButton = employeeForm.querySelector('[type="submit"]');
+    if (submitButton) submitButton.disabled = true;
+    setStatusMessage(employeeStatus, "Enviando convite...", "warning");
+    try {
+      await requestTeamInvitation(username, email);
+      const result = await requestSharedState("GET");
+      applySharedPayload(result.payload, "");
+      employeeForm.reset();
+      renderEmployeesTab();
+      setStatusMessage(employeeStatus, `Convite enviado para ${email}. O acesso será liberado após a confirmação do e-mail.`, "success");
+    } catch (error) {
+      const messages = {
+        "team-email-already-registered": "Este e-mail já possui uma conta no GrafiCalc.",
+        "team-invitation-already-pending": "Já existe um convite pendente para este e-mail.",
+        "team-invitation-rate-limited": "Limite de convites atingido. Aguarde 15 minutos e tente novamente.",
+        "team-leader-required": "Somente o líder da equipe pode convidar funcionários.",
+        "subscription-required": "A assinatura atual não permite convidar membros.",
+        "team-invitation-send-failed": "O Supabase não conseguiu enviar o convite. Verifique o SMTP e o modelo de convite.",
+        "team-invitation-provisioning-failed": "O convite foi criado, mas o vínculo da equipe não pôde ser confirmado. Não repita o envio; atualize a tela e confira a equipe.",
+      };
+      setStatusMessage(employeeStatus, messages[error?.message] || "Não foi possível enviar o convite. Tente novamente ou confira a conexão.", "error");
+    } finally {
+      if (submitButton) submitButton.disabled = false;
     }
-    const nowIso = new Date().toISOString();
-    const employee = normalizeUserRecord({
-      id: `employee-${Date.now()}`,
-      username,
-      password,
-      email,
-      company,
-      role: "employee",
-      status: "active",
-      groupId: "funcionarios",
-      emailVerification: {
-        status: "verified",
-        sentAt: "",
-        verifiedAt: nowIso,
-        expiresAt: "",
-        resendAvailableAt: "",
-        lastDeliveryMode: "internal-admin",
-      },
-      createdAt: nowIso,
-      updatedAt: nowIso,
-    });
-    authUsers.push(employee);
-    await refreshAuthStorage(true);
-    employeeForm.reset();
-    renderDeveloperArea();
-    renderEmployeesTab();
-    setStatusMessage(employeeStatus, `Funcionário ${employee.username} cadastrado com acesso interno.`, "success");
   });
 
   developerUsersList?.addEventListener("click", (event) => {
@@ -16659,7 +16713,6 @@ async function initApp() {
       const field = path[path.length - 1];
       destination[field] = field === "widthLabel" ? target.value : toMoneyNumber(target.value);
       persistConfigDraft();
-      renderConfig();
       renderRowsAndSummary();
       setConfigStatus("Tabela de metro linear atualizada.", "success");
       return;
@@ -17649,11 +17702,11 @@ async function initApp() {
   });
 
   clientsEditorDocument?.addEventListener("input", () => {
-    clientsEditorDocument.value = formatClientDocument(clientsEditorDocument.value, editingClientPersonType);
+    applyInputFormatterPreservingSelection(clientsEditorDocument, (value) => formatClientDocument(value, editingClientPersonType));
   });
 
   clientsEditorContact?.addEventListener("input", () => {
-    clientsEditorContact.value = formatBrazilianPhone(clientsEditorContact.value);
+    applyInputFormatterPreservingSelection(clientsEditorContact, formatBrazilianPhone);
   });
 
   document.getElementById("toggle-client-search-button")?.addEventListener("click", () => {

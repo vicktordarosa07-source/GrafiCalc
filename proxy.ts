@@ -1,8 +1,11 @@
 import type { NextRequest } from "next/server";
+import { createContentSecurityPolicy } from "@/lib/security/csp";
 import { updateSession } from "@/lib/supabase/proxy";
 
 export async function proxy(request: NextRequest) {
-  return updateSession(request);
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const contentSecurityPolicy = createContentSecurityPolicy(nonce, process.env.NODE_ENV === "development");
+  return updateSession(request, { nonce, contentSecurityPolicy });
 }
 
 export const config = {

@@ -4,14 +4,23 @@ import { randomBytes } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
+import { assertWorkspaceApiSandboxTarget } from "./workspace-api-target.mjs";
 
 const baseUrl = "http://127.0.0.1:3217";
+assertWorkspaceApiSandboxTarget({
+  url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+  expectedProjectRef: process.env.GRAFICALC_TEST_SUPABASE_PROJECT_REF,
+  secretKey: process.env.SUPABASE_SECRET_KEY,
+  publishableKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY,
+});
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
 const password = `Test-${randomBytes(28).toString("base64url")}!7`;
-const suffix = `${Date.now()}-${randomBytes(4).toString("hex")}`;
-const users = [];
-const insertedTenants = new Set();
+const projectRef = process.env.GRAFICALC_TEST_SUPABASE_PROJECT_REF;
+const testMarker = `graficalc-workspace-api-${projectRef}`;
+let ownerAccount;
+let separateAccount;
+let ownerRuntimeBaseline = {};
 let server;
 
 function accountClient() {
@@ -49,15 +58,53 @@ async function api(account, path, { method = "GET", headers = {}, body } = {}) {
   return { response, json: await response.json() };
 }
 
+async function findTestUser(email) {
+  for (let page = 1; page <= 20; page += 1) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw error;
+    const found = data.users.find((user) => user.email?.toLowerCase() === email.toLowerCase());
+    if (found) return found;
+    if (data.users.length < 1000) return null;
+  }
+  throw new Error("sandbox-test-user-search-limit-reached");
+}
+
 async function createAccount(label) {
-  const email = `codex-isolation-${label}-${suffix}@example.test`;
-  const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { nome: `Temporary ${label}` } });
-  if (error) throw error;
-  users.push(data.user.id);
+  const email = `codex-workspace-${label}-${projectRef}@example.test`;
+  const marker = `${testMarker}-${label}`;
+  let user = await findTestUser(email);
+  if (user) {
+    if (user.user_metadata?.graficalc_test_account !== marker) throw new Error("sandbox-test-account-marker-mismatch");
+    const { data, error } = await admin.auth.admin.updateUserById(user.id, { password });
+    if (error) throw error;
+    user = data.user;
+  } else {
+    const { data, error } = await admin.auth.admin.createUser({
+      email, password, email_confirm: true,
+      user_metadata: { nome: `Workspace API test ${label}`, empresa: "GrafiCalc Sandbox Test", graficalc_test_account: marker },
+    });
+    if (error) throw error;
+    user = data.user;
+  }
+
+  const { data: tenantRows, error: tenantError } = await admin.from("graficalc_tenants")
+    .select("id,owner_id").eq("owner_id", user.id);
+  if (tenantError) throw tenantError;
+  if (tenantRows.length !== 1) throw new Error("sandbox-test-account-tenant-not-unique");
+  const tenant = tenantRows[0];
+  const { data: priorProfile, error: priorProfileError } = await admin.from("profiles")
+    .select("tenant_id,papel,atualizado_em").eq("id", user.id).maybeSingle();
+  if (priorProfileError) throw priorProfileError;
+  if (!priorProfile) throw new Error("sandbox-test-account-profile-missing");
+  const { error: profileError } = await admin.from("profiles").update({
+    tenant_id: tenant.id, papel: "admin", atualizado_em: new Date().toISOString(),
+  }).eq("id", user.id);
+  if (profileError) throw profileError;
+
   const session = accountClient();
   const signed = await session.client.auth.signInWithPassword({ email, password });
   if (signed.error) throw signed.error;
-  return session;
+  return { ...session, id: user.id, email, tenantId: tenant.id, priorProfile };
 }
 
 try {
@@ -77,13 +124,17 @@ try {
   assert.ok(ready, `Next start did not become ready: ${serverError}`);
 
   const [owner, separate] = await Promise.all([createAccount("owner"), createAccount("separate")]);
+  ownerAccount = owner;
+  separateAccount = separate;
+  const { data: priorRuntime, error: priorRuntimeError } = await admin.from("graficalc_runtime_state")
+    .select("payload").eq("tenant_id", owner.tenantId).maybeSingle();
+  if (priorRuntimeError) throw priorRuntimeError;
+  ownerRuntimeBaseline = priorRuntime?.payload && typeof priorRuntime.payload === "object" ? priorRuntime.payload : {};
   const [ownerContext, separateContext] = await Promise.all([api(owner, "/api/config/pin/context"), api(separate, "/api/config/pin/context")]);
   assert.equal(ownerContext.response.status, 200);
   assert.equal(separateContext.response.status, 200);
   const ownerIdentity = { "X-GrafiCalc-User": ownerContext.json.userId, "X-GrafiCalc-Tenant": ownerContext.json.tenantId };
   const separateIdentity = { "X-GrafiCalc-User": separateContext.json.userId, "X-GrafiCalc-Tenant": separateContext.json.tenantId };
-  insertedTenants.add(ownerContext.json.tenantId);
-  insertedTenants.add(separateContext.json.tenantId);
   assert.notEqual(ownerContext.json.tenantId, separateContext.json.tenantId);
   const memberProfiles = await separate.client.from("profiles").select("id");
   assert.equal(memberProfiles.error, null);
@@ -92,7 +143,7 @@ try {
   assert.ok(privilegeEscalation.error);
 
   const saved = await api(owner, "/api/shared-state", { method: "PUT", headers: ownerIdentity, body: {
-    baseUpdatedAt: null, sharedState: { company: { name: "Temporary" }, clients: [{ id: "private-owner-client", name: "Private A" }], quoteHistory: [{ id: "private-owner-quote" }], workOrders: [] },
+    baseUpdatedAt: ownerContext.json.updatedAt, sharedState: { company: { name: "Temporary" }, clients: [{ id: "private-owner-client", name: "Private A" }], quoteHistory: [{ id: "private-owner-quote" }], workOrders: [] },
   } });
   assert.equal(saved.response.status, 200, JSON.stringify(saved.json));
 
@@ -139,9 +190,18 @@ try {
   console.log("workspace-api: RLS, isolated tenant reads/writes, spoofed identity rejection, PIN-gated config publish, one-use PIN verification, secret redaction, and team sharing passed");
 } finally {
   if (server && server.exitCode === null) { server.kill(); await Promise.race([new Promise((resolve) => server.once("exit", resolve)), delay(8000)]); }
-  for (const id of users) await admin.auth.admin.deleteUser(id);
-  for (const tenantId of insertedTenants) {
-    await admin.from("graficalc_runtime_state").delete().eq("tenant_id", tenantId);
-    await admin.from("graficalc_tenants").delete().eq("id", tenantId);
+  const cleanupErrors = [];
+  for (const account of [ownerAccount, separateAccount].filter(Boolean)) {
+    const { error } = await admin.from("profiles").update({
+      ...account.priorProfile,
+    }).eq("id", account.id);
+    if (error) cleanupErrors.push("profile-restore-failed");
   }
+  if (ownerAccount) {
+    const { error } = await admin.from("graficalc_runtime_state").upsert({
+      tenant_id: ownerAccount.tenantId, payload: ownerRuntimeBaseline, updated_at: new Date().toISOString(),
+    }, { onConflict: "tenant_id" });
+    if (error) cleanupErrors.push("workspace-snapshot-restore-failed");
+  }
+  if (cleanupErrors.length) throw new Error(`workspace-api-restore-failed:${cleanupErrors.join(",")}`);
 }

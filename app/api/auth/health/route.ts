@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSupabaseServerEnvironment } from "@/lib/supabase/env";
 import { createDeveloperSession, DEVELOPER_COOKIE, DEVELOPER_EMAIL, isDeveloperEligible, readDeveloperSession } from "@/lib/developer-session";
+import { isStrongSecret } from "@/lib/security/secret-strength.cjs";
+import { beginAuthAttempt } from "@/lib/supabase/auth-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -67,15 +69,16 @@ export async function POST(request: Request) {
   const password = String(body?.password || "");
   const expectedUsername = String(process.env.GRAFICALC_DEVELOPER_USERNAME || "").trim();
   const expectedPassword = String(process.env.GRAFICALC_DEVELOPER_PASSWORD || "");
-  if (!expectedUsername || !expectedPassword || !process.env.GRAFICALC_SESSION_SECRET) {
+  if (!expectedUsername || !expectedPassword || !isStrongSecret(String(process.env.GRAFICALC_SESSION_SECRET || "").trim())) {
     return Response.json({ ok: false, error: "developer-auth-not-configured" }, { status: 503 });
   }
   const key = `developer-auth:${user.id}:${requestKey(request)}`;
   let admin;
   try { admin = createAdminClient(); }
   catch { return Response.json({ ok: false, error: "security-not-configured" }, { status: 503 }); }
-  const { data: allowed, error: limitError } = await admin.rpc("graficalc_auth_attempt_allowed", { p_key: key });
-  if (limitError) return Response.json({ ok: false, error: "rate-limit-unavailable" }, { status: 503 });
+  let allowed: boolean;
+  try { allowed = await beginAuthAttempt(admin, key); }
+  catch { return Response.json({ ok: false, error: "rate-limit-unavailable" }, { status: 503 }); }
   if (!allowed) return Response.json({ ok: false, error: "too-many-attempts" }, { status: 429, headers: { "Retry-After": "900" } });
   // The creator can authenticate with the authorized account email even when
   // the internal developer username remains different in Vercel.
@@ -83,8 +86,6 @@ export async function POST(request: Request) {
     || secureEqual(username.toLowerCase(), DEVELOPER_EMAIL);
   const passwordMatches = secureEqual(password, expectedPassword);
   if (!usernameMatches || !passwordMatches) {
-    const { error: failureError } = await admin.rpc("graficalc_record_auth_failure", { p_key: key });
-    if (failureError) return Response.json({ ok: false, error: "rate-limit-unavailable" }, { status: 503 });
     return Response.json({ ok: false, error: "invalid-credentials" }, { status: 401 });
   }
   const { error: cleanupError } = await admin.rpc("graficalc_clear_auth_failures", { p_key: key });

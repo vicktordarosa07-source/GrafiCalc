@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { isStrongSecret } from "@/lib/security/secret-strength.cjs";
 
 export const DEVELOPER_COOKIE = "graficalc_developer_session";
 export const DEVELOPER_SESSION_TTL_SECONDS = 30 * 60;
@@ -14,7 +15,7 @@ type DeveloperSession = {
 
 function sessionSecret() {
   const secret = String(process.env.GRAFICALC_SESSION_SECRET || "").trim();
-  if (!secret) throw new Error("GRAFICALC_SESSION_SECRET must be configured.");
+  if (!isStrongSecret(secret)) throw new Error("GRAFICALC_SESSION_SECRET must be a strong random secret.");
   return secret;
 }
 
@@ -54,7 +55,8 @@ export function readDeveloperSession(token: string | undefined) {
   if (!token || !token.includes(".")) return null;
   const [payload, signature] = token.split(".");
   if (!payload || !signature) return null;
-  const expected = sign(payload);
+  let expected: string;
+  try { expected = sign(payload); } catch { return null; }
   const actualBuffer = Buffer.from(signature);
   const expectedBuffer = Buffer.from(expected);
   if (actualBuffer.length !== expectedBuffer.length || !timingSafeEqual(actualBuffer, expectedBuffer)) return null;

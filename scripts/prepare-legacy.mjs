@@ -4,7 +4,7 @@ import path from "node:path";
 const root = process.cwd();
 const target = path.join(root, "public", "legacy");
 await mkdir(target, { recursive: true });
-for (const file of ["app.mjs", "calculation-base.mjs", "styles.css", "catalogo-loja.seed.js", "catalogo-loja.seed.mjs"]) {
+for (const file of ["app.mjs", "calculation-base.mjs", "input-format.mjs", "number-input.mjs", "styles.css", "catalogo-loja.seed.js", "catalogo-loja.seed.mjs"]) {
   await cp(path.join(root, file), path.join(target, file));
 }
 await cp(path.join(root, "assets"), path.join(target, "assets"), { recursive: true, force: true });

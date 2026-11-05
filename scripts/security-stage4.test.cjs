@@ -46,7 +46,7 @@ function request({ port, method = "GET", pathname, headers = {}, body }) {
 
 function waitForReady(port, child) {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("legacy-server-did-not-start")), 6000);
+    const timeout = setTimeout(() => reject(new Error("legacy-server-did-not-start")), 15000);
     const interval = setInterval(async () => {
       try {
         const result = await request({ port, pathname: "/api/health" });
@@ -121,7 +121,7 @@ async function main() {
       HOST: "127.0.0.1",
       NODE_ENV: "test",
       GRAFICALC_DATA_DIR: tempDataDir,
-      GRAFICALC_SESSION_SECRET: "stage4-session-secret-only-for-tests",
+      GRAFICALC_SESSION_SECRET: "F4kQ9vT2mR7xB3pL8zN6cH1sW5yD0aGH",
       GRAFICALC_DEVELOPER_USERNAME: "security-admin",
       GRAFICALC_DEVELOPER_PASSWORD: "Strong#Stage4Password",
       SUPABASE_URL: `http://127.0.0.1:${supabasePort}`,

@@ -2,6 +2,7 @@ import { getWorkspaceContext, writeWorkspace, workspaceError } from "@/lib/works
 import { assertSameOrigin, assertWorkspaceBinding, mergeWorkspace, publicWorkspace, getCollectionAccess, scopeWorkspaceCollections, prepareWorkspaceCollections, WorkspaceError } from "@/lib/workspace-policy";
 import { hasValidPinVerification, CONFIG_PIN_COOKIE } from "@/lib/config-pin";
 import { cookies } from "next/headers";
+import { getBillingAccess } from "@/lib/billing/access";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,8 @@ export async function GET(request: Request) {
     const context = await getWorkspaceContext();
     if (!context) throw new WorkspaceError("unauthorized", 401);
     assertWorkspaceBinding(request, context.user.id, context.tenantId);
+    const billing = await getBillingAccess(context.admin, context.tenantId);
+    if (!billing.allowed) return Response.json({ ok: false, error: "subscription-required", billingUrl: "/assinatura", reason: billing.reason }, { status: 402, headers: { "Cache-Control": "private, no-store" } });
     return snapshot(context);
   } catch (error) { return workspaceError(error); }
 }
@@ -27,6 +30,8 @@ export async function PUT(request: Request) {
     const context = await getWorkspaceContext();
     if (!context) throw new WorkspaceError("unauthorized", 401);
     assertWorkspaceBinding(request, context.user.id, context.tenantId);
+    const billing = await getBillingAccess(context.admin, context.tenantId);
+    if (!billing.allowed) return Response.json({ ok: false, error: "subscription-required", billingUrl: "/assinatura", reason: billing.reason }, { status: 402, headers: { "Cache-Control": "private, no-store" } });
     if (Number(request.headers.get("content-length")) > 15_000_000) throw new WorkspaceError("payload-too-large", 413);
     const raw = await request.text();
     if (new TextEncoder().encode(raw).length > 15_000_000) throw new WorkspaceError("payload-too-large", 413);

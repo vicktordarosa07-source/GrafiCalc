@@ -10,7 +10,7 @@ const PORT = 3917;
 const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "graficalc-security-stage3-"));
 const developerPassword = "Correct#123";
 const configPassword = "Config#123";
-const sessionSecret = "stage3-test-session-secret";
+const sessionSecret = "F4kQ9vT2mR7xB3pL8zN6cH1sW5yD0aGH";
 let server;
 
 function wait(ms) {
@@ -94,8 +94,11 @@ async function run() {
       GRAFICALC_DEVELOPER_USERNAME: "developer-test",
       GRAFICALC_DEVELOPER_PASSWORD: developerPassword,
       GRAFICALC_CONFIG_PASSWORD: configPassword,
-      GRAFICALC_SECURITY_TEST_WINDOW_MS: "1000",
-      GRAFICALC_VERIFICATION_CODE_TTL_MS: "1000",
+      // Keep a wider test-only window so slow CI/desktop runs do not expire it
+      // between sequential HTTP requests. Production ignores this override.
+      GRAFICALC_SECURITY_TEST_WINDOW_MS: "3000",
+      // Keep the code valid throughout the multi-request brute-force scenario.
+      GRAFICALC_VERIFICATION_CODE_TTL_MS: "10000",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -128,7 +131,7 @@ async function run() {
   });
   assert.equal(loginBlocked.status, 429);
   assert.ok(Number(loginBlocked.headers["retry-after"]) >= 1);
-  await wait(1100);
+  await wait(3100);
   assert.equal((await request("POST", "/api/auth/developer-login", {
     username: "developer-test",
     password: developerPassword,
@@ -146,7 +149,7 @@ async function run() {
     username: "spoofed-final",
     password: "wrong-password",
   }, { "X-Forwarded-For": "198.51.100.10" })).status, 429);
-  await wait(1100);
+  await wait(3100);
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const response = await request("POST", "/api/config/unlock", { password: "wrong-password" }, { Cookie: cookie });
@@ -155,7 +158,7 @@ async function run() {
   }
   const unlockBlocked = await request("POST", "/api/config/unlock", { password: "wrong-password" }, { Cookie: cookie });
   assert.equal(unlockBlocked.status, 429);
-  await wait(1100);
+  await wait(3100);
   assert.equal((await request("POST", "/api/config/unlock", { password: configPassword }, { Cookie: cookie })).status, 200);
 
   const bruteForceEmail = "bruteforce@example.test";
@@ -192,7 +195,7 @@ async function run() {
   const replaceEmail = "replace@example.test";
   assert.equal((await sendVerification(replaceEmail)).status, 200);
   const replacedCode = getLatestOutboxCode(replaceEmail);
-  await wait(1100);
+  await wait(3100);
   assert.equal((await sendVerification(replaceEmail)).status, 200);
   const currentCode = getLatestOutboxCode(replaceEmail);
   assert.notEqual(currentCode, replacedCode);
@@ -208,7 +211,7 @@ async function run() {
   const expiredEmail = "expired@example.test";
   assert.equal((await sendVerification(expiredEmail)).status, 200);
   const expiredCode = getLatestOutboxCode(expiredEmail);
-  await wait(1100);
+  await wait(10_100);
   assert.equal((await request("POST", "/api/auth/verify-verification-code", {
     email: expiredEmail,
     code: expiredCode,
@@ -220,7 +223,7 @@ async function run() {
   const emailIpBlocked = await sendVerification("ip-limit-blocked@example.test");
   assert.equal(emailIpBlocked.status, 429);
 
-  await wait(1100);
+  await wait(3100);
   for (let attempt = 0; attempt < 20; attempt += 1) {
     assert.equal((await request("POST", "/api/auth/verify-verification-code", {
       email: `unknown-${attempt}@example.test`,

@@ -9,6 +9,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { loginSchema, signupSchema, passwordSchema, profileSchema } from "@/lib/validation/auth";
 import { onlyDigits } from "@/lib/validation/documents";
+import { safeInternalRedirect } from "@/lib/security/redirects";
+import { beginAuthAttempt } from "@/lib/supabase/auth-rate-limit";
 
 export type ActionState = { ok: boolean; message: string; fieldErrors?: Record<string, string[]> };
 
@@ -38,11 +40,6 @@ function isLocalOrigin(origin: string | null) {
 function confirmationCallbackUrl(siteUrl: string, email: string, next = "/workspace") {
   const params = new URLSearchParams({ next, email });
   return `${siteUrl}/auth/confirm?${params.toString()}`;
-}
-
-function safeInternalRedirect(value: string | null, fallback = "/workspace") {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return fallback;
-  return value;
 }
 
 function isSupportedConfirmationType(value: string): value is EmailOtpType {
@@ -111,18 +108,10 @@ async function authRateLimitKey(identifier: string) {
   return `${ip}:${identifier.toLowerCase()}`;
 }
 
-async function isLoginAllowed(identifier: string) {
+async function beginLoginAttempt(identifier: string) {
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("graficalc_auth_attempt_allowed", {
-    p_key: await authRateLimitKey(identifier),
-  });
-  if (error) throw new Error("Não foi possível validar o limite de acesso.");
-  return Boolean(data);
-}
-
-async function recordLoginFailure(identifier: string) {
-  const admin = createAdminClient();
-  await admin.rpc("graficalc_record_auth_failure", { p_key: await authRateLimitKey(identifier) });
+  try { return await beginAuthAttempt(admin, await authRateLimitKey(identifier)); }
+  catch { throw new Error("Não foi possível validar o limite de acesso."); }
 }
 
 async function clearLoginFailures(identifier: string) {
@@ -158,7 +147,7 @@ export async function loginAction(_: ActionState, formData: FormData): Promise<A
   if (!parsed.success) return { ok: false, message: "Revise os campos informados.", fieldErrors: parsed.error.flatten().fieldErrors };
   if (requiresCaptcha() && !parsed.data.captchaToken) return { ok: false, message: "Conclua a verificacao de seguranca antes de entrar." };
 
-  if (!(await isLoginAllowed(parsed.data.email))) {
+  if (!(await beginLoginAttempt(parsed.data.email))) {
     return { ok: false, message: "Muitas tentativas. Aguarde 15 minutos e tente novamente." };
   }
 
@@ -170,11 +159,9 @@ export async function loginAction(_: ActionState, formData: FormData): Promise<A
   });
 
   if (error || !data.user) {
-    await recordLoginFailure(parsed.data.email);
     return { ok: false, message: "E-mail ou senha inválidos." };
   }
   if (!data.user.email_confirmed_at) {
-    await recordLoginFailure(parsed.data.email);
     await supabase.auth.signOut();
     return { ok: false, message: "Confirme seu e-mail antes de entrar." };
   }

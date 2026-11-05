@@ -4,12 +4,15 @@ import { type EmailOtpType } from "@supabase/supabase-js";
 import { getSupabaseServerEnvironment } from "@/lib/supabase/env";
 
 function isSupportedType(value: string): value is EmailOtpType {
-  return value === "signup" || value === "recovery";
+  return value === "signup" || value === "recovery" || value === "invite";
 }
 
 export async function GET(request: Request) {
   const sourceUrl = new URL(request.url);
-  const next = sourceUrl.searchParams.get("next") === "/alterar-senha" ? "/alterar-senha" : "/entrar?confirmado=1";
+  const requestedNext = sourceUrl.searchParams.get("next");
+  const next = requestedNext === "/alterar-senha" || requestedNext === "/workspace"
+    ? requestedNext
+    : "/entrar?confirmado=1";
   const errorUrl = new URL("/entrar?erro=confirmacao", sourceUrl.origin);
   const { url, publishableKey } = getSupabaseServerEnvironment();
   if (!url || !publishableKey) return NextResponse.redirect(errorUrl);
