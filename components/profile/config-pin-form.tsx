@@ -82,7 +82,7 @@ export function ConfigPinForm() {
   return <section className="profile-card">
     <h2>PIN de segurança das configurações</h2>
     <p>{pinConfigured ? "Altere o PIN usado para salvar alterações na aba Configuração." : "Crie o primeiro PIN. Deixe o campo de PIN atual vazio."}</p>
-    <form className="auth-form" onSubmit={submit}>
+    <form className="auth-form config-pin-form" onSubmit={submit}>
       <label className="field"><span>PIN atual</span><input value={currentPin} onChange={(event) => setCurrentPin(event.target.value)} inputMode="numeric" pattern="[0-9]{4,6}" maxLength={6} type="password" autoComplete="current-password" /></label>
       <label className="field"><span>Novo PIN</span><input required value={newPin} onChange={(event) => setNewPin(event.target.value)} inputMode="numeric" pattern="[0-9]{4,6}" maxLength={6} type="password" autoComplete="new-password" /></label>
       <label className="field"><span>Confirmar novo PIN</span><input required value={confirmPin} onChange={(event) => setConfirmPin(event.target.value)} inputMode="numeric" pattern="[0-9]{4,6}" maxLength={6} type="password" autoComplete="new-password" /></label>
