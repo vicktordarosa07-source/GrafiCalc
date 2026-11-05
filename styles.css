@@ -318,6 +318,14 @@
   display: flex !important;
 }
 
+.tab-button[data-creator-only] {
+  display: none !important;
+}
+
+.tab-button[data-creator-only].creator-navigation-visible {
+  display: flex !important;
+}
+
 html,
 body {
   margin: 0;

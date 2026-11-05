@@ -50,7 +50,7 @@ const EMAIL_VERIFICATION_COOLDOWN_MS = 60 * 1000;
 
 const APP_TAB_LABELS = [
   { id: "home", label: "Home" },
-  { id: "novoOrcamento", label: "Novo orçamento", developerOnly: true },
+  { id: "novoOrcamento", label: "Novo orçamento", creatorOnly: true },
   { id: "conta", label: "Minha conta" },
   { id: "calculo", label: "Cálculo de apostila" },
   { id: "impressos", label: "Impressos coloridos" },
@@ -2387,9 +2387,9 @@ function saveAccountConfig(user, config) {
   saveToStorage(getAccountStorageKey(STORAGE_KEYS.config, user), config);
 }
 
-function createTabPermissionMap(enabled = true, developerEnabled = false) {
+function createTabPermissionMap(enabled = true, developerEnabled = false, creatorEnabled = false) {
   return Object.fromEntries(
-    APP_TAB_LABELS.map((tab) => [tab.id, tab.teamLeaderOnly ? false : tab.developerOnly ? developerEnabled : enabled])
+    APP_TAB_LABELS.map((tab) => [tab.id, tab.teamLeaderOnly ? false : tab.developerOnly ? developerEnabled : tab.creatorOnly ? creatorEnabled : enabled])
   );
 }
 
@@ -2405,7 +2405,7 @@ function createDefaultAccessControl() {
       {
         id: "developer",
         name: "Desenvolvedor",
-        tabs: createTabPermissionMap(true, true),
+        tabs: createTabPermissionMap(true, true, true),
         dashboards: createDashboardPermissionMap(true),
         protected: true,
       },
@@ -2751,18 +2751,30 @@ function getGroupForUser(accessControl, user) {
     || accessControl.groups[0];
 }
 
+function isCreatorAccount(user) {
+  const remote = typeof window !== "undefined" ? window.grafiCalcRemoteAuth : null;
+  return Boolean(
+    remote?.userId
+    && remote.userId === user?.id
+    && normalizeLookupEmail(remote.user?.email) === DEVELOPER_EMAIL
+    && normalizeLookupEmail(user?.email) === DEVELOPER_EMAIL
+  );
+}
+
 function getUserTabPermissions(accessControl, user) {
   if (!user) {
     return createTabPermissionMap(false, false);
   }
   const isDeveloper = user.role === "developer" && user.developerAccess === true;
+  const isCreator = isCreatorAccount(user);
   const group = getGroupForUser(accessControl, user);
   const overrides = accessControl.userOverrides?.[user.id] || {};
-  const permissions = isDeveloper
-    ? createTabPermissionMap(true, true)
+  const permissions = isDeveloper || isCreator
+    ? createTabPermissionMap(true, isDeveloper, isCreator || isDeveloper)
     : { ...createTabPermissionMap(false, false), ...(group?.tabs || {}), ...overrides };
   for (const tab of APP_TAB_LABELS) {
     if (tab.developerOnly && !isDeveloper) permissions[tab.id] = false;
+    if (tab.creatorOnly && !isCreator && !isDeveloper) permissions[tab.id] = false;
     if (tab.teamLeaderOnly) {
       permissions[tab.id] = Boolean(user.teamLeader) || isDeveloper;
     }
@@ -9365,13 +9377,22 @@ async function initApp() {
         } else {
           button.style.setProperty("display", "none", "important");
         }
+      } else if (button.dataset.creatorOnly !== undefined) {
+        const creatorNavigationVisible = allowed && isCreatorAccount(currentUser) && !settingsOnlyTabs.has(tab);
+        button.classList.toggle("creator-navigation-visible", creatorNavigationVisible);
+        if (creatorNavigationVisible) {
+          button.style.removeProperty("display");
+        } else {
+          button.style.setProperty("display", "none", "important");
+        }
       }
     });
     // Only offer sections that are actually accessible to this user on mobile.
     if (mobileTabSelect) {
       const allowedTabs = new Set(tabButtons
         .filter((button) => !button.hidden && !button.disabled &&
-          (button.dataset.devOnly === undefined || isDeveloperSession()))
+          (button.dataset.devOnly === undefined || isDeveloperSession()) &&
+          (button.dataset.creatorOnly === undefined || isCreatorAccount(currentUser)))
         .map((button) => button.dataset.tabTarget));
       for (const option of mobileTabSelect.options) {
         const allowed = allowedTabs.has(option.value);
@@ -9468,7 +9489,7 @@ async function initApp() {
       .map((group) => {
         const tabToggles = APP_TAB_LABELS
           .filter((tab) => tab.id !== "home")
-          .filter((tab) => !tab.teamLeaderOnly)
+          .filter((tab) => !tab.teamLeaderOnly && !tab.creatorOnly)
           .filter((tab) => !tab.developerOnly || group.id === "developer")
           .map((tab) => `
             <label class="developer-permission-chip">
@@ -9535,7 +9556,7 @@ async function initApp() {
     const documentMeta = getDocumentVerificationMeta(user);
     const cpfPayload = buildOfficialCpfVerificationPayload(user);
     const permissionRows = APP_TAB_LABELS
-      .filter((tab) => !tab.developerOnly && !tab.teamLeaderOnly && tab.id !== "home")
+      .filter((tab) => !tab.developerOnly && !tab.creatorOnly && !tab.teamLeaderOnly && tab.id !== "home")
       .map((tab) => {
         const inherited = Boolean(group?.tabs?.[tab.id]);
         const overrideValue = Object.prototype.hasOwnProperty.call(overrides, tab.id) ? overrides[tab.id] : "";

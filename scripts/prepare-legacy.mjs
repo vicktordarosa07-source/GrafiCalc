@@ -11,7 +11,7 @@ await cp(path.join(root, "assets"), path.join(target, "assets"), { recursive: tr
 const sourceHtml = await readFile(path.join(root, "index.html"), "utf8");
 const legacyBootstrap = `<script defer src="./sync-recovery.js"></script>
 <script defer src="./legacy-auth-bridge.mjs?v=20260917-dev-access-fix"></script>
-<script defer src="./legacy-bootstrap.mjs?v=20261105-csp-bootstrap-fix"></script>`;
+<script defer src="./legacy-bootstrap.mjs?v=20261105-creator-tabs"></script>`;
 const html = sourceHtml.replace(
   /<script(?:\s+type="module")?\s+(?:defer\s+)?src="\.\/app\.mjs[^>]*><\/script>/i,
   legacyBootstrap
