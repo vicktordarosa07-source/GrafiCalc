@@ -332,7 +332,7 @@ const HIDDEN_IMPRESSOS_SERVICE_CATEGORY_IDS = new Set([
 ]);
 const AUTO_PLASTIFICATION_SERVICE_ID = "plastificacao-automatica";
 const PLASTIFICATION_BORDER_MM = 5;
-const PLASEAL_SIZES = [
+const DEFAULT_POLASEAL_SIZES = [
   { id: "a4", label: "Polaseal A4", widthMm: 220, heightMm: 307, group: "a4-oficio" },
   { id: "oficio", label: "Polaseal oficio", widthMm: 226, heightMm: 340, group: "a4-oficio" },
   { id: "a3", label: "Polaseal A3", widthMm: 303, heightMm: 426, group: "a3" },
@@ -1017,6 +1017,7 @@ function createDefaultConfig() {
     flyerFinishes: deepClone(DEFAULT_FLYER_FINISHES),
     catalogSections: [],
     combinationServices: [],
+    polasealSizes: deepClone(DEFAULT_POLASEAL_SIZES),
     freeProductCategories: [],
     freeProducts: [],
     calculationBaseMaterialOverrides: {},
@@ -1066,6 +1067,7 @@ function createDefaultColorPrintRow(index) {
     cutPriceOverride: "",
     serviceIds: [],
     serviceOverrides: {},
+    polasealSizeId: "",
     discountType: "R$",
     discountValue: 0,
   };
@@ -1480,6 +1482,34 @@ function normalizeCombinationServices(candidateServices) {
     }));
 }
 
+function normalizePolasealSizes(candidateSizes) {
+  const rows = Array.isArray(candidateSizes) && candidateSizes.length
+    ? candidateSizes
+    : DEFAULT_POLASEAL_SIZES;
+  const ids = new Set();
+  return rows
+    .filter((item) => item && typeof item === "object")
+    .map((item, index) => {
+      const rawId = String(item.id || `polaseal-${index + 1}`).trim().slice(0, 80);
+      const baseId = rawId || `polaseal-${index + 1}`;
+      let id = baseId;
+      let suffix = 1;
+      while (ids.has(id)) {
+        id = `${baseId}-${suffix}`;
+        suffix += 1;
+      }
+      ids.add(id);
+      return {
+        id,
+        label: String(item.label || `Polaseal ${index + 1}`).trim().slice(0, 80) || `Polaseal ${index + 1}`,
+        widthMm: toDecimalNumber(item.widthMm),
+        heightMm: toDecimalNumber(item.heightMm),
+        group: item.group === "a3" ? "a3" : "a4-oficio",
+      };
+    })
+    .filter((item) => item.widthMm > 0 && item.heightMm > 0);
+}
+
 function normalizeCardPricing(candidatePricing, defaultPricing = DEFAULT_CARD_CATALOG) {
   const pricingByKey = new Map();
   const addRows = (rows) => {
@@ -1831,6 +1861,7 @@ function mergeConfig(candidate) {
   );
 
   merged.combinationServices = normalizeCombinationServices(candidate.combinationServices);
+  merged.polasealSizes = normalizePolasealSizes(candidate.polasealSizes);
 
   if (candidate.m2Pricing && typeof candidate.m2Pricing === "object") {
     for (const key of Object.keys(merged.m2Pricing)) {
@@ -2076,6 +2107,7 @@ function mergeState(candidate, configCandidate = null) {
         ? ""
         : toMoneyNumber(row?.cutPriceOverride),
       serviceIds: Array.isArray(row?.serviceIds) ? row.serviceIds.filter((item) => typeof item === "string") : [],
+      polasealSizeId: typeof row?.polasealSizeId === "string" ? row.polasealSizeId : "",
       serviceOverrides: row?.serviceOverrides && typeof row.serviceOverrides === "object" && !Array.isArray(row.serviceOverrides)
         ? Object.fromEntries(
             Object.entries(row.serviceOverrides)
@@ -4049,6 +4081,21 @@ function calculateColorPrintWorkbook(state, config) {
     const active = isColorPrintRowActive(row);
     const customPricing = preset?.customPricingKey ? config.colorProductPricing?.[preset.customPricingKey] : null;
     const usesDirectBracketPricing = preset?.customPricingMode === "direct-bracket-unit";
+    const plastificationSelected = (row.serviceIds || []).some((serviceId) => {
+      const service = combinationServices.find((item) => item.id === serviceId);
+      return service?.pricingMode === "plastification-auto" || service?.id === AUTO_PLASTIFICATION_SERVICE_ID;
+    });
+    if (active && plastificationSelected && quantity > 0 && widthMm > 0 && heightMm > 0 && row.polasealSizeId) {
+      const polaseal = normalizePolasealSizes(config.polasealSizes).find((item) => item.id === row.polasealSizeId);
+      if (polaseal && getBestFitOnSheet(
+        widthMm + PLASTIFICATION_BORDER_MM * 2,
+        heightMm + PLASTIFICATION_BORDER_MM * 2,
+        polaseal.widthMm,
+        polaseal.heightMm
+      ).itemsPerSheet <= 0) {
+        warnings.push(`Impresso ${index + 1}: o tamanho de polaseal escolhido não comporta esta peça.`);
+      }
+    }
 
     if (usesDirectBracketPricing) {
       const serviceSummary = buildColorServiceSummary(row, combinationServices, {
@@ -4057,6 +4104,8 @@ function calculateColorPrintWorkbook(state, config) {
         a4Sheets: quantity,
         widthMm,
         heightMm,
+        polasealSizeId: row.polasealSizeId,
+        polasealSizes: config.polasealSizes,
       });
       const unitPrice = getDirectBracketUnitPrice(customPricing, quantity);
       const printTotal = quantity * unitPrice;
@@ -4105,6 +4154,8 @@ function calculateColorPrintWorkbook(state, config) {
         a4Sheets: 0,
         widthMm,
         heightMm,
+        polasealSizeId: row.polasealSizeId,
+        polasealSizes: config.polasealSizes,
       });
       const totalBeforeDiscount = (row.cutPriceOverride === "" ? 0 : toMoneyNumber(row.cutPriceOverride)) + serviceSummary.total;
       const discount = calculateDiscount(totalBeforeDiscount, row);
@@ -4145,6 +4196,8 @@ function calculateColorPrintWorkbook(state, config) {
         a4Sheets: 0,
         widthMm,
         heightMm,
+        polasealSizeId: row.polasealSizeId,
+        polasealSizes: config.polasealSizes,
       });
       const totalBeforeDiscount = (row.cutPriceOverride === "" ? 0 : toMoneyNumber(row.cutPriceOverride)) + serviceSummary.total;
       const discount = calculateDiscount(totalBeforeDiscount, row);
@@ -4198,6 +4251,8 @@ function calculateColorPrintWorkbook(state, config) {
       a4Sheets,
       widthMm,
       heightMm,
+      polasealSizeId: row.polasealSizeId,
+      polasealSizes: config.polasealSizes,
     });
     const totalBeforeDiscount = printTotal + finalCutPrice + serviceSummary.total;
     const discount = calculateDiscount(totalBeforeDiscount, row);
@@ -5908,7 +5963,10 @@ function calculateAutomaticPlastificationTotal(context = {}) {
   const pieceHeightMm = baseHeightMm + PLASTIFICATION_BORDER_MM * 2;
   const candidates = [];
 
-  for (const sheet of PLASEAL_SIZES) {
+  const configuredSizes = normalizePolasealSizes(context.polasealSizes);
+  const selectedSize = configuredSizes.find((item) => item.id === context.polasealSizeId);
+  const candidateSizes = selectedSize ? [selectedSize] : configuredSizes;
+  for (const sheet of candidateSizes) {
     const fit = getBestFitOnSheet(pieceWidthMm, pieceHeightMm, sheet.widthMm, sheet.heightMm);
     if (fit.itemsPerSheet <= 0) {
       continue;
@@ -5978,11 +6036,19 @@ function buildColorServiceSummary(row, services, context = {}) {
       const isAutomaticPlastification = service.pricingMode === "plastification-auto" || service.id === AUTO_PLASTIFICATION_SERVICE_ID;
       const override = row.serviceOverrides?.[service.id];
       const value = isAutomaticPlastification || override === "" || override == null
-        ? resolveAutomaticColorServiceTotal(service, context)
+        ? resolveAutomaticColorServiceTotal(service, {
+            ...context,
+            polasealSizeId: row.polasealSizeId || context.polasealSizeId,
+          })
         : toMoneyNumber(override);
+      const selectedPolaseal = isAutomaticPlastification
+        ? normalizePolasealSizes(context.polasealSizes).find((item) => item.id === row.polasealSizeId)
+        : null;
       return {
         id: service.id,
-        label: isAutomaticPlastification ? "plastificação polaseal" : service.label,
+        label: isAutomaticPlastification
+          ? `plastificação ${selectedPolaseal?.label || "polaseal"}`
+          : service.label,
         value,
       };
     });
@@ -5992,9 +6058,7 @@ function buildColorServiceSummary(row, services, context = {}) {
     total: selectedServices.reduce((sum, service) => sum + Number(service.value || 0), 0),
     text: selectedServices
       .filter((service) => service.value > 0 || service.label)
-      .map((service) => service.id === AUTO_PLASTIFICATION_SERVICE_ID
-        ? service.label
-        : `${service.label}: ${formatCurrency(service.value)}`)
+      .map((service) => `${service.label}: ${formatCurrency(service.value)}`)
       .join(" | "),
   };
 }
@@ -6337,6 +6401,11 @@ function createConfigSectionsMarkup(config, viewMode = "basic", activeSection = 
       "Tabela de cortes",
       "Até 5 folhas usa valor fixo por faixa. Acima de 5 folhas usa valor por corte.",
       createColorCutTableMarkup(config.cutPricing)
+    ),
+    createConfigCardMarkup(
+      "Tamanhos de polaseal",
+      "Cadastre os formatos disponíveis na sua gráfica. O grupo de preço define qual tabela de plastificação será usada no cálculo.",
+      createPolasealSizesConfigMarkup(config.polasealSizes)
     ),
     createConfigCardMarkup(
       "Complementos combináveis",
@@ -7686,6 +7755,44 @@ function createReadyProductPresetMarkup(product, productIndex, config, viewMode 
       </div>
       ${createTableMarkup(headers, pricingRows, `ready-${product.readyPricingKey}`, fields)}
     </div>
+  `;
+}
+
+function createPolasealSizesConfigMarkup(candidateSizes) {
+  const sizes = normalizePolasealSizes(candidateSizes);
+  return `
+    <div class="toolbar">
+      <button class="button button-small" type="button" data-add-polaseal-size>Adicionar tamanho</button>
+    </div>
+    <div class="nested-list">
+      ${sizes.map((size, index) => `
+        <div class="nested-row service-row">
+          <label>
+            <span>Nome exibido</span>
+            <input data-polaseal-key="label" data-polaseal-index="${index}" type="text" maxlength="80" value="${escapeHtml(size.label)}">
+          </label>
+          <label>
+            <span>Largura (mm)</span>
+            <input data-polaseal-key="widthMm" data-polaseal-index="${index}" type="number" min="1" step="0.1" value="${escapeHtml(size.widthMm)}">
+          </label>
+          <label>
+            <span>Altura (mm)</span>
+            <input data-polaseal-key="heightMm" data-polaseal-index="${index}" type="number" min="1" step="0.1" value="${escapeHtml(size.heightMm)}">
+          </label>
+          <label>
+            <span>Tabela de preço</span>
+            <select data-polaseal-key="group" data-polaseal-index="${index}">
+              <option value="a4-oficio"${size.group === "a4-oficio" ? " selected" : ""}>A4 / Ofício</option>
+              <option value="a3"${size.group === "a3" ? " selected" : ""}>A3</option>
+            </select>
+          </label>
+          <div class="config-row-toolbar">
+            <button class="button button-small button-danger config-delete-button" type="button" title="Excluir tamanho" data-delete-polaseal-size="${escapeHtml(size.id)}"${sizes.length <= 1 ? " disabled" : ""}>Excluir</button>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+    <p class="helper-text">Os preços continuam nas faixas de plastificação já usadas pelo sistema: A4/Ofício ou A3. O encaixe considera 5 mm de borda por lado.</p>
   `;
 }
 
@@ -14510,6 +14617,10 @@ async function initApp() {
           const checked = selectedIds.includes(service.id);
           const overrideValue = row.serviceOverrides?.[service.id];
           const isAutomaticPlastification = service.pricingMode === "plastification-auto" || service.id === AUTO_PLASTIFICATION_SERVICE_ID;
+          const polasealSizes = normalizePolasealSizes(config.polasealSizes);
+          const selectedPolasealSizeId = polasealSizes.some((item) => item.id === row.polasealSizeId)
+            ? row.polasealSizeId
+            : (polasealSizes[0]?.id || "");
           return `
             <label class="finish-picker-option">
               <input type="checkbox" value="${escapeHtml(service.id)}"${checked ? " checked" : ""} data-color-service-option data-color-service-id="${escapeHtml(service.id)}">
@@ -14520,7 +14631,11 @@ async function initApp() {
                 </div>
                 ${isAutomaticPlastification ? `
                   <div class="finish-eyelet-settings"${checked ? "" : " hidden"}>
-                    <span>Valor calculado automaticamente</span>
+                    <span>Polaseal</span>
+                    <select data-color-service-size-id="${escapeHtml(service.id)}" aria-label="Tamanho do polaseal">
+                      ${polasealSizes.map((size) => `<option value="${escapeHtml(size.id)}"${size.id === selectedPolasealSizeId ? " selected" : ""}>${escapeHtml(size.label)} · ${formatMeasure(size.widthMm)} × ${formatMeasure(size.heightMm)} mm</option>`).join("")}
+                    </select>
+                    <small>O preço seguirá a tabela do grupo configurado para este tamanho.</small>
                   </div>
                 ` : `
                   <div class="finish-eyelet-settings"${checked ? "" : " hidden"}>
@@ -14572,9 +14687,19 @@ async function initApp() {
 
     popover.addEventListener("change", (event) => {
       const target = event.target;
-      if (!(target instanceof HTMLInputElement)) {
+      if (!(target instanceof HTMLElement)) {
         return;
       }
+
+      if (target instanceof HTMLSelectElement && target.dataset.colorServiceSizeId) {
+        row.polasealSizeId = target.value;
+        persist();
+        renderRowsAndSummary();
+        if (activeNewQuoteColorId === row.id) renderNewQuoteColorEditor();
+        return;
+      }
+
+      if (!(target instanceof HTMLInputElement)) return;
 
       if (target.type === "radio" && target.value === "none") {
         row.serviceIds = [];
@@ -14587,6 +14712,13 @@ async function initApp() {
       }
 
       if (target.type === "checkbox") {
+        const selectedService = services.find((item) => item.id === target.value);
+        if (target.checked && (selectedService?.pricingMode === "plastification-auto" || selectedService?.id === AUTO_PLASTIFICATION_SERVICE_ID)) {
+          const sizes = normalizePolasealSizes(config.polasealSizes);
+          if (!sizes.some((item) => item.id === row.polasealSizeId)) {
+            row.polasealSizeId = sizes[0]?.id || "";
+          }
+        }
         const noneRadio = popover.querySelector('input[type="radio"][value="none"]');
         if (noneRadio) {
           noneRadio.checked = false;
@@ -16712,9 +16844,24 @@ async function initApp() {
     const catalogProductKey = target.dataset.catalogProductKey;
     const resinConfigKey = target.dataset.resinConfigKey;
     const m2BleedProductId = target.dataset.m2BleedProductId;
+    const polasealIndex = Number(target.dataset.polasealIndex);
+    const polasealKey = target.dataset.polasealKey;
     const serviceIndex = Number(target.dataset.serviceIndex);
     const serviceKey = target.dataset.serviceKey;
     if (!prefix || !key) {
+      if (polasealKey && Number.isFinite(polasealIndex)) {
+        const size = configDraft.polasealSizes?.[polasealIndex];
+        if (!size) return;
+        size[polasealKey] = polasealKey === "label"
+          ? target.value
+          : polasealKey === "group"
+            ? (target.value === "a3" ? "a3" : "a4-oficio")
+            : Math.max(1, toDecimalNumber(target.value));
+        persistConfigDraft();
+        renderRowsAndSummary();
+        setConfigStatus("Tamanho de polaseal atualizado no rascunho. Salve com o PIN para aplicar.", "warning");
+        return;
+      }
       if (target.dataset.blockColorMarkup !== undefined) {
         configDraft.blockColorMarkupPercent = Math.max(0, toDecimalNumber(target.value));
         persistConfigDraft();
@@ -16936,6 +17083,18 @@ async function initApp() {
   });
 
   configSections.addEventListener("change", (event) => {
+    const polasealTarget = event.target.closest?.("[data-polaseal-key]");
+    if (polasealTarget && polasealTarget.dataset.polasealKey === "group") {
+      const index = Number(polasealTarget.dataset.polasealIndex);
+      const size = configDraft.polasealSizes?.[index];
+      if (size) {
+        size.group = polasealTarget.value === "a3" ? "a3" : "a4-oficio";
+        persistConfigDraft();
+        renderRowsAndSummary();
+        setConfigStatus("Tabela de preço do polaseal atualizada no rascunho. Salve com o PIN para aplicar.", "warning");
+      }
+      return;
+    }
     const finishForm = event.target.closest("#calculation-finish-form");
     if (finishForm) {
       if (event.target.name === "finishBillingMode") syncFinishBillingFields(finishForm);
@@ -17005,6 +17164,55 @@ async function initApp() {
     }
 
     if (!getConfigPermissions().use) {
+      return;
+    }
+
+    const addPolasealSizeButton = event.target.closest("[data-add-polaseal-size]");
+    if (addPolasealSizeButton) {
+      if (!getConfigPermissions().edit || configSaving) return;
+      const sizes = normalizePolasealSizes(configDraft.polasealSizes);
+      const last = sizes[sizes.length - 1] || DEFAULT_POLASEAL_SIZES[0];
+      sizes.push({
+        id: `polaseal-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        label: `Novo tamanho ${sizes.length + 1}`,
+        widthMm: last.widthMm,
+        heightMm: last.heightMm,
+        group: last.group,
+      });
+      configDraft.polasealSizes = sizes;
+      persistConfigDraft();
+      renderConfig();
+      setConfigStatus("Novo tamanho adicionado ao rascunho. Ajuste os campos e salve com o PIN para aplicar.", "warning");
+      return;
+    }
+
+    const deletePolasealSizeButton = event.target.closest("[data-delete-polaseal-size]");
+    if (deletePolasealSizeButton) {
+      if (!getConfigPermissions().edit || configSaving) return;
+      const sizeId = deletePolasealSizeButton.dataset.deletePolasealSize;
+      if (!(await confirmAppAction({
+        kicker: "Remover tamanho",
+        title: "Excluir tamanho de polaseal",
+        message: "Este tamanho deixará de aparecer em novos cálculos. Linhas de orçamento existentes serão direcionadas ao primeiro tamanho restante.",
+        confirmLabel: "Excluir tamanho",
+        danger: true,
+      }))) {
+        setConfigStatus("Exclusão cancelada.", "warning");
+        return;
+      }
+      const remaining = normalizePolasealSizes(configDraft.polasealSizes).filter((item) => item.id !== sizeId);
+      if (!remaining.length) {
+        setConfigStatus("Mantenha ao menos um tamanho de polaseal cadastrado.", "warning");
+        return;
+      }
+      configDraft.polasealSizes = remaining;
+      configDraftState.colorPrintItems.forEach((row) => {
+        if (row.polasealSizeId === sizeId) row.polasealSizeId = remaining[0].id;
+      });
+      persistConfigDraft();
+      renderConfig();
+      renderRowsAndSummary();
+      setConfigStatus("Tamanho removido do rascunho. Salve com o PIN para aplicar.", "warning");
       return;
     }
 
