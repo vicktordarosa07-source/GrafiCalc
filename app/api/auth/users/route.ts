@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { DEVELOPER_COOKIE, DEVELOPER_EMAIL, isDeveloperEligible, readDeveloperSession } from "@/lib/developer-session";
 import { cookies } from "next/headers";
+import { EMPLOYEE_LOCK_COOKIE, EMPLOYEE_MODE_COOKIE, readEmployeeLock, readEmployeeModeSession } from "@/lib/employee-mode";
 
 type DirectoryProfile = {
   id: string;
@@ -17,9 +18,9 @@ type DirectoryProfile = {
 };
 
 function safeUser(profile: DirectoryProfile | undefined, authUser: { id: string; email?: string | null; email_confirmed_at?: string | null; created_at?: string | null }) {
-  const email = String(profile?.email || authUser.email || "").trim().toLowerCase();
-  const confirmed = Boolean(authUser.email_confirmed_at || profile?.email_confirmado);
   const role = String(profile?.papel || "usuario").trim().toLowerCase() === "funcionario" ? "employee" : "user";
+  const email = role === "employee" ? "" : String(profile?.email || authUser.email || "").trim().toLowerCase();
+  const confirmed = role === "employee" || Boolean(authUser.email_confirmed_at || profile?.email_confirmado);
   const username = String(profile?.nome || email.split("@")[0] || "Usuário").trim();
   return {
     id: authUser.id,
@@ -45,11 +46,15 @@ function safeUser(profile: DirectoryProfile | undefined, authUser: { id: string;
 export async function GET() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  const cookieJar = await cookies();
+  if (readEmployeeLock(cookieJar.get(EMPLOYEE_LOCK_COOKIE)?.value) || readEmployeeModeSession(cookieJar.get(EMPLOYEE_MODE_COOKIE)?.value)) {
+    return Response.json({ error: "employee-mode-restricted" }, { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
   if (!user || !user.email_confirmed_at || !isDeveloperEligible(user)) {
     return Response.json({ error: "developer-session-required" }, { status: 403 });
   }
 
-  const token = (await cookies()).get(DEVELOPER_COOKIE)?.value;
+  const token = cookieJar.get(DEVELOPER_COOKIE)?.value;
   const developerSession = readDeveloperSession(token);
   if (!developerSession || developerSession.userId !== user.id) {
     return Response.json({ error: "developer-session-required" }, { status: 403 });

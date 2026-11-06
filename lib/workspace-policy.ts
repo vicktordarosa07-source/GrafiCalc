@@ -100,6 +100,10 @@ export type CollectionAccess = {
 export function getCollectionAccess(
   payload: JsonObject, userId: string, isLeader: boolean, profile: JsonObject | null
 ): CollectionAccess {
+  if (profile?.employeeMode === true) return {
+    clientsRead: false, clientsWrite: false, quotesReadAll: false,
+    quotesWrite: false, ordersRead: true, ordersWrite: true,
+  };
   if (isLeader) return {
     clientsRead: true, clientsWrite: true, quotesReadAll: true,
     quotesWrite: true, ordersRead: true, ordersWrite: true,

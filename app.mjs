@@ -2765,6 +2765,9 @@ function getUserTabPermissions(accessControl, user) {
   if (!user) {
     return createTabPermissionMap(false, false);
   }
+  if (window.grafiCalcRemoteAuth?.employeeMode === true) {
+    return Object.fromEntries(APP_TAB_LABELS.map((tab) => [tab.id, tab.id === "home" || tab.id === "os"]));
+  }
   const isDeveloper = user.role === "developer" && user.developerAccess === true;
   const isCreator = isCreatorAccount(user);
   const group = getGroupForUser(accessControl, user);
@@ -3166,6 +3169,16 @@ async function requestTeamInvitation(nome, email) {
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok || !result?.ok) throw new Error(result?.error || `team-invite-http-${response.status}`);
+  return result;
+}
+
+async function requestEmployeeApi(path, method, body) {
+  const response = await fetch(path, {
+    method, headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body), cache: "no-store",
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result?.ok) throw new Error(result?.error || `employee-http-${response.status}`);
   return result;
 }
 
@@ -8650,6 +8663,23 @@ async function initApp() {
   const reportsFilterClear = document.getElementById("reports-filter-clear");
   const employeeForm = document.getElementById("employee-form");
   const employeeStatus = document.getElementById("employee-status");
+  const employeeModeOpenButton = document.getElementById("employee-mode-open-button");
+  const employeeModeExitButton = document.getElementById("employee-mode-exit-button");
+  const employeeModeModal = document.getElementById("employee-mode-modal");
+  const employeeModeForm = document.getElementById("employee-mode-form");
+  const employeeModeMember = document.getElementById("employee-mode-member");
+  const employeeModePin = document.getElementById("employee-mode-pin");
+  const employeeModeStatus = document.getElementById("employee-mode-status");
+  const employeeModeExitModal = document.getElementById("employee-mode-exit-modal");
+  const employeeModeExitForm = document.getElementById("employee-mode-exit-form");
+  const employeeModeOwnerPassword = document.getElementById("employee-mode-owner-password");
+  const employeeModeExitStatus = document.getElementById("employee-mode-exit-status");
+  const employeePinModal = document.getElementById("employee-pin-modal");
+  const employeePinForm = document.getElementById("employee-pin-form");
+  const employeePinUserId = document.getElementById("employee-pin-user-id");
+  const employeePinNew = document.getElementById("employee-pin-new");
+  const employeePinNewConfirm = document.getElementById("employee-pin-new-confirm");
+  const employeePinStatus = document.getElementById("employee-pin-status");
   const employeesPerformanceList = document.getElementById("employees-performance-list");
   const blockTableBodies = {
     sulfite: document.getElementById("blocks-sulfite-rows-table-body"),
@@ -9335,9 +9365,19 @@ async function initApp() {
     }
     if (currentUserLabel) {
       currentUserLabel.textContent = logged
-        ? `${currentUser.username}${isDeveloperSession() ? " | Desenvolvedor" : ""}`
+        ? `${currentUser.username}${window.grafiCalcRemoteAuth?.employeeMode ? " | Colaborador" : isDeveloperSession() ? " | Desenvolvedor" : ""}`
         : "Nenhum usuário conectado";
     }
+    if (employeeModeOpenButton) {
+      const employeeMode = window.grafiCalcRemoteAuth?.employeeMode === true;
+      employeeModeOpenButton.hidden = !logged || (!isTeamLeader() && !employeeMode);
+      employeeModeOpenButton.textContent = employeeMode ? "Trocar colaborador" : "Acesso do colaborador";
+    }
+    if (employeeModeExitButton) employeeModeExitButton.hidden = !logged || window.grafiCalcRemoteAuth?.employeeMode !== true;
+    const logoutButton = document.getElementById("logout-button");
+    const menuLogoutButton = document.getElementById("menu-logout-button");
+    if (logoutButton) logoutButton.hidden = window.grafiCalcRemoteAuth?.employeeMode === true;
+    if (menuLogoutButton) menuLogoutButton.hidden = window.grafiCalcRemoteAuth?.employeeMode === true;
     if (developerAccessButton) {
       developerAccessButton.hidden = !logged || !Boolean(
         serverSecuritySession.developerEligible || serverSecuritySession.developerLoggedIn
@@ -12998,7 +13038,7 @@ async function initApp() {
                 ${item.legacy ? `<p class="helper-text full-width">Registro anterior ao novo fluxo. Está disponível para consulta e impressão; alterações auditadas ficam habilitadas nas O.S. criadas pelo novo fluxo.</p>` : ""}
                 <label>
                   <span>Colaborador responsável</span>
-                  <select data-os-field="responsibleUserId" data-os-id="${escapeHtml(item.id)}"${!canEditOrder ? " disabled" : ""}>
+                  <select data-os-field="responsibleUserId" data-os-id="${escapeHtml(item.id)}"${!canEditOrder || window.grafiCalcRemoteAuth?.employeeMode ? " disabled" : ""}>
                     ${(state.security?.authUsers || []).filter((user) => user?.status === "active" || user?.id === currentUser?.id).map((user) => `<option value="${escapeHtml(user.id)}"${user.id === item.responsibleUserId ? " selected" : ""}>${escapeHtml(user.username || user.email || "Colaborador")}</option>`).join("")}
                   </select>
                 </label>
@@ -13222,6 +13262,7 @@ async function initApp() {
                 <h3>${escapeHtml(user.username)}</h3>
                 <p class="list-meta">${escapeHtml(user.company || "Sem setor definido")} | ${escapeHtml(statusLabel)}</p>
                 <p class="list-meta">${escapeHtml(user.email || "Sem e-mail cadastrado")}</p>
+                <button class="button button-small" type="button" data-employee-set-pin="${escapeHtml(user.id)}" data-employee-name="${escapeHtml(user.username)}">Definir / trocar PIN</button>
               </div>
               <div class="employee-metric-grid">
                 <span><strong>${formatInteger(userMonthQuotes.length)}</strong><small>Orçamentos no mês</small></span>
@@ -13323,6 +13364,26 @@ async function initApp() {
     document.getElementById("home-min-quote-label").textContent = quoteCount ? `${formatInteger(quoteCount)} orçamentos no mês` : "Sem dados no mês";
     document.getElementById("home-max-quote-label").textContent = monthlyWorkOrders.length ? `${formatInteger(monthlyWorkOrders.length)} OSs neste mês` : "Sem dados no mês";
     document.getElementById("home-active-month").textContent = activeMonth;
+
+    if (window.grafiCalcRemoteAuth?.employeeMode === true) {
+      const delivered = monthlyWorkOrders.filter(order => order.status === "delivered").length;
+      const osTotal = monthlyWorkOrders.reduce((sum, order) => sum + Number(order.total || 0), 0);
+      const remaining = monthlyWorkOrders.reduce((sum, order) => sum + Number(order.balance || 0), 0);
+      const labels = document.querySelectorAll(".home-kpi-card .summary-label");
+      if (labels[0]) labels[0].textContent = "Minhas O.S. no mês";
+      if (labels[1]) labels[1].textContent = "O.S. entregues";
+      if (labels[2]) labels[2].textContent = "Valor das minhas O.S.";
+      if (labels[3]) labels[3].textContent = "Saldo a receber";
+      document.getElementById("home-quote-count").textContent = formatInteger(monthlyWorkOrders.length);
+      document.getElementById("home-quote-trend").textContent = `${formatInteger(monthlyWorkOrders.filter(order => order.status !== "delivered").length)} em andamento`;
+      document.getElementById("home-conversion-rate").textContent = formatInteger(delivered);
+      document.getElementById("home-conversion-trend").textContent = "O.S. entregues neste mês";
+      document.getElementById("home-approved-value").textContent = formatCurrency(osTotal);
+      document.getElementById("home-approved-trend").textContent = `${formatInteger(monthlyWorkOrders.length)} O.S. atribuídas no mês`;
+      document.getElementById("home-pending-value").textContent = formatCurrency(remaining);
+      document.getElementById("home-pending-trend").textContent = "Saldo das minhas O.S. do mês";
+      document.getElementById("home-profile-role").textContent = "Equipe da loja · métricas individuais";
+    }
 
     if (activationList && activationPanel && activationProgress) {
       const activationSteps = [
@@ -14992,47 +15053,35 @@ async function initApp() {
   employeeForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!isTeamLeader()) {
-      setStatusMessage(employeeStatus, "Somente o líder da equipe pode convidar funcionários.", "error");
+      setStatusMessage(employeeStatus, "Somente o proprietário ou líder da equipe pode cadastrar colaboradores.", "error");
       return;
     }
     const username = document.getElementById("employee-name")?.value.trim() || "";
-    const email = document.getElementById("employee-email")?.value.trim() || "";
-    if (!username) {
-      setStatusMessage(employeeStatus, "Digite o nome do funcionário.", "warning");
-      document.getElementById("employee-name")?.focus();
-      return;
-    }
-    const emailError = validateEmailAddress(email);
-    if (emailError) {
-      setStatusMessage(employeeStatus, emailError, "warning");
-      document.getElementById("employee-email")?.focus();
-      return;
-    }
-    if (authUsers.some((user) => normalizeLookupEmail(user.email) === normalizeLookupEmail(email))) {
-      setStatusMessage(employeeStatus, "Já existe um cadastro com este e-mail.", "warning");
+    const pin = document.getElementById("employee-pin")?.value || "";
+    const confirmPin = document.getElementById("employee-pin-confirm")?.value || "";
+    if (!username || !/^\d{4}$/.test(pin) || pin !== confirmPin) {
+      setStatusMessage(employeeStatus, "Informe o nome e o mesmo PIN de 4 números nos dois campos.", "warning");
       return;
     }
     const submitButton = employeeForm.querySelector('[type="submit"]');
     if (submitButton) submitButton.disabled = true;
-    setStatusMessage(employeeStatus, "Enviando convite...", "warning");
+    setStatusMessage(employeeStatus, "Cadastrando colaborador...", "warning");
     try {
-      await requestTeamInvitation(username, email);
+      await requestEmployeeApi("/api/team/employees", "POST", { nome: username, pin, confirmPin });
       const result = await requestSharedState("GET");
       applySharedPayload(result.payload, "");
       employeeForm.reset();
       renderEmployeesTab();
-      setStatusMessage(employeeStatus, `Convite enviado para ${email}. O acesso será liberado após a confirmação do e-mail.`, "success");
+      setStatusMessage(employeeStatus, `${username} foi cadastrado. O colaborador já pode entrar com o nome e o PIN.`, "success");
     } catch (error) {
       const messages = {
-        "team-email-already-registered": "Este e-mail já possui uma conta no GrafiCalc.",
-        "team-invitation-already-pending": "Já existe um convite pendente para este e-mail.",
-        "team-invitation-rate-limited": "Limite de convites atingido. Aguarde 15 minutos e tente novamente.",
-        "team-leader-required": "Somente o líder da equipe pode convidar funcionários.",
+        "employee-name-already-exists": "Já existe um colaborador com esse nome nesta equipe. Use um nome distinto para facilitar o acesso pelo PIN.",
+        "employee-rate-limited": "Limite de cadastros atingido. Aguarde 15 minutos e tente novamente.",
+        "team-leader-required": "Somente o proprietário ou líder da equipe pode cadastrar colaboradores.",
         "subscription-required": "A assinatura atual não permite convidar membros.",
-        "team-invitation-send-failed": "O Supabase não conseguiu enviar o convite. Verifique o SMTP e o modelo de convite.",
-        "team-invitation-provisioning-failed": "O convite foi criado, mas o vínculo da equipe não pôde ser confirmado. Não repita o envio; atualize a tela e confira a equipe.",
+        "employee-provisioning-failed": "Não foi possível criar o perfil do colaborador. Atualize a página e tente novamente.",
       };
-      setStatusMessage(employeeStatus, messages[error?.message] || "Não foi possível enviar o convite. Tente novamente ou confira a conexão.", "error");
+      setStatusMessage(employeeStatus, messages[error?.message] || "Não foi possível cadastrar o colaborador. Confira a conexão e tente novamente.", "error");
     } finally {
       if (submitButton) submitButton.disabled = false;
     }
@@ -15369,6 +15418,82 @@ async function initApp() {
     }
     setPasswordChangeStatus("A senha é gerenciada pelo Supabase. Use o fluxo seguro de recuperação.", "warning");
     return;
+  });
+
+  employeeModeOpenButton?.addEventListener("click", () => {
+    if (!employeeModeMember || !employeeModeModal) return;
+    const employees = (window.grafiCalcRemoteAuth?.members || []).filter(user => user.role === "employee" && user.status === "active");
+    employeeModeMember.innerHTML = employees.map(user => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.username)}</option>`).join("");
+    employeeModePin.value = "";
+    setStatusMessage(employeeModeStatus, employees.length ? "Acesso limitado às O.S. atribuídas e às métricas individuais." : "Cadastre primeiro um colaborador com PIN na aba Equipe.", employees.length ? "neutral" : "warning");
+    employeeModeModal.hidden = false;
+    if (employees.length) employeeModeMember.focus();
+  });
+
+  employeeModeForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await requestEmployeeApi("/api/team/employee-session", "POST", { employeeId: employeeModeMember.value, pin: employeeModePin.value });
+      employeeModeStatus.textContent = "Acesso liberado. Abrindo o painel do colaborador...";
+      window.location.reload();
+    } catch (error) {
+      setStatusMessage(employeeModeStatus, error.message === "invalid-employee-pin" ? "PIN incorreto, não configurado ou temporariamente bloqueado. Se for o primeiro acesso, peça ao proprietário para definir o PIN na aba Equipe." : "Não foi possível iniciar o acesso. Confira o colaborador e tente novamente.", "error");
+      employeeModePin.select();
+    }
+  });
+
+  employeeModeExitButton?.addEventListener("click", () => {
+    if (!employeeModeExitModal) return;
+    employeeModeOwnerPassword.value = "";
+    employeeModeExitStatus.textContent = "";
+    employeeModeExitModal.hidden = false;
+    employeeModeOwnerPassword.focus();
+  });
+
+  employeeModeExitForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    try {
+      await requestEmployeeApi("/api/team/employee-session/exit", "POST", { password: employeeModeOwnerPassword.value });
+      window.location.reload();
+    } catch (error) {
+      setStatusMessage(employeeModeExitStatus, error.message === "invalid-owner-password" ? "Senha do proprietário incorreta." : "Não foi possível validar a senha do proprietário.", "error");
+      employeeModeOwnerPassword.select();
+    }
+  });
+
+  employeePinModal && document.getElementById("employees-performance-list")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-employee-set-pin]");
+    if (!button || !isTeamLeader()) return;
+    employeePinUserId.value = button.dataset.employeeSetPin || "";
+    document.getElementById("employee-pin-description").textContent = `Defina um PIN novo para ${button.dataset.employeeName || "este colaborador"}. O PIN anterior deixa de funcionar imediatamente.`;
+    employeePinNew.value = "";
+    employeePinNewConfirm.value = "";
+    employeePinStatus.textContent = "";
+    employeePinModal.hidden = false;
+    employeePinNew.focus();
+  });
+
+  employeePinForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!/^\d{4}$/.test(employeePinNew.value) || employeePinNew.value !== employeePinNewConfirm.value) {
+      setStatusMessage(employeePinStatus, "Informe o mesmo PIN de 4 números nos dois campos.", "warning");
+      return;
+    }
+    try {
+      await requestEmployeeApi("/api/team/employees/pin", "PUT", {
+        employeeId: employeePinUserId.value, pin: employeePinNew.value, confirmPin: employeePinNewConfirm.value,
+      });
+      employeePinModal.hidden = true;
+      setStatusMessage(employeeStatus, "PIN atualizado. Qualquer sessão anterior desse colaborador foi invalidada.", "success");
+    } catch {
+      setStatusMessage(employeePinStatus, "Não foi possível salvar o PIN. Confira a conexão e tente novamente.", "error");
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-employee-mode-close]")) employeeModeModal.hidden = true;
+    if (event.target.closest("[data-employee-mode-exit-close]")) employeeModeExitModal.hidden = true;
+    if (event.target.closest("[data-employee-pin-close]")) employeePinModal.hidden = true;
   });
 
   developerAccessButton?.addEventListener("click", openDeveloperAccessModal);
@@ -19023,10 +19148,10 @@ async function initApp() {
         setStatusMessage(osStatus, "Somente o colaborador responsável pode alterar o status desta O.S.", "warning");
         return;
       }
-      const password = await requestWorkOrderPassword();
-      if (!password) return;
+      const password = window.grafiCalcRemoteAuth?.employeeMode ? "" : await requestWorkOrderPassword();
+      if (!password && !window.grafiCalcRemoteAuth?.employeeMode) return;
       try {
-        const result = await requestWorkOrderApi(`/api/work-orders/${encodeURIComponent(item.id)}`, "POST", { password, status: statusButton.dataset.osStatus });
+        const result = await requestWorkOrderApi(`/api/work-orders/${encodeURIComponent(item.id)}`, "POST", { ...(password ? { password } : {}), status: statusButton.dataset.osStatus });
         state.workOrders = state.workOrders.map((entry) => entry.id === item.id ? result.workOrder : entry);
         renderOrdersTab(); renderHomeTab(); renderEmployeesTab();
         setStatusMessage(osStatus, `${item.osNumber} atualizada para ${getWorkOrderStatusMeta(result.workOrder.status).label}.`, "success");
@@ -19072,12 +19197,12 @@ async function initApp() {
         setStatusMessage(osStatus, "O valor pago deve ficar entre zero e o total da O.S.", "warning");
         return;
       }
-      const password = await requestWorkOrderPassword();
-      if (!password) return;
+      const password = window.grafiCalcRemoteAuth?.employeeMode ? "" : await requestWorkOrderPassword();
+      if (!password && !window.grafiCalcRemoteAuth?.employeeMode) return;
       try {
         const result = await requestWorkOrderApi(`/api/work-orders/${encodeURIComponent(item.id)}`, "PATCH", {
-          password, paidAmount, promisedDate: values.promisedDate || "", notes: values.notes || "",
-          responsibleUserId: values.responsibleUserId,
+          ...(password ? { password } : {}), paidAmount, promisedDate: values.promisedDate || "", notes: values.notes || "",
+          ...(!window.grafiCalcRemoteAuth?.employeeMode ? { responsibleUserId: values.responsibleUserId } : {}),
         });
         state.workOrders = state.workOrders.map((entry) => entry.id === item.id ? result.workOrder : entry);
         renderOrdersTab(); renderHomeTab(); renderEmployeesTab();

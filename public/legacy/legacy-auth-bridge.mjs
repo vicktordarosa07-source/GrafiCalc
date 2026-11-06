@@ -2,20 +2,24 @@ async function prepareLegacySession() {
   if (window.location.protocol === "file:") return;
   const response = await fetch("/api/auth/legacy-session", { cache: "no-store" });
   if (!response.ok) {
+    if (response.status === 423) {
+      window.top.location.replace("/employee-locked");
+      throw new Error("Sessao da equipe expirou; acesso geral bloqueado");
+    }
     window.top.location.replace("/entrar");
     throw new Error("Sessao Supabase invalida");
   }
   const user = await response.json();
   const legacyUser = {
-    id: user.id, username: user.nome || user.email, email: user.email,
+    id: user.id, username: user.nome || user.email || "Colaborador", email: user.email || "",
     document: user.cpf_cnpj || "", company: user.empresa || "",
-    role: user.papel === "funcionario" ? "employee" : "user", developerAccess: false,
+    role: user.papel === "funcionario" ? "employee" : "user", employeeMode: user.employeeMode === true, developerAccess: false,
     status: "active", groupId: user.papel === "funcionario" ? "funcionarios" : "profissional",
     teamLeader: user.teamLeader === true, createdAt: user.criado_em,
     emailVerification: { status: "verified" },
   };
   window.grafiCalcRemoteAuth = {
-    userId: user.id, tenantId: user.tenant_id, teamLeader: user.teamLeader === true,
+    userId: user.id, tenantId: user.tenant_id, teamLeader: user.teamLeader === true, employeeMode: user.employeeMode === true,
     configPermissions: user.configPermissions, user: legacyUser, members: user.members || [],
   };
   const identity = JSON.stringify([user.id, user.tenant_id]);
@@ -45,6 +49,10 @@ async function prepareLegacySession() {
     headers.set("X-GrafiCalc-User", user.id);
     headers.set("X-GrafiCalc-Tenant", user.tenant_id);
     const result = await originalFetch(input, { ...init, headers, cache: "no-store" });
+    if (result.status === 423) {
+      window.top.location.replace("/employee-locked");
+      throw new Error("Sessão de colaborador encerrada; acesso geral bloqueado");
+    }
     if (result.status === 401) invalidateSession();
     if (result.status === 409) {
       const body = await result.clone().json().catch(() => ({}));

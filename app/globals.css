@@ -163,3 +163,38 @@ button,input { font:inherit; }
   .billing-plans { grid-template-columns: 1fr; }
   .billing-payment { grid-template-columns: 1fr; gap: 10px; }
 }
+/* Employee PIN mode expiry gate */
+.employee-lock-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #eef8f5;
+  color: #123534;
+  font-family: Arial, sans-serif;
+}
+.employee-lock-card {
+  width: min(100%, 460px);
+  padding: 32px;
+  border-radius: 22px;
+  background: #fff;
+  box-shadow: 0 18px 60px #1235341c;
+}
+.employee-lock-eyebrow {
+  margin: 0 0 8px;
+  color: #008e71;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-size: 12px;
+}
+.employee-lock-card h1 { margin: 0 0 10px; font-size: 27px; }
+.employee-lock-copy { color: #607775; line-height: 1.5; }
+.employee-lock-form { display: grid; gap: 14px; margin-top: 24px; }
+.employee-lock-form label { display: grid; gap: 7px; font-size: 14px; font-weight: 700; }
+.employee-lock-form input { height: 46px; padding: 0 13px; border: 1px solid #cbdcd8; border-radius: 12px; font-size: 16px; }
+.employee-lock-form button { height: 46px; border: 0; border-radius: 999px; background: #008e71; color: #fff; font-weight: 700; font-size: 15px; cursor: pointer; }
+.employee-lock-form button:disabled { opacity: .65; cursor: wait; }
+.employee-lock-error { margin: 0; color: #b42318; font-size: 14px; }
+.employee-lock-signout { margin-top: 14px; padding: 8px 0; border: 0; background: transparent; color: #637875; cursor: pointer; }
+@media (max-width: 520px) { .employee-lock-card { padding: 24px 20px; } .employee-lock-card h1 { font-size: 23px; } }

@@ -11,6 +11,7 @@ import { loginSchema, signupSchema, passwordSchema, profileSchema } from "@/lib/
 import { onlyDigits } from "@/lib/validation/documents";
 import { safeInternalRedirect } from "@/lib/security/redirects";
 import { beginAuthAttempt } from "@/lib/supabase/auth-rate-limit";
+import { EMPLOYEE_LOCK_COOKIE, EMPLOYEE_MODE_COOKIE, readEmployeeLock, readEmployeeModeSession } from "@/lib/employee-mode";
 
 export type ActionState = { ok: boolean; message: string; fieldErrors?: Record<string, string[]> };
 
@@ -291,6 +292,7 @@ export async function verifyEmailOtpAction(_: ActionState, formData: FormData): 
 }
 
 export async function updatePasswordAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  if (await isEmployeeModeLocked()) return { ok: false, message: "Somente o proprietário pode alterar os dados da conta." };
   const password = String(formData.get("password") || "");
   const confirmation = String(formData.get("confirmPassword") || "");
   const parsed = passwordSchema.safeParse(password);
@@ -303,6 +305,7 @@ export async function updatePasswordAction(_: ActionState, formData: FormData): 
 }
 
 export async function changePasswordAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  if (await isEmployeeModeLocked()) return { ok: false, message: "Somente o proprietário pode alterar os dados da conta." };
   const currentPassword = String(formData.get("currentPassword") || "");
   const password = String(formData.get("password") || "");
   const confirmation = String(formData.get("confirmPassword") || "");
@@ -334,6 +337,7 @@ export async function changePasswordAction(_: ActionState, formData: FormData): 
 }
 
 export async function updateProfileAction(_: ActionState, formData: FormData): Promise<ActionState> {
+  if (await isEmployeeModeLocked()) return { ok: false, message: "Somente o proprietário pode alterar os dados da conta." };
   const parsed = profileSchema.safeParse(fields(formData));
   if (!parsed.success) return { ok: false, message: "Revise os dados informados.", fieldErrors: parsed.error.flatten().fieldErrors };
   const supabase = await createClient();
@@ -356,5 +360,12 @@ export async function logoutAction() {
   const store = await cookies();
   store.delete(DEVELOPER_COOKIE);
   store.delete(CONFIG_PIN_COOKIE);
+  store.delete(EMPLOYEE_MODE_COOKIE);
+  store.delete(EMPLOYEE_LOCK_COOKIE);
   redirect("/entrar");
+}
+
+async function isEmployeeModeLocked() {
+  const store = await cookies();
+  return Boolean(readEmployeeLock(store.get(EMPLOYEE_LOCK_COOKIE)?.value) || readEmployeeModeSession(store.get(EMPLOYEE_MODE_COOKIE)?.value));
 }

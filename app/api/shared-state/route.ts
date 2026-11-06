@@ -16,7 +16,9 @@ async function snapshot(context: NonNullable<Awaited<ReturnType<typeof getWorksp
     context.admin.from("graficalc_quote_decisions").select("quote_id,decision,quote_snapshot")
       .eq("tenant_id", context.tenantId),
     access.ordersRead
-      ? context.admin.from("graficalc_work_orders").select("*").eq("tenant_id", context.tenantId).order("created_at", { ascending: false })
+      ? (context.employeeMode
+        ? context.admin.from("graficalc_work_orders").select("*").eq("tenant_id", context.tenantId).eq("responsible_user_id", context.user.id).order("created_at", { ascending: false })
+        : context.admin.from("graficalc_work_orders").select("*").eq("tenant_id", context.tenantId).order("created_at", { ascending: false }))
       : Promise.resolve({ data: [], error: null }),
   ]);
   const schemaNotInstalled = [decisionError, orderError].some(error => error?.code === "42P01" || error?.code === "PGRST205");
@@ -33,6 +35,18 @@ async function snapshot(context: NonNullable<Awaited<ReturnType<typeof getWorksp
   const eventsByOrder = new Map<string, Record<string, any>[]>();
   for (const event of events || []) eventsByOrder.set(event.work_order_id, [...(eventsByOrder.get(event.work_order_id) || []), event]);
   const authoritativeOrders = (schemaNotInstalled ? [] : (orderRows || []).map(row => mapWorkOrder(row, eventsByOrder.get(row.id) || [])));
+  if (context.employeeMode) {
+    const workOrders = authoritativeOrders.filter(order => order.responsibleUserId === context.user.id);
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const monthOrders = workOrders.filter(order => String(order.createdAt || "").slice(0, 7) === month);
+    return Response.json({
+      exists: true,
+      payload: { sharedState: { quoteHistory: [], workOrders }, security: { authUsers: [] } },
+      updatedAt, userId: context.user.id, tenantId: context.tenantId, isLeader: false, employeeMode: true,
+      employeeMetrics: { monthOrderCount: monthOrders.length, monthOrderTotal: monthOrders.reduce((sum, order) => sum + Number(order.total || 0), 0) },
+    }, { headers: { "Cache-Control": "private, no-store" } });
+  }
   const authoritativeQuoteIds = new Set(authoritativeOrders.map(order => order.quoteId));
   const legacyOrders = (Array.isArray(source.workOrders) ? source.workOrders : [])
     .filter((order: any) => !authoritativeQuoteIds.has(order?.quoteId))
@@ -86,6 +100,7 @@ export async function PUT(request: Request) {
     assertSameOrigin(request);
     const context = await getWorkspaceContext();
     if (!context) throw new WorkspaceError("unauthorized", 401);
+    if (context.employeeMode) throw new WorkspaceError("employee-mode-read-only", 403);
     assertWorkspaceBinding(request, context.user.id, context.tenantId);
     const billing = await getBillingAccess(context.admin, context.tenantId);
     if (!billing.allowed) return Response.json({ ok: false, error: "subscription-required", billingUrl: "/assinatura", reason: billing.reason }, { status: 402, headers: { "Cache-Control": "private, no-store" } });

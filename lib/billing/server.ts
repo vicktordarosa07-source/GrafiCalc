@@ -5,6 +5,8 @@ import { BillingConfigError, billingConfig, billingSecrets, type BillingPlan } f
 import { isBillingSameOrigin } from "@/lib/billing/origin";
 import { AsaasProviderError, deleteSandboxSubscription } from "@/lib/billing/asaas-provider";
 import { readResponseTextLimited } from "@/lib/http/response-body.mjs";
+import { cookies } from "next/headers";
+import { EMPLOYEE_LOCK_COOKIE, EMPLOYEE_MODE_COOKIE, readEmployeeLock, readEmployeeModeSession } from "@/lib/employee-mode";
 
 export class BillingRequestError extends Error {
   constructor(readonly status: number, readonly code: string) {
@@ -27,6 +29,10 @@ export async function requireBillingOwner() {
   const supabase = await createClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user?.email_confirmed_at) throw new BillingRequestError(401, "unauthorized");
+  const cookieJar = await cookies();
+  if (readEmployeeLock(cookieJar.get(EMPLOYEE_LOCK_COOKIE)?.value) || readEmployeeModeSession(cookieJar.get(EMPLOYEE_MODE_COOKIE)?.value)) {
+    throw new BillingRequestError(403, "employee-mode-restricted");
+  }
   if (isDeveloperEligible(user)) throw new BillingRequestError(403, "developer-account-not-billable");
 
   let admin;

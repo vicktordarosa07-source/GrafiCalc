@@ -38,6 +38,8 @@
       </p>
       <div class="session-bar">
         <span id="current-user-label">Usuário conectado</span>
+        <button class="button button-small" id="employee-mode-open-button" type="button" hidden>Acesso do colaborador</button>
+        <button class="button button-small" id="employee-mode-exit-button" type="button" hidden>Voltar ao proprietário</button>
         <button class="button button-small" id="logout-button" type="button">Sair</button>
       </div>
       <p class="helper-text status-note hero-status" id="sync-status">
@@ -1983,7 +1985,7 @@
             <div class="panel-heading">
               <div>
                 <h2>Cadastro de funcionário</h2>
-                <p class="panel-copy">Envie um convite por e-mail. A pessoa define a própria senha e entra vinculada a esta equipe.</p>
+                <p class="panel-copy">Cadastre o nome e um PIN de 4 dígitos. O acesso é feito neste computador, dentro da sessão da loja.</p>
               </div>
             </div>
             <form class="employee-form quote-form-grid" id="employee-form">
@@ -1992,14 +1994,18 @@
                 <input id="employee-name" type="text" placeholder="Ex.: Ana do balcão" autocomplete="name">
               </label>
               <label>
-                <span>E-mail</span>
-                <input id="employee-email" type="email" placeholder="funcionario@email.com" autocomplete="email">
+                <span>PIN de 4 dígitos</span>
+                <input id="employee-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password" placeholder="••••" required>
+              </label>
+              <label>
+                <span>Confirmar PIN</span>
+                <input id="employee-pin-confirm" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password" placeholder="••••" required>
               </label>
               <div class="history-filter-actions">
-                <button class="button button-primary" type="submit">Enviar convite</button>
+                <button class="button button-primary" type="submit">Cadastrar colaborador</button>
               </div>
             </form>
-            <p class="helper-text status-note" id="employee-status">O convite precisa ser aceito pelo e-mail cadastrado. A senha é criada pelo próprio funcionário.</p>
+            <p class="helper-text status-note" id="employee-status">Use um PIN exclusivo para cada colaborador. Após 5 tentativas incorretas, o PIN fica temporariamente bloqueado.</p>
           </article>
 
           <article class="panel">
@@ -2204,6 +2210,75 @@
         <div class="app-modal-actions">
           <button class="button" type="button" data-developer-modal-close>Cancelar</button>
           <button class="button button-primary" type="submit">Autorizar acesso</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="app-modal" id="employee-mode-modal" hidden>
+    <div class="app-modal-backdrop" data-employee-mode-close></div>
+    <div class="app-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="employee-mode-title">
+      <div class="app-modal-copy">
+        <span class="app-modal-kicker">Acesso da equipe</span>
+        <h3 id="employee-mode-title">Entrar como colaborador</h3>
+        <p>O acesso fica limitado às O.S. atribuídas ao colaborador e às métricas individuais do mês.</p>
+      </div>
+      <form class="password-change-form" id="employee-mode-form">
+        <label>
+          <span>Colaborador</span>
+          <select id="employee-mode-member" required></select>
+        </label>
+        <label>
+          <span>PIN</span>
+          <input id="employee-mode-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="one-time-code" required>
+        </label>
+        <p class="helper-text" id="employee-mode-status">A sessão de colaborador dura até 8 horas. Para voltar ao acesso geral, será solicitada a senha do proprietário.</p>
+        <div class="app-modal-actions">
+          <button class="button" type="button" data-employee-mode-close>Cancelar</button>
+          <button class="button button-primary" type="submit">Entrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="app-modal" id="employee-mode-exit-modal" hidden>
+    <div class="app-modal-backdrop" data-employee-mode-exit-close></div>
+    <div class="app-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="employee-mode-exit-title">
+      <div class="app-modal-copy">
+        <span class="app-modal-kicker">Acesso do proprietário</span>
+        <h3 id="employee-mode-exit-title">Voltar ao acesso geral</h3>
+        <p>Confirme a senha da conta proprietária para desbloquear configurações e dados gerais da loja.</p>
+      </div>
+      <form class="password-change-form" id="employee-mode-exit-form">
+        <label>
+          <span>Senha do proprietário</span>
+          <input id="employee-mode-owner-password" type="password" autocomplete="current-password" required>
+        </label>
+        <p class="helper-text" id="employee-mode-exit-status"></p>
+        <div class="app-modal-actions">
+          <button class="button" type="button" data-employee-mode-exit-close>Cancelar</button>
+          <button class="button button-primary" type="submit">Confirmar acesso</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="app-modal" id="employee-pin-modal" hidden>
+    <div class="app-modal-backdrop" data-employee-pin-close></div>
+    <div class="app-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="employee-pin-title">
+      <div class="app-modal-copy">
+        <span class="app-modal-kicker">Segurança da equipe</span>
+        <h3 id="employee-pin-title">Definir PIN do colaborador</h3>
+        <p id="employee-pin-description">O PIN anterior deixa de funcionar imediatamente.</p>
+      </div>
+      <form class="password-change-form" id="employee-pin-form">
+        <input id="employee-pin-user-id" type="hidden">
+        <label><span>Novo PIN de 4 dígitos</span><input id="employee-pin-new" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password" required></label>
+        <label><span>Confirmar PIN</span><input id="employee-pin-new-confirm" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="new-password" required></label>
+        <p class="helper-text" id="employee-pin-status"></p>
+        <div class="app-modal-actions">
+          <button class="button" type="button" data-employee-pin-close>Cancelar</button>
+          <button class="button button-primary" type="submit">Salvar PIN</button>
         </div>
       </form>
     </div>

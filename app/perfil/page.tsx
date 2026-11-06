@@ -6,11 +6,20 @@ import { ProfileForm } from "@/components/profile/profile-form";
 import { ChangePasswordForm } from "@/components/profile/change-password-form";
 import { ConfigPinForm } from "@/components/profile/config-pin-form";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceContext } from "@/lib/workspace";
+import { WorkspaceError } from "@/lib/workspace-policy";
 
 export default async function ProfilePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/entrar");
+  try {
+    const context = await getWorkspaceContext();
+    if (context?.employeeMode) redirect("/employee-locked");
+  } catch (error) {
+    if (error instanceof WorkspaceError && error.message === "employee-owner-unlock-required") redirect("/employee-locked");
+    throw error;
+  }
 
   const { data: profile } = await supabase
     .from("profiles")

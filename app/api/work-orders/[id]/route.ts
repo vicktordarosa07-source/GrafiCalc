@@ -6,13 +6,13 @@ import { mapWorkOrder, verifyWorkOrderPassword, workOrderRpcError } from "@/lib/
 
 export const dynamic = "force-dynamic";
 const updateSchema = z.object({
-  password: z.string().min(1).max(256),
+  password: z.string().min(1).max(256).optional(),
   paidAmount: z.number().finite().min(0).optional(),
   promisedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).or(z.literal("")).optional(),
   notes: z.string().max(2000).optional(),
   responsibleUserId: z.string().uuid().optional(),
 }).strict().refine(value => [value.paidAmount, value.promisedDate, value.notes, value.responsibleUserId].some(item => typeof item !== "undefined"));
-const statusSchema = z.object({ password: z.string().min(1).max(256), status: z.enum(["production", "ready", "delivered"]) }).strict();
+const statusSchema = z.object({ password: z.string().min(1).max(256).optional(), status: z.enum(["production", "ready", "delivered"]) }).strict();
 
 async function authorize(request: Request, id: string) {
   assertSameOrigin(request);
@@ -37,7 +37,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const context = await authorize(request, id);
     const parsed = updateSchema.safeParse(await request.json());
     if (!parsed.success) throw new WorkspaceError("invalid-payload", 400);
-    await verifyWorkOrderPassword(context, parsed.data.password, id);
+    if (context.employeeMode) {
+      if (parsed.data.responsibleUserId && parsed.data.responsibleUserId !== context.user.id) throw new WorkspaceError("responsible-required", 403);
+    } else if (!parsed.data.password) throw new WorkspaceError("invalid-credentials", 401);
+    else await verifyWorkOrderPassword(context, parsed.data.password, id);
     const { password, ...patch } = parsed.data;
     const { data, error } = await context.admin.rpc("graficalc_update_work_order", {
       p_tenant_id: context.tenantId, p_work_order_id: id, p_actor_user_id: context.user.id,
@@ -56,7 +59,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const context = await authorize(request, id);
     const parsed = statusSchema.safeParse(await request.json());
     if (!parsed.success) throw new WorkspaceError("invalid-payload", 400);
-    await verifyWorkOrderPassword(context, parsed.data.password, id);
+    if (!context.employeeMode) {
+      if (!parsed.data.password) throw new WorkspaceError("invalid-credentials", 401);
+      await verifyWorkOrderPassword(context, parsed.data.password, id);
+    }
     const { data, error } = await context.admin.rpc("graficalc_change_work_order_status", {
       p_tenant_id: context.tenantId, p_work_order_id: id,
       p_actor_user_id: context.user.id, p_status: parsed.data.status,
