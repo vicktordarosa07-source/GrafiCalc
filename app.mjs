@@ -15727,6 +15727,67 @@ async function initApp() {
     document.getElementById("pdf-input").click();
   });
 
+  const focusedNumberValues = new WeakMap();
+  const shouldSkipNumberFocusClear = new WeakSet();
+  document.addEventListener("pointerdown", (event) => {
+    const input = event.target instanceof HTMLElement ? event.target.closest('input[type="number"]') : null;
+    if (!input) return;
+    const bounds = input.getBoundingClientRect();
+    if (event.clientX >= bounds.right - 20) {
+      shouldSkipNumberFocusClear.add(input);
+      window.setTimeout(() => shouldSkipNumberFocusClear.delete(input), 0);
+    }
+  }, true);
+
+  const restoreUneditedNumberField = (input) => {
+    const state = focusedNumberValues.get(input);
+    if (!state) return;
+    if (!state.edited && input.value === "") input.value = state.value;
+    focusedNumberValues.delete(input);
+  };
+
+  document.addEventListener("focusin", (event) => {
+    const field = event.target;
+    if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)
+      || field.disabled || field.readOnly || field.matches('input[type="hidden"], input[type="checkbox"], input[type="radio"], input[type="file"], input[type="button"], input[type="submit"], input[type="reset"]')) {
+      return;
+    }
+
+    if (field instanceof HTMLInputElement && field.type === "number") {
+      if (shouldSkipNumberFocusClear.has(field)) {
+        shouldSkipNumberFocusClear.delete(field);
+        return;
+      }
+      if (field.value !== "") {
+        focusedNumberValues.set(field, { value: field.value, edited: false });
+        field.value = "";
+      }
+      return;
+    }
+
+    if (field.value && field instanceof HTMLInputElement && ["text", "search", "email", "url", "tel", "password"].includes(field.type)) {
+      requestAnimationFrame(() => {
+        if (field.isConnected && document.activeElement === field) field.select();
+      });
+    }
+  }, true);
+
+  document.addEventListener("input", (event) => {
+    const state = focusedNumberValues.get(event.target);
+    if (state) state.edited = true;
+  }, true);
+
+  document.addEventListener("change", (event) => {
+    if (event.target instanceof HTMLInputElement && event.target.type === "number") {
+      restoreUneditedNumberField(event.target);
+    }
+  }, true);
+  document.addEventListener("focusout", (event) => {
+    if (event.target instanceof HTMLInputElement && event.target.type === "number") {
+      restoreUneditedNumberField(event.target);
+    }
+  }, true);
+
   document.addEventListener("keydown", handleManagedTabNavigation, true);
 
   document.getElementById("pdf-input").addEventListener("change", async (event) => {
