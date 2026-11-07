@@ -8787,13 +8787,6 @@ async function initApp() {
   const reportsFilterClear = document.getElementById("reports-filter-clear");
   const employeeForm = document.getElementById("employee-form");
   const employeeStatus = document.getElementById("employee-status");
-  const employeeModeOpenButton = document.getElementById("employee-mode-open-button");
-  const employeeModeExitButton = document.getElementById("employee-mode-exit-button");
-  const employeeModeModal = document.getElementById("employee-mode-modal");
-  const employeeModeForm = document.getElementById("employee-mode-form");
-  const employeeModeMember = document.getElementById("employee-mode-member");
-  const employeeModePin = document.getElementById("employee-mode-pin");
-  const employeeModeStatus = document.getElementById("employee-mode-status");
   const employeePinModal = document.getElementById("employee-pin-modal");
   const employeePinForm = document.getElementById("employee-pin-form");
   const employeePinUserId = document.getElementById("employee-pin-user-id");
@@ -9488,13 +9481,6 @@ async function initApp() {
         ? `${currentUser.username}${window.grafiCalcRemoteAuth?.employeeMode ? " | Colaborador" : isDeveloperSession() ? " | Desenvolvedor" : ""}`
         : "Nenhum usuário conectado";
     }
-    if (employeeModeOpenButton) {
-      const employeeMode = window.grafiCalcRemoteAuth?.employeeMode === true;
-      employeeModeOpenButton.hidden = !logged || (!isTeamLeader() && !employeeMode);
-      employeeModeOpenButton.textContent = employeeMode ? "Trocar de operador" : "Acesso do operador";
-    }
-    if (employeeModeExitButton) employeeModeExitButton.hidden = !logged || window.grafiCalcRemoteAuth?.employeeMode !== true;
-    if (employeeModeExitButton) employeeModeExitButton.textContent = "Logout operador";
     const logoutButton = document.getElementById("logout-button");
     const menuLogoutButton = document.getElementById("menu-logout-button");
     if (logoutButton) logoutButton.hidden = window.grafiCalcRemoteAuth?.employeeMode === true;
@@ -15589,70 +15575,6 @@ async function initApp() {
     return;
   });
 
-  employeeModeOpenButton?.addEventListener("click", () => {
-    fetch("/api/team/access-mode", { cache: "no-store" })
-      .then(async response => {
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error || "employee-session-unavailable");
-        const employees = (Array.isArray(result.employees) ? result.employees : []).filter(employee => employee.pinConfigured);
-        employeeModeMember.innerHTML = [
-          `<option value="" selected disabled>Selecione ADM ou operador</option>`,
-          `<option value="admin">ADM da conta</option>`,
-          ...employees.map(employee => `<option value="${escapeAttribute(employee.id)}">${escapeHtml(employee.name || "Operador")}</option>`),
-        ].join("");
-        employeeModePin.value = "";
-        employeeModePin.maxLength = 6;
-        employeeModePin.pattern = "[0-9]{4,6}";
-        employeeModeStatus.textContent = "A sessão central permanece conectada neste computador. O acesso muda após validar o PIN.";
-        employeeModeModal.hidden = false;
-        employeeModeMember.focus();
-      })
-      .catch(() => window.alert("Não foi possível carregar os operadores. Atualize a página e tente novamente."));
-  });
-
-  employeeModeMember?.addEventListener("change", () => {
-    const adminMode = employeeModeMember.value === "admin";
-    employeeModePin.maxLength = adminMode ? 6 : 4;
-    employeeModePin.pattern = adminMode ? "[0-9]{4,6}" : "[0-9]{4}";
-    employeeModePin.value = "";
-  });
-
-  employeeModePin?.addEventListener("input", () => {
-    const maxDigits = employeeModeMember.value === "admin" ? 6 : 4;
-    employeeModePin.value = employeeModePin.value.replace(/\D/g, "").slice(0, maxDigits);
-  });
-
-  employeeModeForm?.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const selectedAccess = employeeModeMember.value;
-    const mode = selectedAccess === "admin" ? "admin" : "employee";
-    const pin = employeeModePin.value;
-    if ((mode === "admin" && !/^\d{4,6}$/.test(pin)) || (mode !== "admin" && !/^\d{4}$/.test(pin))) {
-      setStatusMessage(employeeModeStatus, mode === "admin" ? "Informe o PIN ADM de 4 a 6 dígitos." : "Informe o PIN do operador com 4 dígitos.", "warning");
-      employeeModePin.focus();
-      return;
-    }
-    try {
-      await requestEmployeeApi("/api/team/access-mode", "POST", mode === "admin"
-        ? { mode, pin }
-        : { mode, employeeId: selectedAccess, pin });
-      employeeModeStatus.textContent = "Acesso validado. Atualizando o perfil…";
-      window.top.location.assign("/workspace");
-    } catch (error) {
-      const message = error.message === "invalid-access-pin" ? "PIN incorreto ou sem permissão. Confira o código e tente novamente."
-        : error.message === "too-many-attempts" ? "Muitas tentativas. Aguarde alguns minutos e tente novamente."
-          : "Não foi possível trocar o acesso. Confira a conexão e tente novamente.";
-      setStatusMessage(employeeModeStatus, message, "error");
-      employeeModePin.select();
-    }
-  });
-
-  employeeModeExitButton?.addEventListener("click", () => {
-    fetch("/api/team/access-mode", { method: "DELETE", cache: "no-store" })
-      .then(response => { if (!response.ok) throw new Error("access-mode-lock-failed"); window.top.location.assign("/workspace"); })
-      .catch(() => window.alert("Não foi possível encerrar o acesso do operador. Atualize a página e tente novamente."));
-  });
-
   employeePinModal && document.getElementById("employees-performance-list")?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-employee-set-pin]");
     if (!button || !isTeamLeader()) return;
@@ -15683,7 +15605,6 @@ async function initApp() {
   });
 
   document.addEventListener("click", (event) => {
-    if (event.target.closest("[data-employee-mode-close]")) employeeModeModal.hidden = true;
     if (event.target.closest("[data-employee-pin-close]")) employeePinModal.hidden = true;
   });
 
