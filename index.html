@@ -38,8 +38,8 @@
       </p>
       <div class="session-bar">
         <span id="current-user-label">Usuário conectado</span>
-        <button class="button button-small" id="employee-mode-open-button" type="button" hidden>Acesso do colaborador</button>
-        <button class="button button-small" id="employee-mode-exit-button" type="button" hidden>Voltar ao proprietário</button>
+        <button class="button button-small" id="employee-mode-open-button" type="button" hidden>Acesso do operador</button>
+        <button class="button button-small" id="employee-mode-exit-button" type="button" hidden>Logout operador</button>
         <button class="button button-small" id="logout-button" type="button">Sair</button>
       </div>
       <p class="helper-text status-note hero-status" id="sync-status">
@@ -2219,45 +2219,23 @@
     <div class="app-modal-backdrop" data-employee-mode-close></div>
     <div class="app-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="employee-mode-title">
       <div class="app-modal-copy">
-        <span class="app-modal-kicker">Acesso da equipe</span>
-        <h3 id="employee-mode-title">Entrar como colaborador</h3>
-        <p>O acesso fica limitado às O.S. atribuídas ao colaborador e às métricas individuais do mês.</p>
+        <span class="app-modal-kicker">Troca rápida de acesso</span>
+        <h3 id="employee-mode-title">Trocar de operador</h3>
+        <p>Digite o PIN da próxima pessoa. O acesso atual só muda depois que o PIN for validado.</p>
       </div>
       <form class="password-change-form" id="employee-mode-form">
         <label>
-          <span>Colaborador</span>
-          <select id="employee-mode-member" required></select>
+          <span>ADM ou operador</span>
+          <select id="employee-mode-member" required><option value="" selected disabled>Selecione ADM ou operador</option></select>
         </label>
         <label>
           <span>PIN</span>
           <input id="employee-mode-pin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="one-time-code" required>
         </label>
-        <p class="helper-text" id="employee-mode-status">A sessão de colaborador dura até 8 horas. Para voltar ao acesso geral, será solicitada a senha do proprietário.</p>
+        <p class="helper-text" id="employee-mode-status">A sessão central permanece conectada neste computador.</p>
         <div class="app-modal-actions">
           <button class="button" type="button" data-employee-mode-close>Cancelar</button>
-          <button class="button button-primary" type="submit">Entrar</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div class="app-modal" id="employee-mode-exit-modal" hidden>
-    <div class="app-modal-backdrop" data-employee-mode-exit-close></div>
-    <div class="app-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="employee-mode-exit-title">
-      <div class="app-modal-copy">
-        <span class="app-modal-kicker">Acesso do proprietário</span>
-        <h3 id="employee-mode-exit-title">Voltar ao acesso geral</h3>
-        <p>Confirme a senha da conta proprietária para desbloquear configurações e dados gerais da loja.</p>
-      </div>
-      <form class="password-change-form" id="employee-mode-exit-form">
-        <label>
-          <span>Senha do proprietário</span>
-          <input id="employee-mode-owner-password" type="password" autocomplete="current-password" required>
-        </label>
-        <p class="helper-text" id="employee-mode-exit-status"></p>
-        <div class="app-modal-actions">
-          <button class="button" type="button" data-employee-mode-exit-close>Cancelar</button>
-          <button class="button button-primary" type="submit">Confirmar acesso</button>
+          <button class="button button-primary" type="submit">Confirmar troca</button>
         </div>
       </form>
     </div>
