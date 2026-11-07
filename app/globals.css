@@ -20,6 +20,8 @@ button,input { font:inherit; }
 .form-panel { padding:clamp(30px,5vw,70px); display:flex; flex-direction:column; justify-content:center; }
 .form-heading h2 { margin:10px 0 6px; font-family:var(--font-display),serif; font-size:clamp(2rem,3vw,3.1rem); }
 .auth-form { display:grid; gap:16px; margin-top:26px; }
+.auth-remember { display:flex; align-items:center; gap:9px; color:#526d70; font-size:.86rem; font-weight:700; }
+.auth-remember input { width:17px; height:17px; accent-color:#008e71; }
 .signup-grid { grid-template-columns:1fr 1fr; }
 .full { grid-column:1/-1; }
 .field { display:grid; gap:7px; color:#466167; font-size:.84rem; font-weight:800; }
@@ -197,4 +199,14 @@ button,input { font:inherit; }
 .employee-lock-form button:disabled { opacity: .65; cursor: wait; }
 .employee-lock-error { margin: 0; color: #b42318; font-size: 14px; }
 .employee-lock-signout { margin-top: 14px; padding: 8px 0; border: 0; background: transparent; color: #637875; cursor: pointer; }
+.workspace-entry-page { background: radial-gradient(circle at 12% 8%, #d9f4ec 0, transparent 38%), linear-gradient(135deg, #eef8f5, #edf5f8); }
+.workspace-entry-card { width:min(100%, 500px); border:1px solid #dcece7; }
+.workspace-entry-modes { display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:5px; margin:20px 0; border-radius:14px; background:#eef5f3; }
+.workspace-entry-modes button { min-height:40px; border:0; border-radius:10px; background:transparent; color:#506a68; font-weight:800; cursor:pointer; }
+.workspace-entry-modes button.is-active { background:#fff; color:#007f68; box-shadow:0 2px 8px #12353412; }
+.workspace-entry-help { color:#657b7d; font-size:.9rem; line-height:1.5; }
+.employee-lock-form select { min-height:46px; padding:0 12px; border:1px solid #cbdcd8; border-radius:12px; background:#fff; color:#123534; font-size:16px; }
+.workspace-entry-card .employee-lock-copy { margin:0 0 20px; }
+.workspace-entry-card .employee-lock-form { margin-top:0; }
+@media (max-width: 520px) { .workspace-entry-card { padding:24px 20px; } }
 @media (max-width: 520px) { .employee-lock-card { padding: 24px 20px; } .employee-lock-card h1 { font-size: 23px; } }

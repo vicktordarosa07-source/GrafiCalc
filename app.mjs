@@ -2328,6 +2328,7 @@ function normalizeAccessControlCandidate(candidate) {
   }
   return {
     groups,
+    employeeAccessVersion: candidate?.employeeAccessVersion === 1 ? 1 : 0,
     userOverrides: candidate?.userOverrides && typeof candidate.userOverrides === "object" ? candidate.userOverrides : {},
     dashboardOverrides: candidate?.dashboardOverrides && typeof candidate.dashboardOverrides === "object" ? candidate.dashboardOverrides : {},
     configPermissions: candidate?.configPermissions && typeof candidate.configPermissions === "object" ? candidate.configPermissions : {},
@@ -2798,7 +2799,23 @@ function getUserTabPermissions(accessControl, user) {
     return createTabPermissionMap(false, false);
   }
   if (window.grafiCalcRemoteAuth?.employeeMode === true) {
-    return Object.fromEntries(APP_TAB_LABELS.map((tab) => [tab.id, tab.id === "home" || tab.id === "os"]));
+    const group = accessControl.groups.find((entry) => entry.id === "funcionarios");
+    const overrides = accessControl.userOverrides?.[user.id] || {};
+    const defaults = createTabPermissionMap(false, false);
+    defaults.home = true;
+    defaults.os = true;
+    const employeeAccessReady = accessControl.employeeAccessVersion === 1;
+    const permissions = {
+      ...defaults,
+      ...(employeeAccessReady ? group?.tabs || {} : {}),
+      ...overrides,
+    };
+    for (const id of ["conta", "configuracao", "equipe", "desenvolvedor", "novoOrcamento"]) permissions[id] = false;
+    if (permissions.employeeFinance !== true) {
+      permissions.historico = false;
+      permissions.orcamento = false;
+    }
+    return permissions;
   }
   const isDeveloper = user.role === "developer" && user.developerAccess === true;
   const isCreator = isCreatorAccount(user);
@@ -11177,11 +11194,7 @@ async function initApp() {
     panel.hidden = !leader;
     if (!leader) return;
     const users = (window.grafiCalcRemoteAuth?.members || authUsers).filter((user) => user.status !== "blocked" && user.id !== currentUser?.id && user.role !== "developer");
-    if (!users.length) {
-      container.innerHTML = `<p class="helper-text">Nenhum usuário da equipe disponível para receber permissões.</p>`;
-      return;
-    }
-    container.innerHTML = users.map((user) => {
+    const configPermissionCards = users.length ? users.map((user) => {
       const permissions = accessControl.configPermissions?.[user.id] || {};
       return `<article class="list-card" data-config-permission-user="${escapeAttribute(user.id)}">
         <strong>${escapeHtml(user.username || user.email || "Usuário")}</strong>
@@ -11190,7 +11203,34 @@ async function initApp() {
         <label><input type="checkbox" data-config-permission="edit" ${permissions.edit ? "checked" : ""}> Editar e salvar</label>
         <label><input type="checkbox" data-config-permission="managePin" ${permissions.managePin ? "checked" : ""}> Criar, trocar ou recuperar PIN</label>
       </article>`;
+    }).join("") : `<p class="helper-text">Nenhum usuário da equipe disponível para receber permissões de configuração.</p>`;
+    const employeeUsers = users.filter((user) => user.role === "employee");
+    const employeeGroup = accessControl.groups.find((group) => group.id === "funcionarios");
+    const employeePolicyReady = accessControl.employeeAccessVersion === 1;
+    const employeeTabDefs = APP_TAB_LABELS.filter((tab) => !tab.developerOnly && !tab.creatorOnly && !tab.teamLeaderOnly && !["conta", "configuracao"].includes(tab.id));
+    const defaultEmployeeTab = (id) => id === "home" || id === "os";
+    const groupAccessRows = employeeTabDefs.map((tab) => `
+      <label class="team-access-chip"><input type="checkbox" data-employee-group-access="${escapeAttribute(tab.id)}" ${((employeePolicyReady ? employeeGroup?.tabs?.[tab.id] : defaultEmployeeTab(tab.id)) ? "checked" : "")}> <span>${escapeHtml(tab.label)}</span></label>
+    `).join("");
+    const groupFinance = employeePolicyReady ? employeeGroup?.tabs?.employeeFinance === true : false;
+    const employeeOverrideCards = employeeUsers.map((user) => {
+      const overrides = accessControl.userOverrides?.[user.id] || {};
+      const rows = employeeTabDefs.map((tab) => {
+        const override = Object.prototype.hasOwnProperty.call(overrides, tab.id) ? String(overrides[tab.id]) : "";
+        const inherited = employeePolicyReady ? employeeGroup?.tabs?.[tab.id] === true : defaultEmployeeTab(tab.id);
+        return `<label class="team-access-override"><span>${escapeHtml(tab.label)} <small>padrão: ${inherited ? "liberado" : "bloqueado"}</small></span><select data-employee-user-access="${escapeAttribute(user.id)}" data-access-id="${escapeAttribute(tab.id)}"><option value=""${override === "" ? " selected" : ""}>Usar padrão</option><option value="true"${override === "true" ? " selected" : ""}>Liberar</option><option value="false"${override === "false" ? " selected" : ""}>Bloquear</option></select></label>`;
+      }).join("");
+      const financeOverride = Object.prototype.hasOwnProperty.call(overrides, "employeeFinance") ? String(overrides.employeeFinance) : "";
+      return `<details class="team-access-operator"><summary>${escapeHtml(user.username || "Operador")}</summary><div class="team-access-override-grid"><label class="team-access-override"><span>Ver valores e métricas financeiras <small>padrão: ${groupFinance ? "liberado" : "bloqueado"}</small></span><select data-employee-user-access="${escapeAttribute(user.id)}" data-access-id="employeeFinance"><option value=""${financeOverride === "" ? " selected" : ""}>Usar padrão</option><option value="true"${financeOverride === "true" ? " selected" : ""}>Liberar</option><option value="false"${financeOverride === "false" ? " selected" : ""}>Bloquear</option></select></label>${rows}</div></details>`;
     }).join("");
+    container.innerHTML = `${configPermissionCards}
+      <section class="team-access-settings" aria-labelledby="team-access-title">
+        <h3 id="team-access-title">Acesso dos operadores por PIN</h3>
+        <p class="helper-text">O padrão abaixo vale para todos os operadores, inclusive os cadastrados depois. Abra cada nome para liberar ou bloquear funções só para aquela pessoa. Valores financeiros começam bloqueados.</p>
+        <label class="team-access-chip team-finance-access"><input type="checkbox" data-employee-group-access="employeeFinance" ${groupFinance ? "checked" : ""}> <span>Permitir valores e métricas financeiras para todos</span></label>
+        <div class="team-access-grid">${groupAccessRows}</div>
+        ${employeeOverrideCards || `<p class="helper-text">Cadastre operadores na aba Equipe para configurar exceções individuais.</p>`}
+      </section>`;
   }
 
   function renderPresetControls() {
@@ -15553,13 +15593,9 @@ async function initApp() {
   });
 
   employeeModeOpenButton?.addEventListener("click", () => {
-    if (!employeeModeMember || !employeeModeModal) return;
-    const employees = (window.grafiCalcRemoteAuth?.members || []).filter(user => user.role === "employee" && user.status === "active");
-    employeeModeMember.innerHTML = employees.map(user => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.username)}</option>`).join("");
-    employeeModePin.value = "";
-    setStatusMessage(employeeModeStatus, employees.length ? "Acesso limitado às O.S. atribuídas e às métricas individuais." : "Cadastre primeiro um colaborador com PIN na aba Equipe.", employees.length ? "neutral" : "warning");
-    employeeModeModal.hidden = false;
-    if (employees.length) employeeModeMember.focus();
+    fetch("/api/team/access-mode", { method: "DELETE", cache: "no-store" })
+      .then(response => { if (!response.ok) throw new Error("access-mode-lock-failed"); window.top.location.assign("/workspace"); })
+      .catch(() => window.alert("Não foi possível abrir a tela de PIN. Atualize a página e tente novamente."));
   });
 
   employeeModeForm?.addEventListener("submit", async (event) => {
@@ -15575,11 +15611,9 @@ async function initApp() {
   });
 
   employeeModeExitButton?.addEventListener("click", () => {
-    if (!employeeModeExitModal) return;
-    employeeModeOwnerPassword.value = "";
-    employeeModeExitStatus.textContent = "";
-    employeeModeExitModal.hidden = false;
-    employeeModeOwnerPassword.focus();
+    fetch("/api/team/access-mode", { method: "DELETE", cache: "no-store" })
+      .then(response => { if (!response.ok) throw new Error("access-mode-lock-failed"); window.top.location.assign("/workspace"); })
+      .catch(() => window.alert("Não foi possível abrir a tela de PIN. Atualize a página e tente novamente."));
   });
 
   employeeModeExitForm?.addEventListener("submit", async (event) => {
@@ -16120,6 +16154,46 @@ async function initApp() {
 
   document.getElementById("team-config-permissions")?.addEventListener("change", async (event) => {
     if (!isTeamLeader()) return;
+    const groupAccess = event.target.closest("[data-employee-group-access]");
+    if (groupAccess) {
+      let group = accessControl.groups.find((item) => item.id === "funcionarios");
+      if (!group) {
+        group = { id: "funcionarios", name: "Funcionários", tabs: createTabPermissionMap(false, false), dashboards: createDashboardPermissionMap(false), protected: true };
+        accessControl.groups.push(group);
+      }
+      if (accessControl.employeeAccessVersion !== 1) {
+        group.tabs = { ...createTabPermissionMap(false, false), home: true, os: true, employeeFinance: false };
+        accessControl.employeeAccessVersion = 1;
+      }
+      group.tabs = { ...(group.tabs || {}), [groupAccess.dataset.employeeGroupAccess]: groupAccess.checked };
+      await saveSecuritySharedNow();
+      renderTeamConfigPermissions();
+      renderAll();
+      return;
+    }
+    const userAccess = event.target.closest("[data-employee-user-access]");
+    if (userAccess) {
+      const userId = userAccess.dataset.employeeUserAccess;
+      const accessId = userAccess.dataset.accessId;
+      if (!userId || !accessId) return;
+      if (accessControl.employeeAccessVersion !== 1) {
+        let group = accessControl.groups.find((item) => item.id === "funcionarios");
+        if (!group) {
+          group = { id: "funcionarios", name: "Funcionários", tabs: createTabPermissionMap(false, false), dashboards: createDashboardPermissionMap(false), protected: true };
+          accessControl.groups.push(group);
+        }
+        group.tabs = { ...createTabPermissionMap(false, false), home: true, os: true, employeeFinance: false };
+        accessControl.employeeAccessVersion = 1;
+      }
+      accessControl.userOverrides = accessControl.userOverrides || {};
+      accessControl.userOverrides[userId] = accessControl.userOverrides[userId] || {};
+      if (userAccess.value === "") delete accessControl.userOverrides[userId][accessId];
+      else accessControl.userOverrides[userId][accessId] = userAccess.value === "true";
+      await saveSecuritySharedNow();
+      renderTeamConfigPermissions();
+      renderAll();
+      return;
+    }
     const checkbox = event.target.closest("[data-config-permission]");
     const card = checkbox?.closest("[data-config-permission-user]");
     const userId = card?.dataset.configPermissionUser;

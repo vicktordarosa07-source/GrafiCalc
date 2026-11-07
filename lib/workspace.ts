@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isDeveloperEligible } from "@/lib/developer-session";
 import { configPermissions, WorkspaceError, type JsonObject } from "@/lib/workspace-policy";
-import { EMPLOYEE_LOCK_COOKIE, EMPLOYEE_MODE_COOKIE, readEmployeeLock, readEmployeeModeSession } from "@/lib/employee-mode";
+import { ADMIN_MODE_COOKIE, EMPLOYEE_LOCK_COOKIE, EMPLOYEE_MODE_COOKIE, adminPinVersion, readAdminModeSession, readEmployeeLock, readEmployeeModeSession } from "@/lib/employee-mode";
 import { cookies } from "next/headers";
 
 export async function getWorkspaceContext() {
@@ -27,6 +27,7 @@ export async function getWorkspaceContext() {
     admin.from("profiles").select("id,nome,email,empresa,papel,criado_em,email_confirmado").eq("tenant_id", tenantId),
   ]);
   if (tenantError || runtimeError || membersError || !tenant) throw new WorkspaceError("workspace-read-failed", 503);
+  const payload: JsonObject = runtime?.payload && typeof runtime.payload === "object" ? runtime.payload : {};
   const ownerIsLeader = tenant.owner_id === user.id || (isCreator && !tenant.owner_id);
   const isLeader = ownerIsLeader;
   const sessionCookie = (await cookies()).get(EMPLOYEE_MODE_COOKIE)?.value;
@@ -35,7 +36,7 @@ export async function getWorkspaceContext() {
   const employeeLock = readEmployeeLock(lockCookie);
   const hasEmployeeLock = employeeLock?.ownerId === user.id && employeeLock.tenantId === String(tenantId);
   if (hasEmployeeLock && (!employeeSession || employeeSession.ownerId !== user.id || employeeSession.tenantId !== String(tenantId))) {
-    throw new WorkspaceError("employee-owner-unlock-required", 423);
+    throw new WorkspaceError("workspace-access-mode-required", 423);
   }
   let employeeMode = false;
   let effectiveUser = user;
@@ -55,9 +56,17 @@ export async function getWorkspaceContext() {
       effectiveProfile = employeeProfile;
     }
   }
+  if (ownerIsLeader && !employeeMode) {
+    const adminSession = readAdminModeSession((await cookies()).get(ADMIN_MODE_COOKIE)?.value);
+    const adminPin = payload.config?.security?.configAccess || {};
+    const pinValue = String(adminPin.pinHash || adminPin.password || "");
+    if (!adminSession || adminSession.ownerId !== user.id || adminSession.tenantId !== String(tenantId)
+      || adminSession.pinVersion !== adminPinVersion(pinValue)) {
+      throw new WorkspaceError("workspace-access-mode-required", 423);
+    }
+  }
   const memberIds = new Set<string>((profiles || []).map(p => p.id));
   memberIds.add(user.id);
-  const payload: JsonObject = runtime?.payload && typeof runtime.payload === "object" ? runtime.payload : {};
   const members = (profiles || []).map(p => ({
     id: p.id, username: p.nome, email: p.papel === "funcionario" ? "" : p.email, company: p.empresa,
     role: p.papel === "funcionario" ? "employee" : "user", developerAccess: false,

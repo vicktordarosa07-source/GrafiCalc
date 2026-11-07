@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
 import { DEVELOPER_COOKIE } from "@/lib/developer-session";
 import { CONFIG_PIN_COOKIE } from "@/lib/config-pin";
-import { EMPLOYEE_LOCK_COOKIE, EMPLOYEE_MODE_COOKIE } from "@/lib/employee-mode";
+import { ADMIN_MODE_COOKIE, EMPLOYEE_LOCK_COOKIE, EMPLOYEE_MODE_COOKIE } from "@/lib/employee-mode";
+import { REMEMBER_SESSION_COOKIE } from "@/lib/supabase/session-cookie";
 import { assertSameOrigin } from "@/lib/workspace-policy";
 import { workspaceError } from "@/lib/workspace";
 
@@ -14,5 +15,7 @@ export async function POST(request: Request) {
   (await cookies()).delete(CONFIG_PIN_COOKIE);
   (await cookies()).delete(EMPLOYEE_MODE_COOKIE);
   (await cookies()).delete(EMPLOYEE_LOCK_COOKIE);
+  (await cookies()).delete(ADMIN_MODE_COOKIE);
+  (await cookies()).delete(REMEMBER_SESSION_COOKIE);
   return Response.json({ ok: true });
 }

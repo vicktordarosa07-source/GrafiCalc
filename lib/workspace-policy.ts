@@ -95,18 +95,15 @@ export type CollectionAccess = {
   quotesWrite: boolean;
   ordersRead: boolean;
   ordersWrite: boolean;
+  financialRead: boolean;
 };
 
 export function getCollectionAccess(
   payload: JsonObject, userId: string, isLeader: boolean, profile: JsonObject | null
 ): CollectionAccess {
-  if (profile?.employeeMode === true) return {
-    clientsRead: false, clientsWrite: false, quotesReadAll: false,
-    quotesWrite: false, ordersRead: true, ordersWrite: true,
-  };
   if (isLeader) return {
     clientsRead: true, clientsWrite: true, quotesReadAll: true,
-    quotesWrite: true, ordersRead: true, ordersWrite: true,
+    quotesWrite: true, ordersRead: true, ordersWrite: true, financialRead: true,
   };
   const access = payload.security?.accessControl || {};
   const employee = profile?.papel === "funcionario";
@@ -116,11 +113,28 @@ export function getCollectionAccess(
   const groupId = employee ? "funcionarios" : String(directory?.groupId || "profissional");
   const groups = Array.isArray(access.groups) ? access.groups : [];
   const group = groups.find((entry: JsonObject) => entry?.id === groupId);
+  const employeePolicyReady = access.employeeAccessVersion === 1;
   const defaults = employee
-    ? { clientes: false, historico: false, os: false, orcamento: true, novoOrcamento: true }
+    ? { home: true, clientes: false, historico: false, os: true, orcamento: false, novoOrcamento: false }
     : { clientes: true, historico: true, os: true, orcamento: true, novoOrcamento: true };
-  const tabs = { ...defaults, ...(group?.tabs || {}), ...(access.userOverrides?.[userId] || {}) };
+  const tabs = {
+    ...defaults,
+    ...(employee && !employeePolicyReady ? {} : group?.tabs || {}),
+    ...(access.userOverrides?.[userId] || {}),
+  };
   const quotesWrite = tabs.historico === true || tabs.orcamento === true || tabs.novoOrcamento === true;
+  const financialRead = employee ? tabs.employeeFinance === true : true;
+  if (profile?.employeeMode === true || employee) {
+    return {
+      clientsRead: tabs.clientes === true,
+      clientsWrite: tabs.clientes === true,
+      quotesReadAll: financialRead && tabs.historico === true,
+      quotesWrite: financialRead && quotesWrite,
+      ordersRead: tabs.os === true,
+      ordersWrite: tabs.os === true,
+      financialRead,
+    };
+  }
   return {
     clientsRead: tabs.clientes === true || quotesWrite,
     clientsWrite: tabs.clientes === true,
@@ -128,6 +142,7 @@ export function getCollectionAccess(
     quotesWrite,
     ordersRead: tabs.os === true,
     ordersWrite: tabs.os === true,
+    financialRead: true,
   };
 }
 
@@ -144,16 +159,38 @@ export function scopeWorkspaceCollections(
 ): JsonObject {
   const source = visible.sharedState || visible.state || {};
   const quoteHistory = operationalList(source.quoteHistory);
+  const visibleOrders = access.ordersRead ? operationalList(source.workOrders) : [];
+  const safeOrders = access.financialRead ? visibleOrders : visibleOrders.map(order => ({
+    ...order,
+    total: 0,
+    paidAmount: 0,
+    balance: 0,
+    items: redactFinancialFields(order.items),
+    timeline: Array.isArray(order.timeline) ? order.timeline.map((event: JsonObject) => ({
+      ...event,
+      note: event.eventType === "updated" ? "Alteração registrada." : event.note,
+      before: {}, after: {},
+    })) : [],
+  }));
   const scoped = {
     ...source,
     clients: access.clientsRead ? operationalList(source.clients) : [],
-    quoteHistory: access.quotesReadAll ? quoteHistory
+    quoteHistory: !access.financialRead ? redactFinancialFields(access.quotesReadAll ? quoteHistory : access.quotesWrite ? quoteHistory.filter(quote => ownQuote(quote, userId)) : [])
+      : access.quotesReadAll ? quoteHistory
       : access.quotesWrite ? quoteHistory.filter(quote => ownQuote(quote, userId)) : [],
-    workOrders: access.ordersRead ? operationalList(source.workOrders) : [],
+    workOrders: safeOrders,
   };
   const output: JsonObject = { ...visible, sharedState: scoped };
   delete output.state;
   return output;
+}
+
+function redactFinancialFields(value: any): any {
+  if (Array.isArray(value)) return value.map(redactFinancialFields);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !/(price|valor|total|amount|balance|paid|cost|discount|fee|valorunit)/i.test(key))
+    .map(([key, nested]) => [key, redactFinancialFields(nested)]));
 }
 
 /**

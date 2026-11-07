@@ -37,14 +37,22 @@ async function snapshot(context: NonNullable<Awaited<ReturnType<typeof getWorksp
   const authoritativeOrders = (schemaNotInstalled ? [] : (orderRows || []).map(row => mapWorkOrder(row, eventsByOrder.get(row.id) || [])));
   if (context.employeeMode) {
     const workOrders = authoritativeOrders.filter(order => order.responsibleUserId === context.user.id);
+    const scopedEmployeePayload = scopeWorkspaceCollections({
+      ...payload,
+      sharedState: { ...source, workOrders },
+      security: { ...(payload.security || {}), authUsers: [] },
+    }, access, context.user.id);
     const now = new Date();
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const monthOrders = workOrders.filter(order => String(order.createdAt || "").slice(0, 7) === month);
     return Response.json({
       exists: true,
-      payload: { sharedState: { quoteHistory: [], workOrders }, security: { authUsers: [] } },
+      payload: scopedEmployeePayload,
       updatedAt, userId: context.user.id, tenantId: context.tenantId, isLeader: false, employeeMode: true,
-      employeeMetrics: { monthOrderCount: monthOrders.length, monthOrderTotal: monthOrders.reduce((sum, order) => sum + Number(order.total || 0), 0) },
+      employeeMetrics: {
+        monthOrderCount: monthOrders.length,
+        monthOrderTotal: access.financialRead ? monthOrders.reduce((sum, order) => sum + Number(order.total || 0), 0) : null,
+      },
     }, { headers: { "Cache-Control": "private, no-store" } });
   }
   const authoritativeQuoteIds = new Set(authoritativeOrders.map(order => order.quoteId));

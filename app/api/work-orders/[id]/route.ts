@@ -38,6 +38,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const parsed = updateSchema.safeParse(await request.json());
     if (!parsed.success) throw new WorkspaceError("invalid-payload", 400);
     if (context.employeeMode) {
+      if (typeof parsed.data.paidAmount !== "undefined") throw new WorkspaceError("work-order-finance-edit-forbidden", 403);
       if (parsed.data.responsibleUserId && parsed.data.responsibleUserId !== context.user.id) throw new WorkspaceError("responsible-required", 403);
     } else if (!parsed.data.password) throw new WorkspaceError("invalid-credentials", 401);
     else await verifyWorkOrderPassword(context, parsed.data.password, id);

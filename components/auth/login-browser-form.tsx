@@ -17,6 +17,7 @@ export function LoginBrowserForm({ message, successMessage }: { message?: string
     <form className="auth-form" action="/api/auth/login" method="post" onInput={clearPreviousError}>
       <label className="field"><span>E-mail</span><input type="email" name="email" autoComplete="email" required /></label>
       <PasswordField name="password" label="Senha" autoComplete="current-password" />
+      <label className="auth-remember"><input type="checkbox" name="remember" value="1" /> <span>Permanecer conectado neste computador</span></label>
       <Turnstile />
       {message && <p className="form-message error" role="alert">{message}</p>}
       {successMessage && <p className="form-message success" role="status">{successMessage}</p>}

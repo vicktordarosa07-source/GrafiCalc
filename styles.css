@@ -2479,6 +2479,44 @@ textarea {
   font-weight: 800;
 }
 
+.team-access-settings {
+  display: grid;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.team-access-settings h3 { margin: 0; font-size: 1.05rem; }
+.team-access-settings > .helper-text { margin: 0; }
+.team-access-grid,
+.team-access-override-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  gap: 8px;
+}
+.team-access-chip,
+.team-access-override {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .78);
+  color: var(--ink);
+  font-size: .84rem;
+  font-weight: 750;
+}
+.team-access-chip input { accent-color: var(--brand); }
+.team-finance-access { width: fit-content; max-width: 100%; }
+.team-access-operator { padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.58); }
+.team-access-operator summary { cursor: pointer; color: var(--ink); font-weight: 850; }
+.team-access-override-grid { margin-top: 12px; }
+.team-access-override { justify-content: space-between; }
+.team-access-override span { display: grid; gap: 3px; }
+.team-access-override small { color: var(--muted-strong); font-size: .72rem; }
+.team-access-override select { max-width: 118px; min-height: 34px; padding: 0 7px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink); }
+
 .m2-budget-table {
   min-width: 1820px;
 }

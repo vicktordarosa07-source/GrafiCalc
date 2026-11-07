@@ -7,6 +7,7 @@ import { AsaasProviderError, deleteSandboxSubscription } from "@/lib/billing/asa
 import { readResponseTextLimited } from "@/lib/http/response-body.mjs";
 import { cookies } from "next/headers";
 import { EMPLOYEE_LOCK_COOKIE, EMPLOYEE_MODE_COOKIE, readEmployeeLock, readEmployeeModeSession } from "@/lib/employee-mode";
+import { getWorkspaceContext } from "@/lib/workspace";
 
 export class BillingRequestError extends Error {
   constructor(readonly status: number, readonly code: string) {
@@ -34,6 +35,10 @@ export async function requireBillingOwner() {
     throw new BillingRequestError(403, "employee-mode-restricted");
   }
   if (isDeveloperEligible(user)) throw new BillingRequestError(403, "developer-account-not-billable");
+  let workspace;
+  try { workspace = await getWorkspaceContext(); }
+  catch { throw new BillingRequestError(403, "workspace-access-mode-required"); }
+  if (!workspace || workspace.employeeMode || !workspace.ownerIsLeader) throw new BillingRequestError(403, "billing-owner-required");
 
   let admin;
   try { admin = createAdminClient(); }

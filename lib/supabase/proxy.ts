@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseServerEnvironment } from "@/lib/supabase/env";
+import { isRememberSession, sessionCookieOptions } from "@/lib/supabase/session-cookie";
+import { ADMIN_MODE_COOKIE, EMPLOYEE_LOCK_COOKIE, EMPLOYEE_MODE_COOKIE, readAdminModeSession, readEmployeeLock, readEmployeeModeSession } from "@/lib/employee-mode";
 
 const PUBLIC_PATHS = ["/entrar", "/cadastro", "/recuperar-senha", "/confirmar-email", "/auth", "/api/auth/login", "/api/auth/health", "/api/billing/webhook", "/api/billing/worker"];
 
@@ -42,12 +44,14 @@ export async function updateSession(request: NextRequest, security: ProxySecurit
 
   try {
     const supabase = createServerClient(url, key, {
+      cookieOptions: { maxAge: isRememberSession(request.cookies) ? 30 * 24 * 60 * 60 : undefined },
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request: { headers: forwardedRequestHeaders() } });
-          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+          const remember = isRememberSession(request.cookies);
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, sessionCookieOptions(options, remember)));
         },
       },
     });
@@ -67,6 +71,22 @@ export async function updateSession(request: NextRequest, security: ProxySecurit
       confirmationUrl.pathname = "/confirmar-email";
       confirmationUrl.search = "";
       return applySecurityHeaders(NextResponse.redirect(confirmationUrl));
+    }
+
+    const lock = readEmployeeLock(request.cookies.get(EMPLOYEE_LOCK_COOKIE)?.value);
+    if (lock?.ownerId === user.id) {
+      const employeeMode = readEmployeeModeSession(request.cookies.get(EMPLOYEE_MODE_COOKIE)?.value);
+      const adminMode = readAdminModeSession(request.cookies.get(ADMIN_MODE_COOKIE)?.value);
+      const validEmployee = employeeMode?.ownerId === user.id && employeeMode.tenantId === lock.tenantId;
+      const validAdmin = adminMode?.ownerId === user.id && adminMode.tenantId === lock.tenantId;
+      const entryEndpoint = pathname === "/api/team/access-mode" || pathname === "/api/auth/signout";
+      if (!validEmployee && !validAdmin && !entryEndpoint && pathname !== "/workspace") {
+        if (pathname.startsWith("/api/")) return applySecurityHeaders(NextResponse.json({ ok: false, error: "workspace-access-mode-required" }, { status: 423, headers: { "Cache-Control": "private, no-store" } }));
+        const entryUrl = request.nextUrl.clone();
+        entryUrl.pathname = "/workspace";
+        entryUrl.search = "";
+        return applySecurityHeaders(NextResponse.redirect(entryUrl));
+      }
     }
 
     return applySecurityHeaders(response);

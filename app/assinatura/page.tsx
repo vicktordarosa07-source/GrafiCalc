@@ -2,17 +2,27 @@ import Link from "next/link";
 import { InactivityGuard } from "@/components/auth/inactivity-guard";
 import { SubscriptionPanel } from "@/components/billing/subscription-panel";
 import { showWorkspaceReturnLink } from "@/lib/billing/navigation";
+import { getWorkspaceContext } from "@/lib/workspace";
+import { WorkspaceError } from "@/lib/workspace-policy";
+import { redirect } from "next/navigation";
 
 export default async function SubscriptionPage({
   searchParams,
 }: {
   searchParams: Promise<{ acesso?: string | string[] }>;
 }) {
+  try {
+    const context = await getWorkspaceContext();
+    if (!context || context.employeeMode || !context.ownerIsLeader) redirect("/workspace");
+  } catch (error) {
+    if (error instanceof WorkspaceError && ["workspace-access-mode-required", "employee-owner-unlock-required"].includes(error.message)) redirect("/workspace");
+    throw error;
+  }
   const { acesso } = await searchParams;
   const canReturnToWorkspace = showWorkspaceReturnLink(acesso);
 
   return <main className="subscription-page">
-    <InactivityGuard />
+    <InactivityGuard pinLockOnIdle />
     <header className="subscription-topbar">
       {canReturnToWorkspace ? <Link href="/workspace">← Voltar ao GrafiCalc</Link> : <span>Regularização de assinatura</span>}
       {canReturnToWorkspace ? <span>GrafiCalc</span> : null}

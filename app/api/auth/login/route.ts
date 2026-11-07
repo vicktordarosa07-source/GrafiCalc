@@ -5,6 +5,8 @@ import { getSupabaseServerEnvironment } from "@/lib/supabase/env";
 import { getTrustedClientIp, resolveSupabaseAuthClientConfig } from "@/lib/supabase/auth-ip-forwarding";
 import { loginSchema } from "@/lib/validation/auth";
 import { beginAuthAttempt } from "@/lib/supabase/auth-rate-limit";
+import { REMEMBER_SESSION_COOKIE, REMEMBER_SESSION_SECONDS, sessionCookieOptions } from "@/lib/supabase/session-cookie";
+import { createEmployeeLock, employeeLockCookieOptions, EMPLOYEE_LOCK_COOKIE } from "@/lib/employee-mode";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +39,7 @@ async function clearFailedAttempts(admin: ReturnType<typeof createAdminClient> |
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData();
+  const rememberSession = formData.get("remember") === "1";
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
@@ -95,7 +98,7 @@ export async function POST(request: NextRequest) {
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, sessionCookieOptions(options, rememberSession)));
         },
       },
     });
@@ -128,5 +131,25 @@ export async function POST(request: NextRequest) {
   }
 
   await clearFailedAttempts(admin, rateLimitKey);
+  if (rememberSession) {
+    response.cookies.set(REMEMBER_SESSION_COOKIE, "1", {
+      path: "/", httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: REMEMBER_SESSION_SECONDS,
+    });
+  } else {
+    response.cookies.set(REMEMBER_SESSION_COOKIE, "", {
+      path: "/", httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", maxAge: 0,
+    });
+  }
+  try {
+    const { data: profile } = await admin.from("profiles").select("tenant_id").eq("id", result.data.user.id).maybeSingle();
+    if (profile?.tenant_id) {
+      const { data: tenant } = await admin.from("graficalc_tenants").select("id,owner_id").eq("id", profile.tenant_id).maybeSingle();
+      if (tenant && tenant.owner_id === result.data.user.id) {
+        response.cookies.set(EMPLOYEE_LOCK_COOKIE, createEmployeeLock(result.data.user.id, String(tenant.id)), employeeLockCookieOptions());
+      }
+    }
+  } catch (error) {
+    console.error("graficalc_owner_pin_gate_initialization_failure", { message: error instanceof Error ? error.message : "unknown" });
+  }
   return response;
 }

@@ -13,11 +13,13 @@ export default async function ProfilePage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/entrar");
+  let ownerAccess = false;
   try {
     const context = await getWorkspaceContext();
-    if (context?.employeeMode) redirect("/employee-locked");
+    if (context?.employeeMode) redirect("/workspace");
+    ownerAccess = Boolean(context?.ownerIsLeader);
   } catch (error) {
-    if (error instanceof WorkspaceError && error.message === "employee-owner-unlock-required") redirect("/employee-locked");
+    if (error instanceof WorkspaceError && ["employee-owner-unlock-required", "workspace-access-mode-required"].includes(error.message)) redirect("/workspace");
     throw error;
   }
 
@@ -31,7 +33,7 @@ export default async function ProfilePage() {
 
   return (
     <main className="profile-page">
-      <InactivityGuard />
+      <InactivityGuard pinLockOnIdle={ownerAccess} />
       <header className="profile-header">
         <div><span>Minha conta</span><h1>Dados e segurança</h1></div>
         <nav>
